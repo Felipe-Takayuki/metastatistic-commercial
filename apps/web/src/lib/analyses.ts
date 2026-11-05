@@ -448,6 +448,61 @@ export const BAYES_ANOVA_DEF: AnalysisDef = {
 };
 
 // ------------------------------------------------------------------------------------------------------------------
+// Testes z (fatia 6.12). ATENÇÃO: não existem no JASP instalado, então são calculados pelo motor da plataforma em R base
+// (engines/r-worker/custom.R), com a saída no mesmo formato; cada tabela traz uma nota dizendo isso. O teste z de UMA média
+// (σ conhecido) é do JASP (opção `zTest` do t de uma amostra). Fórmulas conferidas contra pnorm/prop.test nos testes.
+const ciLevel = (): Item => ({ type: "number", key: "ciLevel", label: "Nível de confiança do IC", default: 0.95, min: 0.5, max: 0.9999, step: 0.01 });
+const twoLevels = (dataset: Dataset, name: string | undefined, what: string): string[] => {
+  const n = name ? colOf(dataset, name)?.n_distinct ?? null : null;
+  return n !== null && n !== 2 ? [`${name} tem ${levelsLabel(n)}; ${what} exige exatamente 2 categorias. Escolha outra variável ou filtre os dados (aba Consulta SQL).`] : [];
+};
+
+export const ZTEST_MEANS_DEF: AnalysisDef = {
+  id: "ZTestMeans",
+  title: "Teste z de duas amostras (σ conhecidos)",
+  description: "Compara a média de dois grupos quando os desvios padrão POPULACIONAIS são conhecidos (z = (m₁ − m₂)/√(σ₁²/n₁ + σ₂²/n₂)). Se σ é estimado pela amostra, use o teste t. Calculado pela plataforma (R base), não por um módulo JASP.",
+  slots: [
+    { key: "dependent", label: "Variável dependente (escalar)", levels: ["scale"], multi: false, required: true, autofill: true },
+    { key: "group", label: "Variável de agrupamento (2 grupos)", levels: ["nominal", "ordinal"], multi: false, required: true, autofill: true, preferLevels: 2 },
+  ],
+  sections: [
+    {
+      title: "Desvios padrão populacionais (conhecidos)",
+      items: [
+        { type: "number", key: "sigma1", label: "σ do 1º grupo (ordem alfabética)", default: 1, min: 1e-6, max: 1e9, step: 0.1 },
+        { type: "number", key: "sigma2", label: "σ do 2º grupo", default: 1, min: 1e-6, max: 1e9, step: 0.1 },
+      ],
+    },
+    { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (1º grupo vs 2º)")] },
+    { title: "Resultado", items: [ciLevel(), toggle("descriptives", "Estatísticas descritivas", true)] },
+  ],
+  check: ({ dataset, state }) => twoLevels(dataset, state.vars.group[0], "o teste z compara dois grupos e"),
+};
+
+export const ZTEST_PROPORTIONS_DEF: AnalysisDef = {
+  id: "ZTestProportions",
+  title: "Teste z de proporções",
+  description: "Sem grupo: compara a proporção de “sucesso” com um valor p₀ (uma amostra). Com grupo de 2 níveis: compara as proporções dos dois grupos (duas amostras). Sucesso = a 2ª categoria do desfecho em ordem alfabética. Calculado pela plataforma (R base), não por um módulo JASP.",
+  slots: [
+    { key: "outcome", label: "Desfecho (2 categorias)", levels: ["nominal", "ordinal"], multi: false, required: true, autofill: true, preferLevels: 2 },
+    { key: "group", label: "Grupos (2 níveis; vazio = uma amostra)", levels: ["nominal", "ordinal"], multi: false, preferLevels: 2 },
+  ],
+  sections: [
+    { title: "Sucesso", items: [toggle("invert", "Sucesso = a 1ª categoria (padrão: a 2ª, em ordem alfabética)")] },
+    { title: "Uma amostra", items: [{ type: "number", key: "p0", label: "p₀ (valor de referência; só sem grupo)", default: 0.5, min: 0.001, max: 0.999, step: 0.01 }] },
+    { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (proporção vs p₀, ou 1º grupo vs 2º)")] },
+    { title: "Resultado", items: [ciLevel()] },
+  ],
+  check: ({ dataset, state }) => {
+    const out = state.vars.outcome[0], grp = state.vars.group[0];
+    const msgs = twoLevels(dataset, out, "o teste de proporções (desfecho)");
+    if (grp) msgs.push(...twoLevels(dataset, grp, "o teste de duas proporções (grupos)"));
+    if (out && out === grp) msgs.push("O desfecho e o grupo não podem ser a mesma variável.");
+    return msgs;
+  },
+};
+
+// ------------------------------------------------------------------------------------------------------------------
 // ANOVA de medidas repetidas (fatia 6.9): UM fator intra-sujeito. Os níveis são colunas do dataset (formato largo: uma
 // coluna por medida, na ordem em que o usuário as marca); o nome do fator é livre. Fatores entre-sujeitos opcionais.
 export const RM_ANOVA_DEF: AnalysisDef = {
@@ -510,13 +565,14 @@ export const RM_ANOVA_DEF: AnalysisDef = {
   },
 };
 
-export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, RM_ANOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF];
+export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, RM_ANOVA_DEF, ZTEST_MEANS_DEF, ZTEST_PROPORTIONS_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF];
 export const getDef = (id: string): AnalysisDef | undefined => ANALYSES.find((d) => d.id === id);
 
 /** Como o seletor agrupa as análises (aba Análise e bloco de relatório). Cada análise do catálogo está em exatamente um grupo. */
 export const ANALYSIS_GROUPS: { title: string; ids: string[] }[] = [
   { title: "Descritivas", ids: ["Descriptives"] },
   { title: "Comparação de médias", ids: ["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "AnovaRepeatedMeasures"] },
+  { title: "Testes z (σ conhecido e proporções)", ids: ["ZTestMeans", "ZTestProportions"] },
   { title: "Associação e predição", ids: ["Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables"] },
   { title: "Bayesianas", ids: ["TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"] },
 ];

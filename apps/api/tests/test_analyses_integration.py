@@ -81,7 +81,9 @@ def data():
     ids["nivel"] = derive("e2e-nivel", f"SELECT CASE WHEN produtividade >= 196 THEN 'alto' ELSE 'baixo' END AS nivel, * FROM \"{raw['table_name']}\"")["id"]
     ids["fatorial"] = upload("e2e-fatorial.csv", FIX / "fatorial.csv")["id"]
     ids["pres"] = upload("e2e-pressupostos.csv", FIX / "pressupostos.csv")["id"]
-    ids["tt"] = upload("e2e-ttest.csv", FIX / "ttest.csv")["id"]
+    tt = upload("e2e-ttest.csv", FIX / "ttest.csv")
+    ids["tt"] = tt["id"]
+    ids["resp"] = derive("e2e-resposta", f"SELECT \"group\" AS grupo, score, CASE WHEN score >= 10.5 THEN 'sim' ELSE 'nao' END AS resposta FROM \"{tt['table_name']}\"")["id"]
     ids["rm"] = upload("e2e-medidas-repetidas.csv", FIX / "medidas_repetidas.csv")["id"]
     fr = upload("e2e-friedman.csv", FIX / "friedman.csv")
     ids["friedman"] = fr["id"]
@@ -610,3 +612,54 @@ def test_friedman_accepts_a_likert_ordinal_column(data):
     """O Friedman (ranks) com c1 ordinal dá o mesmo χ² da fixture com c1 escalar (os postos não mudam)."""
     res = run("AnovaRepeatedMeasures", data["lik"], {**RM_BASE_C, "friedmanWithinFactor": ["cond"]})
     close(table(res, "friedmanTable")["data"][0]["chiSqr"], REF["friedman"]["chi"])
+
+
+def ztable(res):
+    return table(res, "ztest")["data"][0]
+
+
+def test_z_test_two_means_with_known_sigma_matches_R(data):
+    """Análise própria (custom.R, R base): z = (m1 − m2)/√(σ1²/n1 + σ2²/n2); não passa pelo JASP."""
+    ref = REF["z_means"]
+    opts = {"dependent": "score", "group": "group", "sigma1": ref["s1"], "sigma2": ref["s2"], "descriptives": True}
+    res = run("ZTestMeans", data["tt"], opts)
+    row = ztable(res)
+    close(row["z"], ref["z"]); close(row["p"], ref["p"]); close(row["d"], ref["diff"]); close(row["se"], ref["se"])
+    close(row["lo"], ref["lo"]); close(row["hi"], ref["hi"]); close(row["cd"], ref["d"])
+    assert row["g"] == "a − b"
+    g = {r["g"]: r for r in table(res, "desc")["data"]}
+    assert g["a"]["n"] == ref["n1"] and g["b"]["n"] == ref["n2"]; close(g["a"]["m"], ref["m1"]); close(g["b"]["m"], ref["m2"])
+    close(ztable(run("ZTestMeans", data["tt"], {**opts, "alternative": "greater"}))["p"], ref["p_greater"])
+    one = ztable(run("ZTestMeans", data["tt"], {**opts, "alternative": "less"}))
+    close(one["p"], ref["p_less"]); assert one["lo"] == float("-inf") or one["lo"] in ("-Infinity", "-Inf", None) or one["lo"] < -1e300
+
+
+def test_z_test_two_proportions_matches_prop_test(data):
+    """z (proporção agrupada) = ±√X² de prop.test(correct = FALSE); IC de Wald da diferença; sucesso = 2ª categoria (sim)."""
+    ref = REF["z_props2"]
+    res = run("ZTestProportions", data["resp"], {"outcome": "resposta", "group": "grupo"})
+    row = ztable(res)
+    close(row["p1"], ref["p1"]); close(row["p2"], ref["p2"]); close(row["d"], ref["diff"]); close(row["z"], ref["z"]); close(row["p"], ref["p"])
+    close(row["lo"], ref["lo"]); close(row["hi"], ref["hi"])
+    assert f"a ({ref['x1']}/{ref['n1']}) − b ({ref['x2']}/{ref['n2']})" == row["g"]
+    close(ztable(run("ZTestProportions", data["resp"], {"outcome": "resposta", "group": "grupo", "alternative": "greater"}))["p"], ref["p_greater"])
+    inv = ztable(run("ZTestProportions", data["resp"], {"outcome": "resposta", "group": "grupo", "invert": True}))   # sucesso = "nao": proporções complementares
+    close(inv["p1"], 1 - ref["p1"]); close(inv["z"], -ref["z"]); close(inv["p"], ref["p"])
+
+
+def test_z_test_one_proportion_matches_prop_test(data):
+    ref = REF["z_props1"]
+    row = ztable(run("ZTestProportions", data["resp"], {"outcome": "resposta", "p0": ref["p0"]}))
+    assert row["x"] == ref["x"] and row["n"] == ref["n"]
+    close(row["ph"], ref["ph"]); close(row["z"], ref["z"]); close(row["p"], ref["p"]); close(row["lo"], ref["lo"]); close(row["hi"], ref["hi"])   # IC de Wilson
+
+
+def test_z_tests_reject_bad_requests(data):
+    def post(an, opts, ds="tt"):
+        return httpx.post(f"{API}/analyses/run", json={"analysis": an, "dataset_id": data[ds], "options": opts}, timeout=60)
+    assert post("ZTestMeans", {"dependent": "score", "group": "group", "sigma1": 0, "sigma2": 1}).status_code == 422          # σ deve ser > 0
+    assert post("ZTestMeans", {"dependent": "score", "group": "score", "sigma1": 1, "sigma2": 1}).status_code == 422          # grupo com muitos níveis
+    assert post("ZTestMeans", {"dependent": "score", "group": "group", "sigma1": 1, "sigma2": 1, "alternative": "x"}).status_code == 422
+    assert post("ZTestMeans", {"dependent": "score", "group": "group", "inventada": 1}).status_code == 422                      # opção desconhecida
+    assert post("ZTestProportions", {"outcome": "score"}).status_code == 422                                                    # desfecho com > 2 categorias
+    assert post("ZTestProportions", {"outcome": "resposta", "p0": 1.5}, "resp").status_code == 422

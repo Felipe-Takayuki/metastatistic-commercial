@@ -15,7 +15,7 @@ function SlotField({ slot, dataset, chosen, taken, onPick }: { slot: VarSlot; da
     return (
       <label className="field">{slot.label}
         <select value={chosen[0] ?? ""} onChange={(e) => onPick(e.target.value ? [e.target.value] : [])} disabled={cands.length === 0}>
-          {chosen.length === 0 && <option value="">{slot.required ? "Escolha…" : "—"}</option>}
+          {(chosen.length === 0 || !slot.required) && <option value="">{slot.required ? "Escolha…" : "— nenhuma —"}</option>}   {/* campo opcional: sempre dá para desmarcar */}
           {cands.map((c) => <option key={c.name} value={c.name}>{colLabel(c, slot)}</option>)}
         </select>
       </label>

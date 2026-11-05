@@ -33,7 +33,7 @@ COPY setup-jasp.R /app/
 WORKDIR /app
 RUN Rscript /app/setup-jasp.R
 # engine.R e runner.R ficam DEPOIS do download do jaspTools: mexer neles não refaz esses minutos.
-COPY engine.R runner.R /app/
+COPY engine.R custom.R runner.R /app/
 
 EXPOSE 8000
 CMD ["Rscript", "-e", "plumber::pr_run(plumber::pr('/app/runner.R'), host='0.0.0.0', port=8000)"]

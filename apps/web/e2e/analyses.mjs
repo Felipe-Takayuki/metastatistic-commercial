@@ -70,8 +70,8 @@ try {
   await page.getByRole("tab", { name: "Análise estatística" }).click();
   await page.locator(".analysis-group-title").first().waitFor();
   check("seletor agrupado: Descritivas, Comparação de médias, Associação e predição, Bayesianas",
-    JSON.stringify(await page.locator(".analysis-group-title").evaluateAll((e) => e.map((x) => x.textContent))) === JSON.stringify(["Descritivas", "Comparação de médias", "Associação e predição", "Bayesianas"]));
-  check("seletor agrupado: as 15 análises continuam sendo abas", (await page.locator(".analysis-picker").getByRole("tab").count()) === 15);
+    JSON.stringify(await page.locator(".analysis-group-title").evaluateAll((e) => e.map((x) => x.textContent))) === JSON.stringify(["Descritivas", "Comparação de médias", "Testes z (σ conhecido e proporções)", "Associação e predição", "Bayesianas"]));
+  check("seletor agrupado: as 17 análises continuam sendo abas", (await page.locator(".analysis-picker").getByRole("tab").count()) === 17);
   await pickAnalysis("ANOVA");
   await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
   await page.getByLabel(/^tratamento/).check();
@@ -354,6 +354,39 @@ try {
   check("t bayesiano: BF₀₁ é o inverso do BF₁₀", has(await resultText(), (1 / REF.bayes.indep).toFixed(3)));
   check("t bayesiano: com BF₀₁ na tabela a interpretação continua em BF₁₀", has((await bnotes().innerText()).replace(/\s+/g, " "), "BF₁₀ = 4,36", "a favor de H₁"));
   await shot("a3g-t-bayesiano");
+
+  // --- teste z de duas médias (σ conhecidos): análise do motor da plataforma, não do JASP ---
+  await pickAnalysis("Teste z de duas amostras (σ conhecidos)");
+  await page.getByLabel(/^σ do 1º grupo/).fill("1.5");
+  await page.getByLabel(/^σ do 2º grupo/).fill("2");
+  await run();
+  t = await resultText();
+  const ZM = REF.z_means;
+  check("teste z de duas médias: z, p, diferença e d iguais ao R (pnorm)", has(t, f3(ZM.z), p3(ZM.p), f3(ZM.diff), f3(ZM.d)), t.slice(0, 700));
+  check("teste z: a tabela avisa que NÃO vem de um módulo JASP", has(t, "não por um módulo JASP"), t.slice(0, 700));
+  await shot("a3i-teste-z");
+  // proporções: coluna binária derivada por SQL (resposta = score >= 10,5)
+  await page.getByRole("tab", { name: "Consulta SQL" }).click();
+  await runSql(`SELECT "group" AS grupo, CASE WHEN score >= 10.5 THEN 'sim' ELSE 'nao' END AS resposta FROM e2e_faixa_src`);
+  await page.getByRole("tab", { name: "Tabela" }).click();
+  await page.locator(".card table.data tbody tr").first().waitFor();
+  await saveAsDataset("e2e-resposta");
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await pickAnalysis("Teste z de proporções");
+  await page.getByLabel(/^Desfecho/).selectOption("resposta");
+  await page.getByLabel(/^Grupos/).selectOption("grupo");
+  await run();
+  t = await resultText();
+  const ZP = REF.z_props2;
+  check("teste z de duas proporções: z, p e diferença iguais ao prop.test do R", has(t, f3(ZP.z), f3(ZP.p).replace(/^0/, ""), f3(ZP.diff), `(${ZP.x1}/${ZP.n1})`), t.slice(0, 700));
+  await page.getByLabel(/^Grupos/).selectOption("");
+  await page.getByLabel(/^p₀/).fill("0.4");
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText("uma proporção").first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  t = await resultText();
+  const ZO = REF.z_props1;
+  check("teste z de uma proporção (p₀ = 0,4): z e p iguais ao prop.test do R, IC de Wilson", has(t, f3(ZO.z), f3(ZO.p).replace(/^0/, ""), f3(ZO.lo), f3(ZO.hi)), t.slice(0, 700));
+  await shot("a3j-z-proporcoes");
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
   await runSql(`SELECT "group" AS grupo, CASE WHEN score < 9 THEN 'baixo' WHEN score < 11 THEN 'medio' ELSE 'alto' END AS faixa FROM e2e_faixa_src`);
   await page.getByRole("tab", { name: "Tabela" }).click();
@@ -395,7 +428,7 @@ try {
   const frame = page.locator(".block-frame").nth(0);
   await frame.getByLabel(/^Análise/).selectOption({ label: "ANOVA" });
   check("bloco de relatório: o seletor de análises também é agrupado (optgroups)",
-    JSON.stringify(await frame.getByLabel(/^Análise/).locator("optgroup").evaluateAll((g) => g.map((x) => x.label))) === JSON.stringify(["Descritivas", "Comparação de médias", "Associação e predição", "Bayesianas"]));
+    JSON.stringify(await frame.getByLabel(/^Análise/).locator("optgroup").evaluateAll((g) => g.map((x) => x.label))) === JSON.stringify(["Descritivas", "Comparação de médias", "Testes z (σ conhecido e proporções)", "Associação e predição", "Bayesianas"]));
   await frame.getByLabel("Dataset").selectOption({ label: "e2e-dbc" });
   await frame.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
   await frame.getByLabel(/^tratamento/).check();

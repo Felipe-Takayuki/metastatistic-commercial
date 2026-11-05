@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANALYSIS_GROUPS, groupedAnalyses, isNumericDtype, ordinalAsScale, RM_ANOVA_DEF, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANALYSIS_GROUPS, ZTEST_MEANS_DEF, ZTEST_PROPORTIONS_DEF, groupedAnalyses, isNumericDtype, ordinalAsScale, RM_ANOVA_DEF, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -19,14 +19,17 @@ const resolve = (def: Parameters<typeof resolveState>[0], d: Dataset, s: FormSta
 describe("catálogo", () => {
   it("ids únicos e conhecidos pelo worker", () => {
     expect(new Set(ANALYSES.map((a) => a.id)).size).toBe(ANALYSES.length);
-    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "AnovaRepeatedMeasures", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives",
+    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "AnovaRepeatedMeasures", "ZTestMeans", "ZTestProportions", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives",
       "TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"]);
     expect(getDef("Anova")).toBe(ANOVA_DEF);
     expect(getDef("Inexistente")).toBeUndefined();
   });
   it("todo id do catálogo está no registro fechado do motor (engine.R): senão o worker responde 422", () => {
-    const engine = readFileSync(fileURLToPath(new URL("../../../../engines/r-worker/engine.R", import.meta.url)), "utf8");
-    const registry = engine.slice(engine.indexOf("ANALYSIS_MODULE <- c("), engine.indexOf("ALLOWED_ANALYSES"));
+    const dir = "../../../../engines/r-worker/";
+    const engine = readFileSync(fileURLToPath(new URL(`${dir}engine.R`, import.meta.url)), "utf8");
+    const custom = readFileSync(fileURLToPath(new URL(`${dir}custom.R`, import.meta.url)), "utf8");
+    // registro dos módulos JASP (engine.R) + análises próprias (custom.R: CUSTOM_ANALYSES)
+    const registry = engine.slice(engine.indexOf("ANALYSIS_MODULE <- c("), engine.indexOf("ALLOWED_ANALYSES")) + custom.slice(custom.indexOf("CUSTOM_ANALYSES <- list("));
     for (const a of ANALYSES) expect(registry, a.id).toMatch(new RegExp(`\\b${a.id}\\s*=`));
   });
   it("o seletor agrupa todas as análises, cada uma em exatamente um grupo, sem ids fantasmas", () => {
@@ -260,6 +263,24 @@ describe("toOptions — o contrato com o motor JASP", () => {
     expect(only.vars.dependent).toEqual(["c1"]);   // sem escalar, a Likert serve (antes: "Nenhuma coluna escalar disponível")
     const reg = resolveState(REGRESSION_DEF, d, state({ dependent: ["c2"], covariates: ["c1"], factors: [] }, {}, defaultState(REGRESSION_DEF)));
     expect(reg.vars.covariates).toEqual(["c1"]);
+  });
+  it("teste z de duas médias: σ por grupo, padrões e exigência de 2 grupos", () => {
+    const d2 = ds([col("y", "scale"), col("g", "nominal", 2)]);
+    const o = full(ZTEST_MEANS_DEF, d2, state({ dependent: ["y"], group: ["g"] }, { sigma1: 1.5, sigma2: 2 }, defaultState(ZTEST_MEANS_DEF)));
+    expect(o).toMatchObject({ dependent: "y", group: "g", sigma1: 1.5, sigma2: 2, alternative: "twoSided", ciLevel: 0.95, descriptives: true });
+    const bad = ds([col("y", "scale"), col("g", "nominal", 3)]);
+    expect(problems(ZTEST_MEANS_DEF, bad, resolveState(ZTEST_MEANS_DEF, bad, state({ dependent: ["y"], group: ["g"] }, {}, defaultState(ZTEST_MEANS_DEF))))[0]).toMatch(/g tem 3 níveis.*exatamente 2/);
+  });
+  it("teste z de proporções: grupo opcional (vazio = uma amostra), sucesso invertível, desfecho com 2 categorias", () => {
+    const d2 = ds([col("resp", "nominal", 2), col("g", "nominal", 2), col("o3", "nominal", 3)]);
+    const one = full(ZTEST_PROPORTIONS_DEF, d2, state({ outcome: ["resp"], group: [] }, { p0: 0.4 }, defaultState(ZTEST_PROPORTIONS_DEF)));
+    expect(one).toMatchObject({ outcome: "resp", group: "", p0: 0.4, invert: false, alternative: "twoSided" });
+    const two = full(ZTEST_PROPORTIONS_DEF, d2, state({ outcome: ["resp"], group: ["g"] }, { invert: true }, defaultState(ZTEST_PROPORTIONS_DEF)));
+    expect(two).toMatchObject({ group: "g", invert: true });
+    const pr = (v: Record<string, string[]>) => problems(ZTEST_PROPORTIONS_DEF, d2, resolveState(ZTEST_PROPORTIONS_DEF, d2, state(v, {}, defaultState(ZTEST_PROPORTIONS_DEF))));
+    expect(pr({ outcome: ["o3"], group: [] })[0]).toMatch(/o3 tem 3 níveis/);
+    expect(pr({ outcome: ["resp"], group: ["o3"] })[0]).toMatch(/o3 tem 3 níveis/);
+    expect(pr({ outcome: ["resp"], group: ["g"] })).toEqual([]);
   });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);

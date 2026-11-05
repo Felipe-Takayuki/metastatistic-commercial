@@ -137,6 +137,17 @@ out$ordinal <- list(
 r1 <- summary(lm(produtividade ~ altura, data = d)); g1 <- summary(glm(nivel ~ altura, data = d, family = binomial))
 out$one_predictor <- list(reg = list(est = unname(coef(r1)[, 1]), se = unname(coef(r1)[, 2]), p = unname(coef(r1)[, 4]), R2 = r1$r.squared, F = unname(r1$fstatistic[1])),
   logit = list(est = unname(coef(g1)[, 1]), se = unname(coef(g1)[, 2]), p = unname(coef(g1)[, 4])))
+# --- catálogo 6.12: testes z (ttest.csv: score por grupo a/b; desfecho sim = score >= 10,5) ---
+za <- tt$score[tt$group == "a"]; zb <- tt$score[tt$group == "b"]; zs1 <- 1.5; zs2 <- 2
+zd <- mean(za) - mean(zb); zse <- sqrt(zs1^2 / length(za) + zs2^2 / length(zb)); zz <- zd / zse
+out$z_means <- list(s1 = zs1, s2 = zs2, n1 = length(za), n2 = length(zb), m1 = mean(za), m2 = mean(zb), diff = zd, se = zse, z = zz, p = 2 * pnorm(-abs(zz)), p_greater = pnorm(zz, lower.tail = FALSE), p_less = pnorm(zz),
+  lo = zd - qnorm(0.975) * zse, hi = zd + qnorm(0.975) * zse, lo_greater = zd - qnorm(0.95) * zse, d = zd / sqrt((zs1^2 + zs2^2) / 2))
+resp <- tt$score >= 10.5; x1 <- sum(resp[tt$group == "a"]); n1 <- sum(tt$group == "a"); x2 <- sum(resp[tt$group == "b"]); n2 <- sum(tt$group == "b")
+pt2 <- prop.test(c(x1, x2), c(n1, n2), correct = FALSE); pt2g <- prop.test(c(x1, x2), c(n1, n2), correct = FALSE, alternative = "greater")
+out$z_props2 <- list(x1 = x1, n1 = n1, x2 = x2, n2 = n2, p1 = x1 / n1, p2 = x2 / n2, diff = x1 / n1 - x2 / n2, z = sign(x1 / n1 - x2 / n2) * sqrt(unname(pt2$statistic)), p = pt2$p.value, p_greater = pt2g$p.value,
+  lo = pt2$conf.int[1], hi = pt2$conf.int[2])
+ps1 <- prop.test(sum(resp), length(resp), p = 0.4, correct = FALSE)
+out$z_props1 <- list(x = sum(resp), n = length(resp), ph = mean(resp), p0 = 0.4, z = sign(mean(resp) - 0.4) * sqrt(unname(ps1$statistic)), p = ps1$p.value, lo = ps1$conf.int[1], hi = ps1$conf.int[2])
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

@@ -1,8 +1,6 @@
 # BACKLOG do catálogo (atualizado na 6.8; as seções por fatia abaixo trazem o detalhe)
 
-Pedidos do usuário ainda abertos:
-- [ ] **Teste z de duas amostras** (comparar duas médias com σ conhecido) — **não existe no JASP instalado**; pedido em 2026-11-05. O teste z de **uma** amostra já está na 6.7 (opção `zTest` do t de uma amostra).
-- [ ] **Teste z de proporções** (uma e duas amostras) — não existe no JASP (o mais próximo é o `BinomialTest` exato, jaspFrequencies). Decisão pendente: expor o binomial/ABTest do JASP ou implementar o z fora do JASP (quebra a regra "motor = JASP real", ver memória do projeto).
+Pedidos do usuário: **teste z de duas amostras e de proporções — FEITOS na 6.12** (análises próprias da plataforma, ver abaixo; o z de UMA média continua sendo do JASP, 6.7).
 
 Resolvido na 6.11: dados ordinais numéricos (Likert) em papéis escalares, e regressão com um único preditor (bug do motor).
 
@@ -272,4 +270,30 @@ Antes de mexer no motor, conferi **cada papel escalar contra o R puro** com a co
 ## Pendências
 - Todo inteiro com ≤ 10 valores é oferecido como candidato escalar: não há como distinguir "Likert" de "código de grupo". Alternativa futura: aviso na aba Dados.
 - Regressão/logística com **fatores** de um nível só e `modelTerms` com mais de um bloco continuam sem teste.
+
+---
+
+# Fatia 6.12 — testes z de duas médias (σ conhecidos) e de proporções ✅
+
+**Estas duas análises NÃO são de um módulo JASP**: o JASP instalado não tem teste z de duas médias nem teste z de proporções (o `zTestColumnComparison` do `ContingencyTables` só marca as células com letras subscritas, sem Z nem p; o `BinomialTest` é exato). Foram escritas em R base (`stats`) em `engines/r-worker/custom.R`, ao lado do registro dos módulos (`CUSTOM_ANALYSES`), e **cada tabela traz a nota "Análise calculada pelo motor da plataforma (R base), não por um módulo JASP"** (regra do projeto: ser explícito sobre o que é código real do JASP e o que foi escrito do zero). A saída segue o formato do jaspResults, então o front renderiza igual.
+
+| Análise | Opções | Resultado |
+|---|---|---|
+| **Teste z de duas amostras (σ conhecidos)** `ZTestMeans` | dependente escalar, grupo (2 níveis), σ do 1º e do 2º grupo (ordem alfabética), hipótese alternativa, nível do IC, descritivas | z = (m₁ − m₂)/√(σ₁²/n₁ + σ₂²/n₂), p (bi/unilateral), diferença, EP, IC normal, d de Cohen (σ combinado = √((σ₁²+σ₂²)/2)) |
+| **Teste z de proporções** `ZTestProportions` | desfecho (2 categorias), grupo opcional (vazio = uma amostra), p₀, inverter o sucesso, alternativa, IC | **Uma amostra**: z = (p̂ − p₀)/√(p₀(1−p₀)/n), IC de Wilson. **Duas**: z com proporção agrupada, IC de Wald da diferença. Sucesso = 2ª categoria em ordem alfabética (como a logística) |
+
+- Avisos na própria saída: n·p₀ ou n·(1−p₀) < 10 (uma amostra) e frequência esperada < 5 (duas): sugerem o binomial exato/Fisher.
+- Motor: `engine.R` faz `source("/app/custom.R")`, junta os ids em `ALLOWED_ANALYSES` e `run_custom()` (sem jaspTools; opções desconhecidas → 422). O Dockerfile copia `custom.R`. Entradas inválidas → 422 (σ ≤ 0, grupo com ≠ 2 níveis, desfecho com ≠ 2 categorias, p₀ fora de (0, 1), alternativa inválida).
+- Novo grupo no seletor: "Testes z (σ conhecido e proporções)" (**17 análises**). A guarda do vitest agora procura os ids também em `custom.R`.
+- **Melhoria de usabilidade encontrada no caminho**: campos únicos **opcionais** (ex.: "Separar por" das descritivas, "Grupos" aqui) não podiam ser desmarcados depois de escolhidos; agora há "— nenhuma —".
+
+## Conferido contra o R puro
+`pnorm` (z, p bi/uni, IC, d) para as médias; `prop.test(correct = FALSE)` para proporções (z = ±√X², p, IC de Wald da diferença e de Wilson de uma amostra); sucesso invertido (proporções complementares, z de sinal oposto).
+
+## Verificado
+`vitest` 184, `pytest` 200 (5 novos), `e2e:all` 6 suítes verdes (z de médias, de duas proporções e de uma proporção, com nota de "não JASP" e desmarcar o grupo).
+
+## Pendências
+- Sem teste z de uma proporção com IC de Wald/Clopper-Pearson (só Wilson), nem correção de continuidade, nem z para mais de 2 grupos.
+- σ conhecido por grupo: não há opção "mesmo σ" (basta repetir o valor).
 

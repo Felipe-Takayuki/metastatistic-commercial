@@ -13,7 +13,9 @@ ANALYSIS_MODULE <- c(
   ContingencyTables = "jaspFrequencies",
   Descriptives = "jaspDescriptives"
 )
-ALLOWED_ANALYSES <- names(ANALYSIS_MODULE)
+# Análises escritas para a plataforma (R base), fora dos módulos JASP: testes z (ver custom.R). Definem CUSTOM_ANALYSES.
+source("/app/custom.R")
+ALLOWED_ANALYSES <- c(names(ANALYSIS_MODULE), names(CUSTOM_ANALYSES))
 
 # Uma análise descartável por módulo: faz o jaspTools instalar/carregar o módulo uma única vez por processo.
 WARM_SPECS <- list(
@@ -179,11 +181,25 @@ embed_plots <- function(node) {
   node
 }
 
+# Análises próprias (custom.R): sem jaspTools; recebem o data.frame e as opções simplificadas e devolvem a árvore de resultados.
+run_custom <- function(analysis, body) {
+  tryCatch({
+    unknown <- setdiff(names(body$options), CUSTOM_OPTIONS[[analysis]])
+    if (length(unknown)) bad_request(sprintf("unknown option(s) for %s: %s", analysis, paste(unknown, collapse = ", ")))
+    df  <- load_dataset(body$dataset_id, body$columns, body$measurement)
+    res <- CUSTOM_ANALYSES[[analysis]](df, lapply(body$options, simplify_deep))
+    list(http = 200L, body = list(status = "complete", results = res))
+  }, request_error = function(e) list(http = 422L, body = list(status = "error", message = conditionMessage(e))),
+     error = function(e) list(http = 500L, body = list(status = "error", message = conditionMessage(e))))
+}
+
 # Entrada única do motor. Nunca lança: devolve dados puros (http + corpo) para o supervisor repassar.
 run_request <- function(body) {
   analysis <- body$analysis
   if (!is.character(analysis) || length(analysis) != 1 || !(analysis %in% ALLOWED_ANALYSES))
     return(list(http = 422L, body = list(status = "error", message = sprintf("analysis not allowed: %s", paste(analysis, collapse = "")))))
+
+  if (analysis %in% names(CUSTOM_ANALYSES)) return(run_custom(analysis, body))
 
   tryCatch({
     df   <- load_dataset(body$dataset_id, body$columns, body$measurement)
