@@ -1,3 +1,13 @@
+# BACKLOG do catálogo (atualizado na 6.8; as seções por fatia abaixo trazem o detalhe)
+
+Pedidos do usuário ainda abertos:
+- [ ] **Teste z de duas amostras** (comparar duas médias com σ conhecido) — **não existe no JASP instalado**; pedido em 2026-11-05. O teste z de **uma** amostra já está na 6.7 (opção `zTest` do t de uma amostra).
+- [ ] **Teste z de proporções** (uma e duas amostras) — não existe no JASP (o mais próximo é o `BinomialTest` exato, jaspFrequencies). Decisão pendente: expor o binomial/ABTest do JASP ou implementar o z fora do JASP (quebra a regra "motor = JASP real", ver memória do projeto).
+
+Outros itens abertos: ANOVA de medidas repetidas; correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
+
+---
+
 # Fase 6 (projeto) — catálogo estatístico, fatias 6.1 e 6.2 ✅ (2026-11-05)
 
 Corresponde ao "primeiro lote de análises" da Fase 2 do PLAN.md. Antes: teste t independente, ANOVA, correlação, regressão linear e qui-quadrado.
