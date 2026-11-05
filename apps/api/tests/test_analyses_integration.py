@@ -80,6 +80,7 @@ def data():
     ids["dbc"] = dbc["id"]
     ids["nivel"] = derive("e2e-nivel", f"SELECT CASE WHEN produtividade >= 196 THEN 'alto' ELSE 'baixo' END AS nivel, * FROM \"{raw['table_name']}\"")["id"]
     ids["fatorial"] = upload("e2e-fatorial.csv", FIX / "fatorial.csv")["id"]
+    ids["pres"] = upload("e2e-pressupostos.csv", FIX / "pressupostos.csv")["id"]
     src = upload("e2e-faixa-src.csv", FIX / "ttest.csv")
     faixas = derive("e2e-faixas", f'SELECT "group" AS grupo, CASE WHEN score < 9 THEN \'baixo\' WHEN score < 11 THEN \'medio\' ELSE \'alto\' END AS faixa FROM "{src["table_name"]}"')
     ids["faixas"] = faixas["id"]
@@ -368,3 +369,17 @@ def test_descriptives_frequency_table_matches_R(data):
     for r, n, pc, cu in zip(rows, ref["n"], ref["percent"], ref["cumulative"]):
         assert r["Frequency"] == n
         close(r["Percent"], pc); close(r["Valid Percent"], pc); close(r["Cumulative Percent"], cu)
+
+
+def test_assumption_checks_match_R(data):
+    """Os números por trás dos avisos automáticos (lib/assumptions.ts): Shapiro nos RESÍDUOS e Levene centrado na MEDIANA no t independente; na ANOVA, Levene centrado na MÉDIA."""
+    ref = REF["pressupostos"]
+    t = run("TTestIndependentSamples", data["pres"], {"dependent": ["y"], "group": "grupo", "student": True, "normalityTest": True, "equalityOfVariancesTest": True})
+    sw = table(t, "ttestNormalTable")["data"][0]
+    close(sw["W"], ref["shapiro_resid"]["W"]); close(sw["p"], ref["shapiro_resid"]["p"])
+    lv = table(t, "equalityVariance")["data"][0]
+    close(lv["fStat"], ref["levene_median"]["F"]); close(lv["p"], ref["levene_median"]["p"])
+    a = run("Anova", data["pres"], {"dependent": "y", "fixedFactors": ["grupo"], "modelTerms": [{"components": ["grupo"]}], "homogeneityTests": True})
+    lv = table(a, "leveneTable")["data"][0]
+    close(lv["F"], ref["levene_mean"]["F"]); close(lv["p"], ref["levene_mean"]["p"])
+    assert (lv["df1"], lv["df2"]) == (ref["levene_mean"]["df1"], ref["levene_mean"]["df2"])

@@ -1,6 +1,6 @@
 # Gera r_reference.json: os valores "de verdade" (R puro: stats::aov, TukeyHSD, cor.test, lm, chisq.test) sobre as fixtures.
 # Reexecutar se as fixtures mudarem:
-#   docker cp apps/api/tests/fixtures metastatistic-r-worker-1-1:/tmp/fx && docker exec metastatistic-r-worker-1-1 Rscript /tmp/fx/make_reference.R /tmp/fx
+#   docker cp apps/api/tests/fixtures/. metastatistic-r-worker-1-1:/tmp/fx/ && docker exec metastatistic-r-worker-1-1 Rscript /tmp/fx/make_reference.R /tmp/fx
 #   docker cp metastatistic-r-worker-1-1:/tmp/fx/r_reference.json apps/api/tests/fixtures/r_reference.json
 suppressMessages(library(jsonlite))
 dir <- commandArgs(trailingOnly = TRUE)[1]
@@ -62,6 +62,11 @@ dunn$bonferroni <- pmin(1, p.adjust(dunn$p, "bonferroni")); dunn$holm <- p.adjus
 out$kruskal <- list(H = unname(kw$statistic), df = unname(kw$parameter), p = kw$p.value, epsilon = unname(kw$statistic) / (N - 1),
   eta = (unname(kw$statistic) - k + 1) / (N - k), dunn = lapply(seq_len(nrow(dunn)), function(i) as.list(dunn[i, ])))
 fq <- table(d$nivel); out$freq <- list(levels = names(fq), n = as.vector(fq), percent = as.vector(fq) / sum(fq) * 100, cumulative = cumsum(as.vector(fq)) / sum(fq) * 100)
+# --- catálogo 6.5: pressupostos (pressupostos.csv: grupo `controle` de variância mínima vs `tratado` assimétrico) ---
+pr <- read.csv(file.path(dir, "pressupostos.csv")); pr$grupo <- factor(pr$grupo)
+lev <- function(ctr) { z <- abs(pr$y - ave(pr$y, pr$grupo, FUN = ctr)); a <- anova(lm(z ~ pr$grupo)); list(F = a$`F value`[1], p = a$`Pr(>F)`[1], df1 = a$Df[1], df2 = a$Df[2]) }
+sw <- shapiro.test(resid(lm(y ~ grupo, data = pr)))   # o JASP testa os RESÍDUOS no t independente
+out$pressupostos <- list(levene_mean = lev(mean), levene_median = lev(median), shapiro_resid = list(W = unname(sw$statistic), p = sw$p.value))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

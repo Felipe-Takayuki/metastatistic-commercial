@@ -90,5 +90,35 @@ Armadilha do e2e: `run()` espera a primeira `table.apa-table`, que já pode ser 
 ## Pendências
 - Kruskal-Wallis só como parte da ANOVA (sem entrada própria no seletor; a tabela da ANOVA aparece junto).
 - Sem gráficos de frequência (barras) nem frequências cruzadas além do qui-quadrado.
-- **Verificação automática de pressupostos** com avisos na saída continua pendente.
+- ~~Verificação automática de pressupostos~~ — feita na 6.5 (abaixo).
+
+---
+
+# Fatia 6.5 — verificação automática de pressupostos ✅
+
+Fecha o último item do "primeiro lote" da Fase 2 do PLAN. Só front + testes; **nada muda no motor**.
+
+**Como funciona** (`lib/assumptions.ts`, `AnalysisRun`): depois que a análise pedida termina, a interface roda **em segundo plano** as mesmas opções **mais** os testes de pressuposto, lê as tabelas e mostra avisos em português acima do resultado (aba Análise). A saída que o usuário pediu não ganha tabelas extras; as caixas "Normalidade"/"Igualdade de variâncias" continuam desmarcadas. A segunda execução só começa depois da principal (não disputa worker) e falha em silêncio.
+
+| Análise | O que é verificado | Aviso (α = 0,05) sugere |
+|---|---|---|
+| Teste t independente | Shapiro-Wilk nos **resíduos**; Levene (centrado na **mediana**) | Mann-Whitney; Welch |
+| Teste t pareado | Shapiro-Wilk das **diferenças** | Wilcoxon |
+| Teste t de uma amostra | Shapiro-Wilk | Wilcoxon |
+| ANOVA | Levene (centrado na **média**) | Kruskal-Wallis ou transformar a variável |
+| ANCOVA | Levene | interpretar com cautela / transformar |
+
+Sem violação, uma nota informativa diz "nenhum alerta". Sem a tabela (ex.: ANOVA em blocos com 1 observação por célula, em que o JASP nem calcula o Levene) **não aparece nada**: melhor calar do que afirmar uma verificação que não ocorreu.
+
+## Conferido contra o R puro (`pressupostos.csv`, `r_reference.json → pressupostos`)
+Shapiro-Wilk dos resíduos (W, p), Levene com centro na mediana (t) e na média (ANOVA), F, p e gl. Descoberta: o JASP usa centros **diferentes** nas duas análises, e o Shapiro do t independente é dos resíduos (W = 0,797), não da variável inteira (W = 0,681).
+
+## Verificado
+`vitest` 149 (8 novos), `pytest` 181 (1 novo), `e2e:all` 6 suítes verdes (análises: avisos de t e ANOVA com números iguais ao R, ausência da tabela na saída, limpeza ao trocar de análise, caso sem alerta, caso sem Levene).
+Armadilha: `docker cp <dir> <container>:/tmp/fx` quando `/tmp/fx` já existe copia para `/tmp/fx/<dir>` e o R roda com arquivos velhos (r_reference.json "não muda"); usar `docker cp <dir>/. <container>:/tmp/fx/`.
+
+## Pendências
+- Avisos só na aba Análise; blocos de relatório e tiles de dashboard não os mostram (decisão de produto: o relatório é a saída publicável).
+- Sem verificação em correlação (normalidade bivariada), regressão (resíduos, multicolinearidade, homocedasticidade), logística e qui-quadrado (frequências esperadas < 5).
+- Shapiro-Wilk é muito sensível com n grande: o aviso não considera o tamanho da amostra.
 

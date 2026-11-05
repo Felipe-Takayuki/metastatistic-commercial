@@ -31,7 +31,7 @@ export function AnalysisTab({ dataset, session, onSession }: { dataset: Dataset;
         </button>
       </div>
       <div className="card card-pad" style={{ minHeight: 200 }} aria-live="polite">
-        {submitted ? <AnalysisRun analysis={submitted.analysis} datasetId={dataset.id} options={submitted.options} /> : <div className="empty"><h2>Resultados aparecem aqui</h2>Escolha as variáveis e execute a análise.</div>}
+        {submitted ? <AnalysisRun analysis={submitted.analysis} datasetId={dataset.id} options={submitted.options} assumptions /> : <div className="empty"><h2>Resultados aparecem aqui</h2>Escolha as variáveis e execute a análise.</div>}
       </div>
     </div>
   );

@@ -16,6 +16,8 @@
   --accent-wash: #e8f0fb;
   --danger: #b42318;
   --danger-wash: #fdecea;
+  --warn: #7a4b00;
+  --warn-wash: #fdf3d8;
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -41,6 +43,8 @@
     --accent-wash: #1c2a3d;
     --danger: #f19a92;
     --danger-wash: #3a1f1c;
+    --warn: #f0c36d;
+    --warn-wash: #3a2e12;
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -64,6 +68,8 @@
   --accent-wash: #1c2a3d;
   --danger: #f19a92;
   --danger-wash: #3a1f1c;
+  --warn: #f0c36d;
+  --warn-wash: #3a2e12;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -120,6 +126,7 @@ label.check input { width: 16px; height: 16px; accent-color: var(--accent); }
 .tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent); }
 
 .alert { padding: 10px 14px; border-radius: 8px; background: var(--danger-wash); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); }
+.alert.warn { background: var(--warn-wash); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
 .alert.info { background: var(--accent-wash); color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
 
 /* --- sidebar --- */

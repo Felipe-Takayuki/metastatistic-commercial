@@ -46,6 +46,7 @@ const run = async () => {
 };
 const resultText = async () => (await page.locator(".analysis-grid .card").nth(1).innerText()).replace(/\s+/g, " ");
 const has = (txt, ...needles) => needles.every((n) => txt.includes(n));
+const notes = () => page.getByRole("status", { name: "Verificação de pressupostos" });
 
 try {
   await page.goto(BASE);
@@ -80,6 +81,7 @@ try {
   check("ANOVA: nenhuma linha de interação", !t.includes("✻"));
   check("ANOVA: sem mensagem de erro do JASP", !/residual df|error/i.test(t));
   await shot("a2-anova");
+  check("ANOVA em blocos (1 observação por célula): sem Levene possível, então nenhum aviso falso", (await notes().count()) === 0);
 
   // Kruskal-Wallis (opção da ANOVA, um teste por fator) + Dunn; opções dependentes só aparecem com o teste ligado
   check("Kruskal-Wallis: desligado por padrão e sem opções de efeito/Dunn visíveis",
@@ -197,8 +199,37 @@ try {
   check("descritivas: nenhuma célula vira [object Object]", !t.includes("[object Object]") && !t.includes('{"'), t.slice(0, 400));
   await shot("a3d-descritivas");
 
+  // --- verificação automática de pressupostos: dados feitos para violá-los (variâncias e normalidade) ---
+  await upload("e2e-pressupostos.csv", readFileSync(join(FIX, "pressupostos.csv"), "utf8"));
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await pickAnalysis("Teste t independente");
+  check("pressupostos: nenhuma tabela de pressuposto é pedida ao usuário (opções desmarcadas)",
+    !(await page.getByLabel("Normalidade (Shapiro-Wilk)").isChecked()) && !(await page.getByLabel("Igualdade de variâncias").isChecked()));
+  await run();
+  await notes().waitFor({ timeout: 90000 });
+  let nt = (await notes().innerText()).replace(/\s+/g, " ");
+  check("t independente: avisa normalidade (resíduos) e variâncias, sugerindo Mann-Whitney e Welch", has(nt, "Atenção", "Normalidade rejeitada", "resíduos", "Mann-Whitney", "Variâncias diferentes", "Welch"), nt);
+  const PR = REF.pressupostos;
+  check("t independente: W de Shapiro e F de Levene dos avisos iguais ao R", has(nt, `W = ${PR.shapiro_resid.W.toFixed(2).replace(".", ",")}`), nt);
+  check("t independente: a tabela de pressupostos NÃO aparece na saída (só o aviso)", !(await resultText()).includes("Test of Normality") && !(await resultText()).includes("Assumption Checks"), (await resultText()).slice(0, 300));
+  await shot("a3f-pressupostos-t");
+  await pickAnalysis("ANOVA");
+  await page.getByLabel(/^grupo/).check();
+  check("pressupostos: trocar de análise limpa os avisos da anterior", (await notes().count()) === 0);
+  await run();
+  await notes().waitFor({ timeout: 90000 });
+  nt = (await notes().innerText()).replace(/\s+/g, " ");
+  check("ANOVA: avisa homogeneidade (F de Levene igual ao R) e sugere Kruskal-Wallis", has(nt, "Homogeneidade de variâncias rejeitada", `F = ${PR.levene_mean.F.toFixed(2).replace(".", ",")}`, "Kruskal-Wallis"), nt);
+
   // --- Qui-quadrado: dataset derivado com CASE (faixa) ---
   await upload("e2e-faixa-src.csv", readFileSync(join(FIX, "ttest.csv"), "utf8"));
+  // dados que cumprem os pressupostos (Levene p ≈ ,06; Shapiro p ≈ ,22): a nota informa que não há alerta
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await pickAnalysis("Teste t independente");
+  await run();
+  await notes().waitFor({ timeout: 90000 });
+  nt = (await notes().innerText()).replace(/\s+/g, " ");
+  check("t independente com pressupostos ok: a nota diz que não há alerta", has(nt, "nenhum alerta") && !nt.includes("Atenção"), nt);
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
   await runSql(`SELECT "group" AS grupo, CASE WHEN score < 9 THEN 'baixo' WHEN score < 11 THEN 'medio' ELSE 'alto' END AS faixa FROM e2e_faixa_src`);
   await page.getByRole("tab", { name: "Tabela" }).click();
