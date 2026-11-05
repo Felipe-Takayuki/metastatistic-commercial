@@ -47,6 +47,7 @@ const run = async () => {
 const resultText = async () => (await page.locator(".analysis-grid .card").nth(1).innerText()).replace(/\s+/g, " ");
 const has = (txt, ...needles) => needles.every((n) => txt.includes(n));
 const notes = () => page.getByRole("status", { name: "Verificação de pressupostos" });
+const bnotes = () => page.getByRole("status", { name: "Interpretação do fator de Bayes" });
 
 try {
   await page.goto(BASE);
@@ -67,6 +68,10 @@ try {
 
   // --- ANOVA em blocos casualizados (modelo ADITIVO: sem interação) ---
   await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await page.locator(".analysis-group-title").first().waitFor();
+  check("seletor agrupado: Descritivas, Comparação de médias, Associação e predição, Bayesianas",
+    JSON.stringify(await page.locator(".analysis-group-title").evaluateAll((e) => e.map((x) => x.textContent))) === JSON.stringify(["Descritivas", "Comparação de médias", "Associação e predição", "Bayesianas"]));
+  check("seletor agrupado: as 14 análises continuam sendo abas", (await page.locator(".analysis-picker").getByRole("tab").count()) === 14);
   await pickAnalysis("ANOVA");
   await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
   await page.getByLabel(/^tratamento/).check();
@@ -112,6 +117,8 @@ try {
   const bf10Of = (name) => { const m = t.match(new RegExp(`${esc(name)}\\s+[\\d.]+\\s+[\\d.]+\\s+[\\d.]+\\s+([\\d.]+)`)); return m ? Number(m[1]) : NaN; };
   const bestRatio = bf10Of("tratamento + bloco") / bf10Of("Null model");
   check("ANOVA bayesiana: BF do melhor modelo contra o nulo igual ao BayesFactor (±3%)", Math.abs(bestRatio / BB.bf[2] - 1) < 0.03, `${bestRatio} vs ${BB.bf[2]} | ${t.slice(0, 600)}`);
+  const ba = (await bnotes().innerText()).replace(/\s+/g, " ");
+  check("ANOVA bayesiana: BF de inclusão interpretado por efeito (tratamento: anedótica a favor de excluir)", has(ba, "tratamento: BF de inclusão", "anedótica a favor de excluir", "bloco: BF de inclusão"), ba);
   await shot("a2c-anova-bayesiana");
 
   // interação ligada: aparece a linha tratamento ✻ bloco? (1 obs. por célula -> o JASP recusa; só confirmamos que a UI mostra algo)
@@ -263,11 +270,15 @@ try {
   await run();
   t = await resultText();
   check("t bayesiano: BF₁₀ igual ao BayesFactor (R)", has(t, REF.bayes.indep.toFixed(3)), t.slice(0, 500));
+  await bnotes().waitFor({ timeout: 30000 });
+  const bn = (await bnotes().innerText()).replace(/\s+/g, " ");
+  check("t bayesiano: interpreta o BF (4,36 = evidência moderada a favor de H₁) e cita a classificação", has(bn, "BF₁₀ = 4,36", "evidência moderada a favor de H₁", "Lee e Wagenmakers"), bn);
   check("t bayesiano: sem avisos de pressupostos (não se aplicam)", (await notes().count()) === 0);
   await page.getByLabel(/^Fator de Bayes/).selectOption("BF01");
   await run();
   await page.locator(".analysis-grid .card").nth(1).getByText((1 / REF.bayes.indep).toFixed(3)).first().waitFor({ timeout: 90000 });
   check("t bayesiano: BF₀₁ é o inverso do BF₁₀", has(await resultText(), (1 / REF.bayes.indep).toFixed(3)));
+  check("t bayesiano: com BF₀₁ na tabela a interpretação continua em BF₁₀", has((await bnotes().innerText()).replace(/\s+/g, " "), "BF₁₀ = 4,36", "a favor de H₁"));
   await shot("a3g-t-bayesiano");
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
   await runSql(`SELECT "group" AS grupo, CASE WHEN score < 9 THEN 'baixo' WHEN score < 11 THEN 'medio' ELSE 'alto' END AS faixa FROM e2e_faixa_src`);
@@ -309,6 +320,8 @@ try {
   await page.getByRole("button", { name: "+ Análise", exact: true }).click();
   const frame = page.locator(".block-frame").nth(0);
   await frame.getByLabel(/^Análise/).selectOption({ label: "ANOVA" });
+  check("bloco de relatório: o seletor de análises também é agrupado (optgroups)",
+    JSON.stringify(await frame.getByLabel(/^Análise/).locator("optgroup").evaluateAll((g) => g.map((x) => x.label))) === JSON.stringify(["Descritivas", "Comparação de médias", "Associação e predição", "Bayesianas"]));
   await frame.getByLabel("Dataset").selectOption({ label: "e2e-dbc" });
   await frame.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
   await frame.getByLabel(/^tratamento/).check();

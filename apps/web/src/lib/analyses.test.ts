@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANALYSIS_GROUPS, groupedAnalyses, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -28,6 +28,12 @@ describe("catálogo", () => {
     const engine = readFileSync(fileURLToPath(new URL("../../../../engines/r-worker/engine.R", import.meta.url)), "utf8");
     const registry = engine.slice(engine.indexOf("ANALYSIS_MODULE <- c("), engine.indexOf("ALLOWED_ANALYSES"));
     for (const a of ANALYSES) expect(registry, a.id).toMatch(new RegExp(`\\b${a.id}\\s*=`));
+  });
+  it("o seletor agrupa todas as análises, cada uma em exatamente um grupo, sem ids fantasmas", () => {
+    const ids = ANALYSIS_GROUPS.flatMap((g) => g.ids);
+    expect([...ids].sort()).toEqual(ANALYSES.map((a) => a.id).sort());
+    expect(groupedAnalyses().flatMap((g) => g.defs)).toHaveLength(ANALYSES.length);
+    expect(ANALYSIS_GROUPS.every((g) => g.ids.length > 0)).toBe(true);
   });
   it("chaves de opção não se repetem dentro de uma análise (uma sobrescreveria a outra)", () => {
     for (const def of ANALYSES) {

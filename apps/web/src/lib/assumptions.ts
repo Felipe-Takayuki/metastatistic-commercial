@@ -15,7 +15,7 @@ const CHECKS: Record<string, Record<string, boolean>> = {
 
 export const ALPHA = 0.05;
 
-export interface Note { level: "warn" | "ok"; text: string }
+export interface Note { level: "warn" | "ok" | "info"; text: string }
 
 /** As opções da análise acrescidas dos testes de pressuposto; `null` se a análise não tem pressupostos verificáveis. */
 export function assumptionOptions(analysis: string, options: Record<string, unknown>): Record<string, unknown> | null {

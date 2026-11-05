@@ -285,6 +285,9 @@ a.btn { text-decoration: none; color: inherit; }
 
 /* --- análises: seletor, listas de colunas, campos numéricos, salvar como dataset --- */
 .analysis-picker { display: flex; flex-direction: column; gap: 2px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.analysis-group { display: flex; flex-direction: column; gap: 2px; }
+.analysis-group + .analysis-group { margin-top: 8px; }
+.analysis-group-title { padding: 4px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
 .analysis-picker button { text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; cursor: pointer; color: var(--text-secondary); font-weight: 500; }
 .analysis-picker button:hover { background: var(--surface-2); color: var(--text-primary); }
 .analysis-picker button[aria-selected="true"] { background: var(--accent-wash); color: var(--text-primary); font-weight: 600; }

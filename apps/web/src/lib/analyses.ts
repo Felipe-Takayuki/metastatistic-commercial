@@ -448,6 +448,17 @@ export const BAYES_ANOVA_DEF: AnalysisDef = {
 export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF];
 export const getDef = (id: string): AnalysisDef | undefined => ANALYSES.find((d) => d.id === id);
 
+/** Como o seletor agrupa as análises (aba Análise e bloco de relatório). Cada análise do catálogo está em exatamente um grupo. */
+export const ANALYSIS_GROUPS: { title: string; ids: string[] }[] = [
+  { title: "Descritivas", ids: ["Descriptives"] },
+  { title: "Comparação de médias", ids: ["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova"] },
+  { title: "Associação e predição", ids: ["Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables"] },
+  { title: "Bayesianas", ids: ["TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"] },
+];
+export const groupedAnalyses = (): { title: string; defs: AnalysisDef[] }[] =>
+  ANALYSIS_GROUPS.map((g) => ({ title: g.title, defs: g.ids.map((id) => getDef(id)).filter((d): d is AnalysisDef => !!d) }));
+
+
 // ------------------------------------------------------------------------------------------------------------------
 const allItems = (def: AnalysisDef) => def.sections.flatMap((s) => s.items);
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AnalysisBlock, Dataset } from "../../api";
-import { ANALYSES, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, TTEST_DEF, type AnalysisDef, type FormState } from "../../lib/analyses";
+import { defaultState, groupedAnalyses, fromOptions, getDef, isComplete, problems, resolveState, toOptions, TTEST_DEF, type AnalysisDef, type FormState } from "../../lib/analyses";
 import { AnalysisForm } from "../AnalysisForm";
 import { AnalysisRun } from "../AnalysisRun";
 
@@ -47,7 +47,7 @@ export function AnalysisBlockEditor({ block, datasets, onChange }: EditorProps) 
         <label className="field">Análise
           <select value={getDef(block.analysis) ? block.analysis : ""} onChange={(e) => changeAnalysis(e.target.value)}>
             {!getDef(block.analysis) && <option value="">{`(desconhecida: ${block.analysis})`}</option>}
-            {ANALYSES.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
+            {groupedAnalyses().map((g) => <optgroup key={g.title} label={g.title}>{g.defs.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}</optgroup>)}
           </select>
         </label>
         <label className="field">Dataset

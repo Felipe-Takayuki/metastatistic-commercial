@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, type AnalysisResponse, type AnalysisStatus } from "../api";
 import { useRemote } from "../lib/remote";
-import { assumptionNotes, assumptionOptions } from "../lib/assumptions";
+import { assumptionNotes, assumptionOptions, type Note } from "../lib/assumptions";
+import { bayesNotes } from "../lib/bayes";
 import { ResultView } from "./ResultView";
 
 /** true depois de `ms` ativo contínuo (para avisar quando algo demora mais que o normal). */
@@ -41,20 +42,14 @@ interface Props {
   analysis: string;
   datasetId: string;
   options: Record<string, unknown>;
-  /** Mostra avisos de pressupostos (normalidade, homogeneidade) verificados em segundo plano. */
-  assumptions?: boolean;
+  /** Mostra as notas automáticas: avisos de pressupostos (verificados em segundo plano) e interpretação do fator de Bayes. */
+  notes?: boolean;
 }
 
-/** Avisos de pressupostos: roda de novo, DEPOIS da análise principal, as mesmas opções + os testes de pressuposto. Falha em silêncio. */
-function AssumptionNotes({ analysis, datasetId, options }: { analysis: string; datasetId: string; options: Record<string, unknown> }) {
-  const checked = assumptionOptions(analysis, options);
-  const key = checked ? `an:${analysis}:${datasetId}:${JSON.stringify(checked)}` : null;
-  const { data } = useRemote<AnalysisResponse>(key, () => api.runAnalysis(analysis, datasetId, checked!));
-  if (!data || data.status !== "complete") return null;
-  const notes = assumptionNotes(analysis, data.results);
+function NoteList({ notes, label }: { notes: Note[]; label: string }) {
   if (notes.length === 0) return null;
   return (
-    <div role="status" aria-label="Verificação de pressupostos" style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+    <div role="status" aria-label={label} style={{ display: "grid", gap: 6, marginBottom: 12 }}>
       {notes.map((n, i) => (
         <div key={i} className={n.level === "warn" ? "alert warn" : "alert info"}>
           {n.level === "warn" ? <strong>Atenção: </strong> : null}{n.text}
@@ -64,8 +59,17 @@ function AssumptionNotes({ analysis, datasetId, options }: { analysis: string; d
   );
 }
 
+/** Avisos de pressupostos: roda de novo, DEPOIS da análise principal, as mesmas opções + os testes de pressuposto. Falha em silêncio. */
+function AssumptionNotes({ analysis, datasetId, options }: { analysis: string; datasetId: string; options: Record<string, unknown> }) {
+  const checked = assumptionOptions(analysis, options);
+  const key = checked ? `an:${analysis}:${datasetId}:${JSON.stringify(checked)}` : null;
+  const { data } = useRemote<AnalysisResponse>(key, () => api.runAnalysis(analysis, datasetId, checked!));
+  if (!data || data.status !== "complete") return null;
+  return <NoteList notes={assumptionNotes(analysis, data.results)} label="Verificação de pressupostos" />;
+}
+
 /** Executa a análise (com cache) e mostra tabelas/gráficos do JASP, ou o erro de forma legível. */
-export function AnalysisRun({ analysis, datasetId, options, assumptions = false }: Props) {
+export function AnalysisRun({ analysis, datasetId, options, notes = false }: Props) {
   const key = datasetId ? `an:${analysis}:${datasetId}:${JSON.stringify(options)}` : null;
   const { data, error, loading } = useRemote<AnalysisResponse>(key, () => api.runAnalysis(analysis, datasetId, options));
 
@@ -90,7 +94,8 @@ export function AnalysisRun({ analysis, datasetId, options, assumptions = false 
   }
   return (
     <div style={{ opacity: loading ? 0.5 : 1, transition: "opacity .15s" }}>
-      {assumptions && !loading && <AssumptionNotes analysis={analysis} datasetId={datasetId} options={options} />}
+      {notes && !loading && <NoteList notes={bayesNotes(analysis, options, data.results)} label="Interpretação do fator de Bayes" />}
+      {notes && !loading && <AssumptionNotes analysis={analysis} datasetId={datasetId} options={options} />}
       <ResultView results={data.results} />
     </div>
   );

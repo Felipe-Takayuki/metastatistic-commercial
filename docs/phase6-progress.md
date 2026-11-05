@@ -150,9 +150,9 @@ O catálogo passa de 10 para **14 análises**.
 `vitest` 152 (3 novos), `pytest` 185 (5 novos), `e2e:all` 6 suítes verdes (análises: t bayesiano com BF igual ao do R, BF₀₁ como inverso, ANOVA bayesiana aditiva sem interações e razão do melhor modelo contra o nulo).
 
 ## Pendências
-- Sem **interpretação textual** do fator de Bayes (ex.: "evidência moderada a favor de H₁", faixas de Jeffreys/Lee-Wagenmakers) nem estimativa de efeito a posteriori nos testes t.
+- ~~Sem interpretação textual do fator de Bayes~~ — feita na 6.8 (abaixo). Continua sem estimativa de efeito a posteriori nos testes t.
 - Sem t bayesiano com Wilcoxon (amostragem MCMC) nem priors informativos/Dienes, sem ANCOVA/medidas repetidas/correlação/regressão/qui-quadrado bayesianos (as funções existem no JASP instalado).
-- O seletor de análises tem 14 botões em lista única; vale agrupar (clássicas / bayesianas / descritivas).
+- ~~O seletor de análises tem 14 botões em lista única~~ — agrupado na 6.8 (abaixo).
 
 ---
 
@@ -170,4 +170,25 @@ O JASP não tem uma análise "Teste z" separada: ele é uma **opção do Teste t
 ## Pendências
 - **Não há teste z de duas amostras nem de proporções no JASP instalado** (a comparação de duas médias com σ conhecido e o teste z de proporção não existem como análises). Se forem necessários: teste de proporção = `BinomialTest` (jaspFrequencies, exato) ou implementar fora do JASP (o que quebra a regra "motor = JASP real").
 - O formulário do t de uma amostra não expõe opção de IC; o IC do JASP só aparece com `meanDifferenceCi`.
+
+---
+
+# Fatia 6.8 — seletor agrupado e interpretação do fator de Bayes ✅ (só front)
+
+## Seletor agrupado
+`ANALYSIS_GROUPS` (`lib/analyses.ts`): **Descritivas**, **Comparação de médias** (t ×3, ANOVA, ANCOVA), **Associação e predição** (correlação, regressões, qui-quadrado) e **Bayesianas**. Usado na aba Análise (títulos de grupo + botões, ainda `role="tab"`) e no bloco de relatório (`<optgroup>`). Guarda no vitest: cada análise do catálogo está em exatamente um grupo.
+
+## Interpretação do fator de Bayes (`lib/bayes.ts`)
+Acima do resultado, na aba Análise, uma nota por linha em português, com a classificação de Jeffreys adaptada por Lee & Wagenmakers (2013): 1–3 anedótica, 3–10 moderada, 10–30 forte, 30–100 muito forte, > 100 extrema; o inverso é a favor de H₀.
+- **Testes t bayesianos**: "score: BF₁₀ = 4,36: evidência moderada a favor de H₁ (há diferença) (os dados são 4,36 vezes mais prováveis sob H₁ do que sob H₀)". A interpretação é sempre sobre BF₁₀: com BF₀₁ ou log(BF₁₀) na tabela, o valor é convertido. Com hipótese unilateral, fala de "H₁ (unilateral)".
+- **ANOVA bayesiana**: uma nota por efeito, sobre o **BF de inclusão** ("bloco: BF de inclusão = 3,01: evidência moderada a favor de incluir o efeito no modelo"; interação mostrada como "A × B"). Só na escala BF₁₀ (em BF₀₁ o JASP muda o sentido da coluna e não interpretamos).
+- Lê a tabela já exibida: **nenhuma execução extra**. `AnalysisRun` ganhou a prop `notes` (substitui `assumptions`) que liga os avisos de pressupostos e a interpretação juntos; só a aba Análise as usa.
+
+## Verificado
+`vitest` 176 (23 novos: limiares, escalas, formatação, notas, agrupamento), `pytest` 186, `e2e:all` 6 suítes verdes (grupos no seletor e no relatório; interpretação do t bayesiano com 4,36 = moderada; BF₀₁ na tabela mantém a nota em BF₁₀; BF de inclusão da ANOVA).
+Armadilhas do e2e: `innerText` devolve o texto já em maiúsculas quando o CSS usa `text-transform` (usar `textContent`); a aba Análise é carregada sob demanda, então esperar um elemento dela antes de conferir.
+
+## Pendências
+- A interpretação do BF de inclusão não cobre `BF01`/`LogBF10`; a ANOVA bayesiana não interpreta a comparação entre modelos (melhor modelo × nulo).
+- Faltam notas interpretativas para outras análises (ex.: tamanho de efeito de Cohen).
 
