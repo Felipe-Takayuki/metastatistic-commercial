@@ -5,8 +5,10 @@ import { candidates, problems, resolveState, type AnalysisDef, type FormState, t
 const levelsLabel = (n: number) => `${n} ${n === 1 ? "nível" : "níveis"}`;
 const colLabel = (c: Column) => (c.measurement !== "scale" && c.n_distinct !== null ? `${c.name} (${levelsLabel(c.n_distinct)})` : c.name);
 
-function SlotField({ slot, dataset, chosen, onPick }: { slot: VarSlot; dataset: Dataset; chosen: string[]; onPick: (names: string[]) => void }) {
-  const cands = candidates(slot, dataset);
+/** `taken`: colunas já escolhidas em OUTROS campos. Nas listas de caixas (multi) elas somem: a mesma coluna não pode ser desfecho e preditor. */
+function SlotField({ slot, dataset, chosen, taken, onPick }: { slot: VarSlot; dataset: Dataset; chosen: string[]; taken: Set<string>; onPick: (names: string[]) => void }) {
+  const all = candidates(slot, dataset);
+  const cands = slot.multi ? all.filter((c) => chosen.includes(c.name) || !taken.has(c.name)) : all;
   if (!slot.multi) {
     return (
       <label className="field">{slot.label}
@@ -85,7 +87,10 @@ export function AnalysisForm({ def, dataset, state, onChange }: Props) {
 
   return (
     <>
-      {def.slots.map((slot) => <SlotField key={slot.key} slot={slot} dataset={dataset} chosen={resolved.vars[slot.key]} onPick={(n) => setVar(slot.key, n)} />)}
+      {def.slots.map((slot) => {
+        const taken = new Set(def.slots.filter((o) => o.key !== slot.key).flatMap((o) => resolved.vars[o.key] ?? []));
+        return <SlotField key={slot.key} slot={slot} dataset={dataset} chosen={resolved.vars[slot.key]} taken={taken} onPick={(n) => setVar(slot.key, n)} />;
+      })}
       {issues.map((msg) => <div key={msg} className="alert info small" role="status">{msg}</div>)}
       {def.sections.map((section) => {
         const items = section.items.filter((i) => !i.showIf || i.showIf(resolved.values));

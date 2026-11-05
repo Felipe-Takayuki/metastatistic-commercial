@@ -7,8 +7,8 @@ MODULES_DIR <- Sys.getenv("JASP_MODULES_DIR")
 # Lista FECHADA do que a plataforma expõe: análise -> módulo JASP que a implementa.
 ANALYSIS_MODULE <- c(
   TTestIndependentSamples = "jaspTTests", TTestPairedSamples = "jaspTTests", TTestOneSample = "jaspTTests",
-  Anova = "jaspAnova",
-  Correlation = "jaspRegression", RegressionLinear = "jaspRegression",
+  Anova = "jaspAnova", Ancova = "jaspAnova",
+  Correlation = "jaspRegression", RegressionLinear = "jaspRegression", RegressionLogistic = "jaspRegression",
   ContingencyTables = "jaspFrequencies",
   Descriptives = "jaspDescriptives"
 )
@@ -34,8 +34,8 @@ WARM_SPECS <- list(
 # que o bridge devolve (pela posição em fixedFactors/dependent/…). Se algo der errado, segue SEM o remendo (nunca quebra).
 REQ <- new.env()   # estado da requisição em curso: modelTerms pedido e nomes originais das variáveis
 NAME_OPTIONS <- c("dependent", "fixedFactors", "randomFactors", "covariates", "factors")
-# Só onde o problema existe: no RegressionLinear, `modelTerms` é uma lista de MODELOS (blocos) e o QML a respeita.
-PATCH_MODEL_TERMS <- c("Anova")
+# Só onde o problema existe (Anova e Ancova: controle de interação com fatores). No RegressionLinear/RegressionLogistic, `modelTerms` é uma lista de MODELOS (blocos) e o QML a respeita.
+PATCH_MODEL_TERMS <- c("Anova", "Ancova")
 
 restore_model_terms <- function(parsed) {
   want <- REQ$modelTerms

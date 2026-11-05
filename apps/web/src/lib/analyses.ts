@@ -264,7 +264,73 @@ export const DESCRIPTIVES_DEF: AnalysisDef = {
   },
 };
 
-export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF];
+export const ANCOVA_DEF: AnalysisDef = {
+  id: "Ancova",
+  title: "ANCOVA",
+  description: "ANOVA ajustada por uma ou mais covariáveis escalares: compara os níveis dos fatores descontando o efeito das covariáveis. Em blocos casualizados, inclua o bloco como fator.",
+  slots: [
+    { key: "dependent", label: "Variável dependente (escalar)", levels: ["scale"], multi: false, required: true, autofill: true },
+    { key: "fixedFactors", label: "Fatores (tratamento, bloco…)", levels: ["nominal", "ordinal"], multi: true, required: true, min: 1 },
+    { key: "covariates", label: "Covariáveis (escalares)", levels: ["scale"], multi: true, required: true, min: 1 },
+  ],
+  sections: [
+    { title: "Modelo", items: [toggle("interactions", "Incluir interações entre os fatores", false, { local: true })] },
+    { title: "Pressupostos", items: [toggle("homogeneityTests", "Homogeneidade de variâncias (Levene)"), toggle("qqPlot", "Gráfico Q-Q dos resíduos")] },
+    { title: "Estatísticas", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("effectSizeEtaSquared", "η² (eta ao quadrado)"), toggle("effectSizePartialEtaSquared", "η² parcial"), toggle("effectSizeOmegaSquared", "ω² (ômega ao quadrado)")] },
+  ],
+  // Efeitos principais de fatores e covariáveis (as covariáveis entram só como efeito principal) + interações entre fatores, se pedidas.
+  derive: (s) => {
+    const f = s.vars.fixedFactors;
+    const terms = [...f, ...s.vars.covariates].map((x) => ({ components: [x] }));
+    if (s.values.interactions) for (const combo of interactionTerms(f)) terms.push({ components: combo });
+    const anyEffect = !!(s.values.effectSizeEtaSquared || s.values.effectSizePartialEtaSquared || s.values.effectSizeOmegaSquared);
+    return { modelTerms: terms, effectSizeEstimates: anyEffect };
+  },
+  parse: ANOVA_DEF.parse,
+  check: ANOVA_DEF.check,
+};
+
+export const LOGISTIC_DEF: AnalysisDef = {
+  id: "RegressionLogistic",
+  title: "Regressão logística",
+  description: "Modela a chance de um desfecho binário (2 categorias) a partir de covariáveis escalares e fatores. O JASP modela a probabilidade da 2ª categoria (ordem alfabética); a 1ª é a referência.",
+  slots: [
+    { key: "dependent", label: "Desfecho binário (2 categorias)", levels: ["nominal", "ordinal"], multi: false, required: true, autofill: true, preferLevels: 2 },
+    { key: "covariates", label: "Covariáveis (escalares)", levels: ["scale"], multi: true },
+    { key: "factors", label: "Fatores (categóricos)", levels: ["nominal", "ordinal"], multi: true },
+  ],
+  sections: [
+    {
+      title: "Coeficientes",
+      items: [
+        toggle("coefficientEstimate", "Estimativas (Wald)", true), toggle("oddsRatio", "Razão de chances (odds ratio)", true), toggle("coefficientCi", "Intervalo de confiança dos coeficientes"),
+        { type: "number", key: "coefficientCiLevel", label: "Nível de confiança", default: 0.95, min: 0.5, max: 0.999, step: 0.01, showIf: (v) => !!v.coefficientCi },
+        toggle("coefficientCiAsOddsRatio", "Mostrar o intervalo como razão de chances", true, { showIf: (v) => !!v.coefficientCi }),
+        toggle("descriptives", "Estatísticas descritivas"),
+      ],
+    },
+    {
+      title: "Desempenho do modelo",
+      items: [toggle("confusionMatrix", "Matriz de confusão", true), toggle("accuracy", "Acurácia", true), toggle("auc", "AUC", true), toggle("sensitivity", "Sensibilidade"), toggle("specificity", "Especificidade"), toggle("precision", "Precisão")],
+    },
+    { title: "Diagnóstico e gráficos", items: [toggle("multicollinearity", "Multicolinearidade (VIF)"), toggle("rocPlot", "Curva ROC"), toggle("residualVsFittedPlot", "Resíduos × valores ajustados")] },
+  ],
+  // Como na regressão linear, `modelTerms` é uma lista de MODELOS: um modelo com todos os preditores.
+  derive: (s) => {
+    const predictors = [...s.vars.covariates, ...s.vars.factors];
+    return { modelTerms: predictors.length ? [{ components: predictors, name: "model1", title: "Model 1" }] : [] };
+  },
+  check: ({ dataset, state }) => {
+    const out: string[] = [];
+    const y = state.vars.dependent[0];
+    const n = y ? colOf(dataset, y)?.n_distinct ?? null : null;
+    if (n !== null && n !== 2) out.push(`${y} tem ${levelsLabel(n)}, e a regressão logística precisa de um desfecho com exatamente 2 categorias. Escolha outra variável ou crie uma com SQL (ex.: CASE WHEN … THEN 'alto' ELSE 'baixo' END) e “Salvar como dataset”.`);
+    if (state.vars.covariates.length + state.vars.factors.length === 0) out.push("Escolha ao menos uma covariável ou um fator.");
+    return out;
+  },
+};
+
+export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF];
 export const getDef = (id: string): AnalysisDef | undefined => ANALYSES.find((d) => d.id === id);
 
 // ------------------------------------------------------------------------------------------------------------------

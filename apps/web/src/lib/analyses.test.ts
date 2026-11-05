@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANOVA_DEF, CONTINGENCY_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANCOVA_DEF, ANOVA_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -17,7 +17,7 @@ const resolve = (def: Parameters<typeof resolveState>[0], d: Dataset, s: FormSta
 describe("catálogo", () => {
   it("ids únicos e conhecidos pelo worker", () => {
     expect(new Set(ANALYSES.map((a) => a.id)).size).toBe(ANALYSES.length);
-    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Correlation", "RegressionLinear", "ContingencyTables", "Descriptives"]);
+    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives"]);
     expect(getDef("Anova")).toBe(ANOVA_DEF);
     expect(getDef("Inexistente")).toBeUndefined();
   });
@@ -245,5 +245,52 @@ describe("estatísticas descritivas", () => {
   it("não deixa separar por uma variável que também está sendo analisada", () => {
     const r = resolve(DESCRIPTIVES_DEF, DBC, state({ variables: ["grupo", "prod"], splitBy: ["grupo"] }, {}, defaultState(DESCRIPTIVES_DEF)));
     expect(problems(DESCRIPTIVES_DEF, DBC, r).join(" ")).toMatch(/grupo/);
+  });
+});
+
+describe("ANCOVA", () => {
+  const base = () => defaultState(ANCOVA_DEF);
+  it("monta modelTerms com fatores e covariáveis como efeitos principais (aditivo, sem interação fantasma)", () => {
+    const r = resolve(ANCOVA_DEF, DBC, state({ dependent: ["prod"], fixedFactors: ["trat", "bloco"], covariates: ["altura"] }, {}, base()));
+    expect(toOptions(ANCOVA_DEF, r)).toMatchObject({
+      dependent: "prod", fixedFactors: ["trat", "bloco"], covariates: ["altura"],
+      modelTerms: [{ components: ["trat"] }, { components: ["bloco"] }, { components: ["altura"] }],
+    });
+  });
+  it("interações só entre FATORES (nunca com a covariável) e só se pedidas", () => {
+    const r = resolve(ANCOVA_DEF, DBC, state({ dependent: ["prod"], fixedFactors: ["trat", "bloco"], covariates: ["altura"] }, { interactions: true }, base()));
+    const comps = (toOptions(ANCOVA_DEF, r).modelTerms as { components: string[] }[]).map((t) => t.components.join(":"));
+    expect(comps).toEqual(["trat", "bloco", "altura", "trat:bloco"]);
+  });
+  it("exige ao menos um fator e uma covariável", () => {
+    const r = resolve(ANCOVA_DEF, DBC, state({ dependent: ["prod"], fixedFactors: ["trat"] }, {}, base()));
+    expect(problems(ANCOVA_DEF, DBC, r).join(" ")).toMatch(/covariáveis/i);
+  });
+  it("ida e volta: interações salvas voltam ligadas e o bloco conta como completo", () => {
+    const o = { dependent: "prod", fixedFactors: ["trat", "bloco"], covariates: ["altura"], modelTerms: [{ components: ["trat", "bloco"] }] };
+    expect(fromOptions(ANCOVA_DEF, o).values.interactions).toBe(true);
+    expect(isComplete(ANCOVA_DEF, o)).toBe(true);
+    expect(isComplete(ANCOVA_DEF, { ...o, covariates: [] })).toBe(false);
+  });
+});
+
+describe("regressão logística", () => {
+  it("prefere, para o desfecho, a coluna de 2 categorias, e monta UM modelo com todos os preditores", () => {
+    const r = resolve(LOGISTIC_DEF, DBC, state({ covariates: ["altura"], factors: ["regiao"] }, {}, defaultState(LOGISTIC_DEF)));
+    expect(r.vars.dependent).toEqual(["grupo"]); // trat (8), bloco (4) e regiao (4) vêm antes, mas só `grupo` tem 2 categorias
+    expect(toOptions(LOGISTIC_DEF, r).modelTerms).toEqual([{ components: ["altura", "regiao"], name: "model1", title: "Model 1" }]);
+  });
+  it("desfecho com mais de 2 categorias é recusado com a saída sugerida (SQL + salvar como dataset)", () => {
+    const r = state({ dependent: ["trat"], covariates: ["altura"] }, {}, defaultState(LOGISTIC_DEF));
+    const msg = problems(LOGISTIC_DEF, DBC, resolve(LOGISTIC_DEF, DBC, r)).join(" ");
+    expect(msg).toMatch(/8 níveis/);
+    expect(msg).toMatch(/Salvar como dataset/);
+  });
+  it("sem preditores: problema claro; com o IC desligado, o nível de confiança não aparece", () => {
+    const r = resolve(LOGISTIC_DEF, DBC, defaultState(LOGISTIC_DEF));
+    expect(problems(LOGISTIC_DEF, DBC, r)).toContain("Escolha ao menos uma covariável ou um fator.");
+    const lvl = LOGISTIC_DEF.sections.flatMap((x) => x.items).find((i) => i.key === "coefficientCiLevel")!;
+    expect(lvl.showIf?.({ coefficientCi: false })).toBe(false);
+    expect(lvl.showIf?.({ coefficientCi: true })).toBe(true);
   });
 });

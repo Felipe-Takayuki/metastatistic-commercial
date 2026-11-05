@@ -1,7 +1,7 @@
-# Fase 6 (projeto) — catálogo estatístico, fatia 6.1 ✅ (2026-11-05)
+# Fase 6 (projeto) — catálogo estatístico, fatias 6.1 e 6.2 ✅ (2026-11-05)
 
 Corresponde ao "primeiro lote de análises" da Fase 2 do PLAN.md. Antes: teste t independente, ANOVA, correlação, regressão linear e qui-quadrado.
-Agora o catálogo tem **8 análises** (aparecem no seletor da aba Análise, nos blocos de relatório e nos tiles de dashboard):
+Com a 6.1 o catálogo tinha **8 análises**; a 6.2 (seção final) levou a **10** (ANCOVA e regressão logística) (aparecem no seletor da aba Análise, nos blocos de relatório e nos tiles de dashboard):
 
 | Análise | Módulo JASP | Observações |
 |---|---|---|
@@ -27,3 +27,30 @@ Agora o catálogo tem **8 análises** (aparecem no seletor da aba Análise, nos 
 - t pareado com **vários pares** (hoje um par por análise).
 - Sem Kruskal-Wallis, ANCOVA, regressão logística, ANOVA de medidas repetidas, modelos bayesianos, frequências (tabelas de frequência simples), gráficos de descritivas customizados.
 - **Verificação automática de pressupostos** com avisos na saída (item do PLAN): hoje o usuário precisa marcar "Normalidade"/"Igualdade de variâncias".
+
+---
+
+# Fatia 6.2 — ANCOVA e regressão logística ✅
+
+| Análise | Módulo | Observações |
+|---|---|---|
+| **ANCOVA** (`Ancova`) | jaspAnova | fatores + covariáveis; `modelTerms` = efeitos principais (covariáveis só como efeito principal) + interações **entre fatores** se pedidas; descritivas, Levene, Q-Q, η²/η² parcial/ω² |
+| **Regressão logística** (`RegressionLogistic`) | jaspRegression | desfecho com **exatamente 2 categorias** (o JASP modela a 2ª, por ordem alfabética); estimativas de Wald, razão de chances, IC (Wald, na escala da razão de chances), matriz de confusão, acurácia, AUC, sensibilidade/especificidade/precisão, ROC |
+
+## Mudanças no motor
+- `engine.R`: `Ancova` e `RegressionLogistic` entram no registro fechado. O **remendo do `modelTerms` agora vale também para `Ancova`** (sem ele, fator + bloco + covariável voltava com a tabela toda nula, pelo mesmo motivo da ANOVA: o QML repovoa as interações). Na logística, `modelTerms` é **uma lista de modelos** (como na regressão linear): os formatos "um termo por preditor" quebram com `attempt to select less than one element`.
+- Front: `ANCOVA_DEF` e `LOGISTIC_DEF`; a logística recusa desfecho com ≠ 2 categorias e **ensina a saída** (criar a variável com `CASE WHEN … THEN 'alto' ELSE 'baixo' END` e "Salvar como dataset").
+- UX: nas listas de caixas, as colunas já escolhidas em outro campo **somem** (o desfecho não aparece mais em "Fatores", nem a dependente em "Covariáveis").
+
+## Conferido contra o R puro
+- ANCOVA: gl, SQ, F e p de tratamento/bloco/covariável (`drop1` com contrastes soma-zero = SQ tipo II/III do JASP) em dois modelos (fator+covariável; fator+bloco+covariável com 20 gl de resíduo).
+- Logística (`glm` binomial): coeficientes, EP, z, p, razão de chances, **IC de Wald** (o JASP usa Wald, não perfil de verossimilhança), deviance, AIC, BIC, gl, acurácia, AUC e as 4 células da matriz de confusão.
+
+## Verificado
+`pytest` 177 (3 novos de integração com o motor real), `vitest` 138 (7 novos), `e2e:all` = 6 suítes verdes (a de análises cobre ANCOVA, logística sobre dataset derivado por SQL, desfecho de 8 níveis bloqueado, e as listas sem a variável já usada).
+
+## Pendências
+- ANCOVA sem post hoc, sem médias marginais ajustadas, sem teste de homogeneidade das inclinações (interação fator × covariável).
+- Logística sem seleção de método (backward/forward/stepwise), sem interações, sem pesos.
+- **A aba Análise perde a análise e as opções escolhidas ao trocar de aba** (Dados/SQL) — o estado vive no componente da aba; vale elevá-lo ao dataset.
+- O worker aquece só os módulos com análise de aquecimento; `Ancova`/`RegressionLogistic` não têm a sua (usam o módulo já carregado), então `/health → modules` não as lista.

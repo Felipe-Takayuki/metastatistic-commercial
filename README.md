@@ -8,8 +8,8 @@ Plataforma web de relatórios estatísticos (JASP + Metabase). Veja [PLAN.md](PL
 - `engines/r-worker` — worker R: supervisor leve + motor JASP filho (tempo limite, recuperação automática)
 - `packages/schemas` — contratos compartilhados (a definir)
 
-## Fase 6 — catálogo estatístico (fatia 6.1)
-Agora com **8 análises**: teste t (independente, pareado, uma amostra), ANOVA, correlação, regressão linear, qui-quadrado e estatísticas descritivas, todas conferidas contra o R puro: [docs/phase6-progress.md](docs/phase6-progress.md).
+## Fase 6 — catálogo estatístico (fatias 6.1 e 6.2)
+Agora com **10 análises**: teste t (independente, pareado, uma amostra), ANOVA, ANCOVA, correlação, regressão linear e logística, qui-quadrado e estatísticas descritivas, todas conferidas contra o R puro: [docs/phase6-progress.md](docs/phase6-progress.md).
 
 ## Fase 5 — Dashboards (fatias 5.1 a 5.3; "Fase 4" do PLAN)
 Grade arrastável/redimensionável de tiles (KPI, gráfico SQL, texto) com autosave e conflito por versão, **filtros globais** (`{{nome}}` no SQL) e **cross-filter** (clicar numa barra filtra os demais tiles) e **tiles de análise estatística** (JASP), em http://localhost:8080 → **Dashboards**. Drill-down, coleções e RBAC ficam para as próximas fatias: [docs/phase5-progress.md](docs/phase5-progress.md).
@@ -44,5 +44,5 @@ curl -s localhost:8000/health
 # testes (venv local; o shim do uv no mise precisa de versão definida)
 cd apps/api && python3 -m venv .venv && .venv/bin/pip install fastapi httpx pydantic-settings duckdb python-multipart sqlglot pytest pytest-asyncio respx
 .venv/bin/pytest                                  # unitários
-RUN_INTEGRATION=1 .venv/bin/pytest                # + integração contra o worker R, 2 workers (174)
+RUN_INTEGRATION=1 .venv/bin/pytest                # + integração contra o worker R, 2 workers (177)
 ```

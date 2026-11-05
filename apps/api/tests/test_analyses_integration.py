@@ -78,6 +78,7 @@ def data():
     # O bloco é derivado pela posição da linha (1,2,3,4,1,2,3,4…): exatamente o fluxo "Salvar consulta como dataset".
     dbc = derive("e2e-dbc", f'SELECT ((row_number() OVER () - 1) % 4) + 1 AS bloco, * FROM "{raw["table_name"]}"')
     ids["dbc"] = dbc["id"]
+    ids["nivel"] = derive("e2e-nivel", f"SELECT CASE WHEN produtividade >= 196 THEN 'alto' ELSE 'baixo' END AS nivel, * FROM \"{raw['table_name']}\"")["id"]
     ids["fatorial"] = upload("e2e-fatorial.csv", FIX / "fatorial.csv")["id"]
     src = upload("e2e-faixa-src.csv", FIX / "ttest.csv")
     faixas = derive("e2e-faixas", f'SELECT "group" AS grupo, CASE WHEN score < 9 THEN \'baixo\' WHEN score < 11 THEN \'medio\' ELSE \'alto\' END AS faixa FROM "{src["table_name"]}"')
@@ -248,6 +249,56 @@ def test_descriptives_split_by_a_factor(data):
     res = run("Descriptives", data["dbc"], {"variables": ["produtividade"], "splitBy": ["bloco"], "valid": True, "meanArithmetic": True, "sd": True})
     rows = table(res, "stats")["data"]
     assert [r["Level"] for r in rows] == ["1", "2", "3", "4"] and all(r["Valid"] == 8 for r in rows)  # 32 linhas / 4 blocos
+
+
+def anova_rows(res):
+    return {r["cases"]: r for r in table(res, "anovaTable")["data"]}
+
+
+def test_ancova_blocks_with_covariate_is_additive_and_matches_R(data):
+    """Fator + bloco + covariável, sem interações (o remendo do modelTerms vale para a Ancova também)."""
+    ref = REF["ancova_blocks"]
+    res = run("Ancova", data["dbc"], {"dependent": "produtividade", "fixedFactors": ["tratamento", "bloco"], "covariates": ["altura"],
+                                      "modelTerms": [{"components": ["tratamento"]}, {"components": ["bloco"]}, {"components": ["altura"]}]})
+    rows = anova_rows(res)
+    assert set(rows) == {"tratamento", "bloco", "altura", "Residuals"}, list(rows)
+    for name, i in (("tratamento", 0), ("bloco", 1), ("altura", 2)):
+        assert rows[name]["Df"] == ref["df"][i]
+        close(rows[name]["Sum Sq"], ref["ss"][i]); close(rows[name]["F value"], ref["F"][i]); close(rows[name]["Pr(>F)"], ref["p"][i])
+    assert rows["Residuals"]["Df"] == ref["resid_df"] == 20
+    close(rows["Residuals"]["Sum Sq"], ref["resid_ss"])
+
+
+def test_ancova_one_factor_with_covariate_matches_R(data):
+    ref = REF["ancova_simple"]
+    res = run("Ancova", data["dbc"], {"dependent": "produtividade", "fixedFactors": ["tratamento"], "covariates": ["altura"],
+                                      "modelTerms": [{"components": ["tratamento"]}, {"components": ["altura"]}]})
+    rows = anova_rows(res)
+    for name, i in (("tratamento", 0), ("altura", 1)):
+        assert rows[name]["Df"] == ref["df"][i]; close(rows[name]["F value"], ref["F"][i]); close(rows[name]["Pr(>F)"], ref["p"][i])
+    assert rows["Residuals"]["Df"] == ref["resid_df"]
+
+
+def test_logistic_regression_matches_R(data):
+    ref = REF["logit"]
+    res = run("RegressionLogistic", data["nivel"], {
+        "dependent": "nivel", "covariates": ["altura", "diametro"], "factors": [], "coefficientEstimate": True, "oddsRatio": True, "coefficientCi": True,
+        "coefficientCiAsOddsRatio": True, "confusionMatrix": True, "accuracy": True, "auc": True,
+        "modelTerms": [{"components": ["altura", "diametro"], "name": "model1", "title": "Model 1"}]})
+    est = {r["param"]: r for r in table(res, "estimatesTable")["data"]}
+    assert list(est) == ref["coefs"]
+    import math
+    for i, name in enumerate(ref["coefs"]):
+        r = est[name]
+        close(r["est"], ref["est"][i]); close(r["se"], ref["se"][i]); close(r["zval"], ref["z"][i]); close(r["pval"], ref["p"][i]); close(r["or"], ref["or"][i])
+        close(r["cilo"], math.exp(ref["lo_wald"][i])); close(r["ciup"], math.exp(ref["hi_wald"][i]))  # IC de Wald, na escala da razão de chances
+    summ = table(res, "modelSummary")["data"][0]
+    close(summ["dev"], ref["deviance"]); close(summ["aic"], ref["aic"]); close(summ["bic"], ref["bic"]); assert summ["dof"] == ref["df_resid"]
+    metrics = {r["met"]: r["val"] for r in table(res, "perfDiag_performanceMetrics")["data"]}
+    close(metrics["Accuracy"], ref["accuracy"]); close(metrics["AUC"], ref["auc"])
+    cm = {r["obs"]: r for r in table(res, "perfDiag_confusionMatrix")["data"]}
+    assert (cm["alto"]["pred0"], cm["alto"]["pred1"]) == (ref["obs_alto_pred_alto"], ref["obs_alto_pred_baixo"])
+    assert (cm["baixo"]["pred0"], cm["baixo"]["pred1"]) == (ref["obs_baixo_pred_alto"], ref["obs_baixo_pred_baixo"])
 
 
 def test_endurance_many_distinct_concurrent_analyses_never_hang(data):

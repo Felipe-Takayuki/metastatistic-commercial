@@ -94,6 +94,7 @@ try {
   // --- Regressão linear ---
   await pickAnalysis("Regressão linear");
   await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
+  check("regressão: a variável dependente não aparece como covariável", (await page.getByRole("group", { name: /^Covariáveis/ }).getByLabel(/^produtividade/).count()) === 0);
   await page.getByLabel(/^altura/).check();
   await page.getByLabel(/^diametro/).check();
   await run();
@@ -102,6 +103,44 @@ try {
   check("Regressão: R² e F iguais ao R", has(t, f3(R.R2).replace(/^0/, "")) || has(t, f3(R.R2)), t.slice(0, 500));
   check("Regressão: F(2, 29) igual ao R", has(t, f3(R.F)), t.slice(0, 500));
   await shot("a4-regressao");
+
+  // --- ANCOVA: tratamento + bloco + covariável altura (aditivo) ---
+  await pickAnalysis("ANCOVA");
+  await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
+  await page.getByLabel(/^tratamento/).check();
+  await page.getByLabel(/^bloco/).check();
+  await page.getByLabel(/^altura/).check();
+  await run();
+  t = await resultText();
+  const AC = REF.ancova_blocks;
+  check("ANCOVA: F e p de tratamento, bloco e covariável iguais ao R", AC.F.every((f, i) => has(t, f3(f), p3(AC.p[i]))), t.slice(0, 500));
+  check("ANCOVA: resíduos com 20 gl e nenhuma interação fantasma", has(t, "Residuals") && !t.includes("✻"), t.slice(0, 300));
+  await shot("a2b-ancova");
+
+  // --- Regressão logística sobre um dataset derivado por SQL (desfecho binário alto/baixo) ---
+  await page.getByRole("tab", { name: "Consulta SQL" }).click();
+  await runSql("SELECT CASE WHEN produtividade >= 196 THEN 'alto' ELSE 'baixo' END AS nivel, * FROM e2e_dbc");
+  await page.getByRole("tab", { name: "Tabela" }).click();
+  await page.locator(".card table.data tbody tr").first().waitFor();
+  await saveAsDataset("e2e-nivel");
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await pickAnalysis("Regressão logística");
+  check("logística: desfecho binário escolhido por padrão (a única coluna de 2 categorias)", (await page.getByLabel(/^Desfecho binário/).inputValue()) === "nivel");
+  check("logística: o desfecho não aparece como opção em Fatores", (await page.getByRole("group", { name: /^Fatores/ }).getByLabel(/^nivel/).count()) === 0);
+  await page.getByLabel(/^altura/).check();
+  await page.getByLabel(/^diametro/).check();
+  await run();
+  t = await resultText();
+  const LG = REF.logit;
+  check("logística: estimativas (intercepto, altura, diametro) iguais ao R", LG.est.every((e) => has(t, f3(e))), t.slice(0, 600));
+  check("logística: razões de chances de altura e diametro iguais ao R", has(t, f3(LG.or[1]), f3(LG.or[2])), t.slice(0, 600));
+  check("logística: acurácia e AUC iguais ao R", has(t, f3(LG.accuracy), f3(LG.auc)), t.slice(0, 800));
+  await shot("a4b-logistica");
+  // desfecho com 8 categorias: recusado com a saída sugerida
+  await page.getByLabel(/^Desfecho binário/).selectOption({ label: "tratamento (8 níveis)" });
+  check("logística: desfecho com 8 níveis bloqueia a execução e sugere SQL + dataset",
+    (await page.getByRole("button", { name: "Executar análise" }).isDisabled()) && (await page.getByText(/exatamente 2 categorias/).count()) === 1);
+  await page.getByLabel(/^Desfecho binário/).selectOption("nivel");
 
   // --- Teste t pareado (altura × diametro) ---
   await pickAnalysis("Teste t pareado");

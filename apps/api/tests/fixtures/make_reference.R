@@ -36,6 +36,22 @@ out$onesample <- list(t = unname(ot$statistic), df = unname(ot$parameter), p = o
   d = (mean(d$produtividade) - 200) / sd(d$produtividade), wilcoxon_p = ow$p.value, p_greater = ol$p.value)
 x <- d$produtividade
 out$desc <- list(n = length(x), mean = mean(x), sd = sd(x), min = min(x), max = max(x), median = median(x), variance = var(x), se = sd(x) / sqrt(length(x)), sum = sum(x), range = max(x) - min(x))
+# --- catálogo 6.2: ANCOVA e regressão logística (dbc_raw + bloco; `nivel` = alto/baixo pela produtividade >= 196) ---
+d$nivel <- factor(ifelse(d$produtividade >= 196, "alto", "baixo"))   # níveis alto < baixo: o glm modela P(baixo)
+op <- options(contrasts = c("contr.sum", "contr.poly"))             # soma-zero: drop1 = SQ tipo II/III (sem interações, iguais)
+anc <- function(f) { fa <- lm(f, data = d); dr <- drop1(fa, ~., test = "F"); k <- rownames(dr) != "<none>"
+  list(terms = rownames(dr)[k], df = dr$Df[k], ss = dr$`Sum of Sq`[k], F = dr$`F value`[k], p = dr$`Pr(>F)`[k], resid_df = fa$df.residual, resid_ss = deviance(fa)) }
+out$ancova_blocks <- anc(produtividade ~ tratamento + bloco + altura)
+out$ancova_simple <- anc(produtividade ~ tratamento + altura)
+options(op)
+gm <- glm(nivel ~ altura + diametro, data = d, family = binomial); sg <- summary(gm)
+cp <- suppressMessages(confint(gm)); cw <- confint.default(gm)
+pr <- unname(predict(gm, type = "response")); pos <- d$nivel == "baixo"; predpos <- pr >= 0.5
+auc <- (sum(rank(pr)[pos]) - sum(pos) * (sum(pos) + 1) / 2) / (sum(pos) * sum(!pos))
+out$logit <- list(coefs = rownames(sg$coefficients), est = unname(sg$coefficients[, 1]), se = unname(sg$coefficients[, 2]), z = unname(sg$coefficients[, 3]), p = unname(sg$coefficients[, 4]),
+  or = unname(exp(coef(gm))), lo_profile = unname(cp[, 1]), hi_profile = unname(cp[, 2]), lo_wald = unname(cw[, 1]), hi_wald = unname(cw[, 2]),
+  deviance = deviance(gm), null_deviance = gm$null.deviance, df_resid = gm$df.residual, aic = AIC(gm), bic = BIC(gm), accuracy = mean(predpos == pos), auc = auc,
+  obs_alto_pred_alto = sum(!pos & !predpos), obs_alto_pred_baixo = sum(!pos & predpos), obs_baixo_pred_alto = sum(pos & !predpos), obs_baixo_pred_baixo = sum(pos & predpos), n = nrow(d))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")
