@@ -436,3 +436,11 @@ export function isComplete(def: AnalysisDef, options: Record<string, unknown>): 
   const s = fromOptions(def, options);
   return def.slots.every((slot) => (!slot.required || s.vars[slot.key].length > 0) && (!slot.min || s.vars[slot.key].length >= slot.min));
 }
+
+/** O que o usuário fez na aba: vive no App (por dataset) para sobreviver à troca de aba Dados/SQL/Análise. */
+export type AnalysisSession = {
+  defId: string;
+  states: Record<string, FormState>; // cada análise guarda o que o usuário escolheu
+  submitted: { analysis: string; options: Record<string, unknown> } | null;
+};
+export const newSession = (): AnalysisSession => ({ defId: ANALYSES[0].id, states: {}, submitted: null });

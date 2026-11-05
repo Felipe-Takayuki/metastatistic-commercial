@@ -4,6 +4,7 @@ import { DataTab } from "./components/DataTab";
 import { Sidebar } from "./components/Sidebar";
 import { DashboardsPage } from "./components/DashboardsPage";
 import { ReportsPage } from "./components/ReportsPage";
+import { newSession, type AnalysisSession } from "./lib/analyses";
 import { clearRemoteCache } from "./lib/remote";
 import { routeHref, useRoute } from "./lib/route";
 import { sampleCsv } from "./lib/sample";
@@ -33,6 +34,7 @@ export default function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(() => recall("dataset"));
   const [tab, setTab] = useState<Tab>("data");
+  const [sessions, setSessions] = useState<Record<string, AnalysisSession>>({}); // estado da aba Análise por dataset
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +156,7 @@ export default function App() {
                 {tab === "data" && <DataTab dataset={selected} onChange={updateDataset} onError={onError} />}
                 <Suspense fallback={<div className="empty"><span className="spinner" aria-label="Carregando" /></div>}>
                   {tab === "sql" && <SqlTab dataset={selected} datasets={datasets} onDatasetCreated={async (ds) => { await refresh(ds.id); setTab("data"); }} />}
-                  {tab === "analysis" && <AnalysisTab key={selected.id} dataset={selected} />}
+                  {tab === "analysis" && <AnalysisTab key={selected.id} dataset={selected} session={sessions[selected.id] ?? newSession()} onSession={(update) => setSessions((all) => ({ ...all, [selected.id]: update(all[selected.id] ?? newSession()) }))} />}
                 </Suspense>
               </>
           )}

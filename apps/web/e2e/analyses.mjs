@@ -104,6 +104,14 @@ try {
   check("Regressão: F(2, 29) igual ao R", has(t, f3(R.F)), t.slice(0, 500));
   await shot("a4-regressao");
 
+  // --- trocar de aba (Dados/SQL) não pode perder a análise escolhida, as opções nem o resultado ---
+  await page.getByRole("tab", { name: "Consulta SQL" }).click();
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  check("troca de aba: a análise escolhida continua selecionada", (await page.locator(".analysis-picker").getByRole("tab", { name: "Regressão linear", exact: true }).getAttribute("aria-selected")) === "true");
+  check("troca de aba: as variáveis marcadas continuam marcadas", (await page.getByLabel(/^altura/).isChecked()) && (await page.getByLabel(/^diametro/).isChecked()));
+  await page.locator("table.apa-table").first().waitFor({ timeout: 30000 });
+  check("troca de aba: o resultado reaparece", has(await resultText(), f3(R.F)));
+
   // --- ANCOVA: tratamento + bloco + covariável altura (aditivo) ---
   await pickAnalysis("ANCOVA");
   await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");

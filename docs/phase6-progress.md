@@ -52,5 +52,13 @@ Com a 6.1 o catálogo tinha **8 análises**; a 6.2 (seção final) levou a **10*
 ## Pendências
 - ANCOVA sem post hoc, sem médias marginais ajustadas, sem teste de homogeneidade das inclinações (interação fator × covariável).
 - Logística sem seleção de método (backward/forward/stepwise), sem interações, sem pesos.
-- **A aba Análise perde a análise e as opções escolhidas ao trocar de aba** (Dados/SQL) — o estado vive no componente da aba; vale elevá-lo ao dataset.
+- ~~A aba Análise perde a análise e as opções ao trocar de aba~~ — resolvido na 6.3 (abaixo).
 - O worker aquece só os módulos com análise de aquecimento; `Ancova`/`RegressionLogistic` não têm a sua (usam o módulo já carregado), então `/health → modules` não as lista.
+
+---
+
+# Fatia 6.3 — estado da aba Análise preservado (front, sem mudança no motor)
+
+- `AnalysisSession` (`lib/analyses.ts`: análise escolhida, opções de cada análise, última execução) agora vive no `App`, **por dataset**; `AnalysisTab` recebe `session` + `onSession`. Trocar entre Dados / Consulta SQL / Análise, ou entre datasets, não perde nada; o resultado reaparece (vem do cache da API).
+- e2e (`analyses.mjs`): após a regressão linear, vai a "Consulta SQL" e volta, e confere análise selecionada, variáveis marcadas e resultado.
+- Verificado: `typecheck` e `vitest` (138) verdes. **O e2e novo NÃO foi executado** (Docker parado nesta sessão).
