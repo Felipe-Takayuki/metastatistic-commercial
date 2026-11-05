@@ -433,3 +433,18 @@ def test_bayesian_plots_come_back_as_embedded_images(data):
     res = run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group", "priorAndPosteriorPlot": True, "bfRobustnessPlot": True})
     assert len(_images(res["results"])) == 2
     assert not _images(run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group"})["results"])
+
+
+def test_one_sample_z_test_matches_R(data):
+    """Teste z de uma amostra (σ conhecido) é opção do TTestOneSample: Z = (média − μ0)/(σ/√n); d = diferença/σ; IC normal da diferença."""
+    ref = REF["ztest"]
+    opts = {"dependent": ["produtividade"], "testValue": 200, "student": False, "zTest": True, "zTestSd": ref["sd"], "meanDifference": True, "meanDifferenceCi": True, "effectSize": True}
+    row = table(run("TTestOneSample", data["dbc"], opts), "ttest")["data"][0]
+    close(row["Z"], ref["z"]); close(row["p"], ref["p"]); close(row["m"], ref["diff"])
+    close(row["lowerCIlocationParameter"], ref["lo"]); close(row["upperCIlocationParameter"], ref["hi"]); close(row["d"], ref["d"])
+    gt = table(run("TTestOneSample", data["dbc"], {**opts, "alternative": "greater"}), "ttest")["data"][0]
+    close(gt["p"], ref["p_greater"])
+    # junto com o Student: uma linha por teste
+    both = {r["test"]: r for r in table(run("TTestOneSample", data["dbc"], {**opts, "student": True}), "ttest")["data"]}
+    assert set(both) == {"Student", "Z"}
+    close(both["Z"]["Statistic"], ref["z"])

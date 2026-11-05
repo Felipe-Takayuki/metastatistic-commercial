@@ -67,6 +67,9 @@ pr <- read.csv(file.path(dir, "pressupostos.csv")); pr$grupo <- factor(pr$grupo)
 lev <- function(ctr) { z <- abs(pr$y - ave(pr$y, pr$grupo, FUN = ctr)); a <- anova(lm(z ~ pr$grupo)); list(F = a$`F value`[1], p = a$`Pr(>F)`[1], df1 = a$Df[1], df2 = a$Df[2]) }
 sw <- shapiro.test(resid(lm(y ~ grupo, data = pr)))   # o JASP testa os RESÍDUOS no t independente
 out$pressupostos <- list(levene_mean = lev(mean), levene_median = lev(median), shapiro_resid = list(W = unname(sw$statistic), p = sw$p.value))
+# --- teste z de uma amostra (σ = 30 conhecido, μ0 = 200): z, p bilateral/unilateral, IC da diferença e d = diferença/σ ---
+zs <- 30; zse <- zs / sqrt(length(d$produtividade)); zdiff <- mean(d$produtividade) - 200; zz <- zdiff / zse
+out$ztest <- list(sd = zs, z = zz, p = 2 * pnorm(-abs(zz)), p_greater = pnorm(zz, lower.tail = FALSE), diff = zdiff, lo = zdiff - qnorm(0.975) * zse, hi = zdiff + qnorm(0.975) * zse, d = zdiff / zs)
 # --- catálogo 6.6: versões bayesianas (pacote BayesFactor: prior Cauchy de largura 0,707; efeitos fixos da ANOVA r = 0,5) ---
 suppressMessages(library(BayesFactor)); set.seed(1)
 bfv <- function(x) extractBF(x)$bf

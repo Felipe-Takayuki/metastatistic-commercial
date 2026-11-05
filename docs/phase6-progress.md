@@ -154,3 +154,20 @@ O catálogo passa de 10 para **14 análises**.
 - Sem t bayesiano com Wilcoxon (amostragem MCMC) nem priors informativos/Dienes, sem ANCOVA/medidas repetidas/correlação/regressão/qui-quadrado bayesianos (as funções existem no JASP instalado).
 - O seletor de análises tem 14 botões em lista única; vale agrupar (clássicas / bayesianas / descritivas).
 
+---
+
+# Fatia 6.7 — teste z de uma amostra ✅
+
+O JASP não tem uma análise "Teste z" separada: ele é uma **opção do Teste t de uma amostra** (`zTest` + `zTestSd`, o desvio padrão populacional conhecido). Foi exposto ali, sem mudança no motor (nem rebuild do worker).
+
+- Formulário: "Teste z (desvio padrão populacional conhecido)" entre os testes (desligado por padrão) e o campo "Desvio padrão populacional (σ)" (padrão 1, como no JASP), que só aparece com o teste ligado. O teste z vale sozinho (basta ao menos um de Student/Wilcoxon/z) e respeita a hipótese alternativa.
+- Resultado: Z, p, diferença média, IC da diferença e d de Cohen = diferença/σ. Junto com o Student, a tabela traz uma linha por teste (sem IC/d); sozinho, traz IC e d.
+- Conferido contra o R: Z = (média − μ₀)/(σ/√n), p bilateral e unilateral (`pnorm`), IC normal da diferença, d = diferença/σ (σ = 30, μ₀ = 200 sobre a produtividade).
+
+## Verificado
+`vitest` 153 (1 novo), `pytest` 186 (1 novo), `e2e:all` 6 suítes verdes.
+
+## Pendências
+- **Não há teste z de duas amostras nem de proporções no JASP instalado** (a comparação de duas médias com σ conhecido e o teste z de proporção não existem como análises). Se forem necessários: teste de proporção = `BinomialTest` (jaspFrequencies, exato) ou implementar fora do JASP (o que quebra a regra "motor = JASP real").
+- O formulário do t de uma amostra não expõe opção de IC; o IC do JASP só aparece com `meanDifferenceCi`.
+

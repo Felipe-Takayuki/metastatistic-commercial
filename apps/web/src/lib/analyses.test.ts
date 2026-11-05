@@ -165,6 +165,18 @@ describe("toOptions — o contrato com o motor JASP", () => {
     const bad = ds([col("y", "scale"), col("g", "nominal", 3)]);
     expect(problems(BAYES_TTEST_DEF, bad, resolveState(BAYES_TTEST_DEF, bad, state({ dependent: ["y"], group: ["g"] }, {}, defaultState(BAYES_TTEST_DEF))))[0]).toMatch(/exatamente 2 grupos/);
   });
+  it("t de uma amostra: teste z desligado por padrão (σ = 1 do JASP); ligado, envia zTest/zTestSd; é um teste válido sozinho", () => {
+    const d1 = ds([col("y", "scale")]);
+    const base = state({ dependent: ["y"] }, {}, defaultState(ONESAMPLE_TTEST_DEF));
+    const off = full(ONESAMPLE_TTEST_DEF, d1, base);
+    expect(off).toMatchObject({ zTest: false, zTestSd: 1, student: true });
+    const on = full(ONESAMPLE_TTEST_DEF, d1, state({ dependent: ["y"] }, { zTest: true, zTestSd: 30, student: false }, defaultState(ONESAMPLE_TTEST_DEF)));
+    expect(on).toMatchObject({ zTest: true, zTestSd: 30, student: false });
+    const only = problems(ONESAMPLE_TTEST_DEF, d1, resolveState(ONESAMPLE_TTEST_DEF, d1, state({ dependent: ["y"] }, { zTest: true, student: false, wilcoxon: false }, defaultState(ONESAMPLE_TTEST_DEF))));
+    expect(only).toEqual([]);
+    const none = problems(ONESAMPLE_TTEST_DEF, d1, resolveState(ONESAMPLE_TTEST_DEF, d1, state({ dependent: ["y"] }, { zTest: false, student: false, wilcoxon: false }, defaultState(ONESAMPLE_TTEST_DEF))));
+    expect(none).toEqual(["Selecione ao menos um teste."]);
+  });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);
   });

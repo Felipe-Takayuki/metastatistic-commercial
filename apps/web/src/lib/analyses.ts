@@ -243,12 +243,18 @@ export const ONESAMPLE_TTEST_DEF: AnalysisDef = {
   slots: [{ key: "dependent", label: "Variável (escalar)", levels: ["scale"], multi: true, required: true, min: 1 }],
   sections: [
     { title: "Referência", items: [{ type: "number", key: "testValue", label: "Valor de referência", default: 0, min: -1e12, max: 1e12, step: 0.1 }] },
-    { title: "Testes", items: [toggle("student", "Student", true), toggle("wilcoxon", "Wilcoxon")] },
+    {
+      title: "Testes",
+      items: [
+        toggle("student", "Student", true), toggle("wilcoxon", "Wilcoxon"), toggle("zTest", "Teste z (desvio padrão populacional conhecido)"),
+        { type: "number", key: "zTestSd", label: "Desvio padrão populacional (σ)", default: 1, min: 1e-6, max: 1e12, step: 0.1, showIf: (v) => !!v.zTest },
+      ],
+    },
     { title: "Adicionais", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("meanDifference", "Diferença média", true), toggle("effectSize", "Tamanho do efeito (d de Cohen)", true)] },
     { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (média vs referência)")] },
     { title: "Pressupostos e gráficos", items: [toggle("normalityTest", "Normalidade (Shapiro-Wilk)"), toggle("qqPlot", "Gráfico Q-Q"), toggle("descriptivesPlot", "Gráfico descritivo")] },
   ],
-  check: ({ state }) => (!state.values.student && !state.values.wilcoxon ? ["Selecione ao menos um teste."] : []),
+  check: ({ state }) => (!state.values.student && !state.values.wilcoxon && !state.values.zTest ? ["Selecione ao menos um teste."] : []),
 };
 
 export const DESCRIPTIVES_DEF: AnalysisDef = {

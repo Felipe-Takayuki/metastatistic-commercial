@@ -205,6 +205,18 @@ try {
   check("t de uma amostra: t, gl e p iguais ao R", has(t, f3(O.t), " 31 ", p3(O.p)), t.slice(0, 500));
   await shot("a3c-t-uma-amostra");
 
+  // Teste z (σ conhecido): o campo de σ só aparece com o teste z ligado
+  check("teste z: desligado por padrão e sem campo de σ visível", !(await page.getByLabel(/^Teste z/).isChecked()) && (await page.getByLabel(/Desvio padrão populacional/).count()) === 0);
+  await page.getByLabel(/^Teste z/).check();
+  await page.getByLabel("Student", { exact: true }).uncheck(); // sozinho, a tabela do Z traz IC e d (com o Student, uma linha por teste sem eles)
+  await page.getByLabel(/Desvio padrão populacional/).fill("30");
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText("Z", { exact: true }).first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  t = await resultText();
+  const Z = REF.ztest;
+  check("teste z: Z, p, diferença média e d (= diferença/σ) iguais ao R", has(t, "Z", f3(Z.z), p3(Z.p), f3(Z.diff), f3(Z.d)), t.slice(0, 700));
+  await shot("a3c2-teste-z");
+
   // --- Estatísticas descritivas ---
   await pickAnalysis("Estatísticas descritivas");
   await page.getByLabel(/^produtividade/).check();
