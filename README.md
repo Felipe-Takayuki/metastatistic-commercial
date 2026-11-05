@@ -8,6 +8,9 @@ Plataforma web de relatórios estatísticos (JASP + Metabase). Veja [PLAN.md](PL
 - `engines/r-worker` — worker R: supervisor leve + motor JASP filho (tempo limite, recuperação automática)
 - `packages/schemas` — contratos compartilhados (a definir)
 
+## Fase 5 — Dashboards (fatia 5.1; "Fase 4" do PLAN)
+Grade arrastável/redimensionável de tiles (KPI, gráfico SQL, texto) com autosave e conflito por versão, em http://localhost:8080 → **Dashboards**. Cross-filter, coleções e RBAC ficam para as próximas fatias: [docs/phase5-progress.md](docs/phase5-progress.md).
+
 ## Fase 4 — mais análises (concluída, ainda não commitada)
 ANOVA (blocos casualizados, aditivo ou com interação, Tukey/Bonferroni/Holm), correlação, regressão linear e qui-quadrado, validados contra o R puro (124 valores, 0 divergências), formulários declarativos no front-end, bloco de análise nos relatórios e **"Salvar consulta como dataset"** (cria colunas derivadas, ex.: `bloco`). O travamento intermitente do motor **não se reproduziu** em ~540 análises distintas; há um teste de resistência como guarda. Detalhes, descobertas e pendências: [docs/phase4-progress.md](docs/phase4-progress.md).
 
@@ -18,7 +21,7 @@ Pool de 2 workers R, fila, tempo limite, cache e recuperação automática do mo
 Documentos com blocos de texto, gráfico e análise, com autosave e exportação em PDF: [docs/phase3-progress.md](docs/phase3-progress.md). Em http://localhost:8080 → **Relatórios**.
 
 ## Fase 1 — em andamento
-**Interface:** http://localhost:8080 (após `docker compose up -d --build`). Testes: `cd apps/web && npm test` (unitários) e `npm run e2e:all` (navegador, 3 suítes; precisa da pilha no ar e de `pdftotext`).
+**Interface:** http://localhost:8080 (após `docker compose up -d --build`). Testes: `cd apps/web && npm test` (unitários) e `npm run e2e:all` (navegador, 4 suítes; precisa da pilha no ar e de `pdftotext`).
 
 Progresso, rotas e decisões: [docs/phase1-progress.md](docs/phase1-progress.md). Docs interativas da API em `http://localhost:8000/docs`.
 
@@ -38,5 +41,5 @@ curl -s localhost:8000/health
 # testes (venv local; o shim do uv no mise precisa de versão definida)
 cd apps/api && python3 -m venv .venv && .venv/bin/pip install fastapi httpx pydantic-settings duckdb python-multipart sqlglot pytest pytest-asyncio respx
 .venv/bin/pytest                                  # unitários
-RUN_INTEGRATION=1 .venv/bin/pytest                # + integração contra o worker R, 2 workers (144)
+RUN_INTEGRATION=1 .venv/bin/pytest                # + integração contra o worker R, 2 workers (158)
 ```

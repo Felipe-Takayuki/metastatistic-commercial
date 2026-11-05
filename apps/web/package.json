@@ -12,7 +12,8 @@
     "e2e": "node e2e/walkthrough.mjs",
     "e2e:reports": "node e2e/reports.mjs",
     "e2e:analyses": "node e2e/analyses.mjs",
-    "e2e:all": "node e2e/walkthrough.mjs && node e2e/reports.mjs && node e2e/analyses.mjs"
+    "e2e:dashboards": "node e2e/dashboards.mjs",
+    "e2e:all": "node e2e/walkthrough.mjs && node e2e/reports.mjs && node e2e/analyses.mjs && node e2e/dashboards.mjs"
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",
@@ -21,7 +22,8 @@
     "@uiw/react-codemirror": "^4.25.12",
     "echarts": "^6.1.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-grid-layout": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

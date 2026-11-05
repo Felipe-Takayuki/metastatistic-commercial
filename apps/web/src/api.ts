@@ -40,6 +40,14 @@ export type Block = TextBlock | ChartBlock | AnalysisBlock;
 export interface Report { id: string; title: string; blocks: Block[]; version: number; created_at: string; updated_at: string }
 export interface ReportSummary { id: string; title: string; n_blocks: number; version: number; updated_at: string }
 
+export interface TileLayout { x: number; y: number; w: number; h: number }
+export type TextTile = TextBlock & { layout: TileLayout };
+export type ChartTile = ChartBlock & { layout: TileLayout };
+export interface KpiTile { type: "kpi"; id: string; title: string; sql: string; decimals: number; prefix: string; suffix: string; layout: TileLayout }
+export type Tile = TextTile | ChartTile | KpiTile;
+export interface Dashboard { id: string; title: string; tiles: Tile[]; version: number; created_at: string; updated_at: string }
+export interface DashboardSummary { id: string; title: string; n_tiles: number; version: number; updated_at: string }
+
 export interface AnalysisStatus {
   workers: number; busy: number; down: number; queued: number; queue_max: number;
   completed: number; rejected: number; inflight: number; timeout_s: number;
@@ -98,6 +106,12 @@ export const api = {
   saveReport: (id: string, title: string, blocks: Block[], version: number) =>
     request<Report>(`/reports/${id}`, json("PUT", { title, blocks, version })),
   deleteReport: (id: string) => request<void>(`/reports/${id}`, { method: "DELETE" }),
+  listDashboards: () => request<DashboardSummary[]>("/dashboards"),
+  createDashboard: (title: string, tiles: Tile[]) => request<Dashboard>("/dashboards", json("POST", { title, tiles })),
+  getDashboard: (id: string) => request<Dashboard>(`/dashboards/${id}`),
+  saveDashboard: (id: string, title: string, tiles: Tile[], version: number) =>
+    request<Dashboard>(`/dashboards/${id}`, json("PUT", { title, tiles, version })),
+  deleteDashboard: (id: string) => request<void>(`/dashboards/${id}`, { method: "DELETE" }),
   analysisStatus: () => request<AnalysisStatus>("/analyses/status"),
   runAnalysis: (analysis: string, dataset_id: string, options: Record<string, unknown>) =>
     request<AnalysisResponse>("/analyses/run", json("POST", { analysis, dataset_id, options })),

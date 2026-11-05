@@ -1,4 +1,4 @@
-"""Conexão SQLite compartilhada (metadados de datasets e relatórios). Uma conexão por operação."""
+"""Conexão SQLite compartilhada (metadados de datasets, relatórios e dashboards). Uma conexão por operação."""
 import sqlite3
 
 from .config import settings
@@ -9,6 +9,9 @@ _SCHEMA = (
          n_rows INTEGER NOT NULL, columns_json TEXT NOT NULL, created_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS reports (
          id TEXT PRIMARY KEY, title TEXT NOT NULL, blocks_json TEXT NOT NULL,
+         version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS dashboards (
+         id TEXT PRIMARY KEY, title TEXT NOT NULL, tiles_json TEXT NOT NULL,
          version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
 )
 

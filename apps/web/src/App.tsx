@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { api, type Dataset } from "./api";
 import { DataTab } from "./components/DataTab";
 import { Sidebar } from "./components/Sidebar";
+import { DashboardsPage } from "./components/DashboardsPage";
 import { ReportsPage } from "./components/ReportsPage";
 import { clearRemoteCache } from "./lib/remote";
 import { routeHref, useRoute } from "./lib/route";
@@ -10,6 +11,7 @@ import { applyThemeMode, loadThemeMode, type ThemeMode } from "./lib/theme";
 
 // ECharts e CodeMirror (~1 MB) só são baixados quando a aba é aberta.
 const ReportPage = lazy(() => import("./components/ReportPage").then((m) => ({ default: m.ReportPage })));
+const DashboardPage = lazy(() => import("./components/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const SqlTab = lazy(() => import("./components/SqlTab").then((m) => ({ default: m.SqlTab })));
 const AnalysisTab = lazy(() => import("./components/AnalysisTab").then((m) => ({ default: m.AnalysisTab })));
 
@@ -98,7 +100,8 @@ export default function App() {
         </div>
         <nav className="topnav" aria-label="Seções">
           <a href={routeHref({ name: "explore" })} aria-current={route.name === "explore" ? "page" : undefined}>Explorar</a>
-          <a href={routeHref({ name: "reports" })} aria-current={route.name !== "explore" ? "page" : undefined}>Relatórios</a>
+          <a href={routeHref({ name: "reports" })} aria-current={route.name === "reports" || route.name === "report" ? "page" : undefined}>Relatórios</a>
+          <a href={routeHref({ name: "dashboards" })} aria-current={route.name === "dashboards" || route.name === "dashboard" ? "page" : undefined}>Dashboards</a>
         </nav>
         <span className="spacer" />
         <button className="btn ghost sm" onClick={() => setTheme(NEXT_THEME[theme])} title="Alternar tema">{THEME_LABEL[theme]}</button>
@@ -115,7 +118,13 @@ export default function App() {
             </div>
           )}
 
-          {route.name === "report" ? (
+          {route.name === "dashboard" ? (
+            <Suspense fallback={<div className="empty"><span className="spinner" aria-label="Carregando" /></div>}>
+              <DashboardPage key={route.id} id={route.id} datasets={datasets} />
+            </Suspense>
+          ) : route.name === "dashboards" ? (
+            <DashboardsPage />
+          ) : route.name === "report" ? (
             <Suspense fallback={<div className="empty"><span className="spinner" aria-label="Carregando" /></div>}>
               <ReportPage key={route.id} id={route.id} datasets={datasets} />
             </Suspense>

@@ -131,3 +131,78 @@ class Report(ReportIn):
     version: int
     created_at: str
     updated_at: str
+
+
+# --- Dashboards -------------------------------------------------------------
+GRID_COLS = 12
+MAX_TILES = 60
+
+
+class TileLayout(BaseModel):
+    """Posição numa grade de 12 colunas (unidades de grade, não pixels)."""
+    x: int = Field(ge=0, lt=GRID_COLS)
+    y: int = Field(ge=0, le=10_000)
+    w: int = Field(ge=1, le=GRID_COLS)
+    h: int = Field(ge=1, le=40)
+
+    @field_validator("w")
+    @classmethod
+    def _fits(cls, w: int, info) -> int:
+        if info.data.get("x") is not None and info.data["x"] + w > GRID_COLS:
+            raise ValueError(f"tile does not fit in the {GRID_COLS}-column grid (x + w > {GRID_COLS})")
+        return w
+
+
+class TextTile(TextBlock):
+    layout: TileLayout
+
+
+class ChartTile(ChartBlock):
+    layout: TileLayout
+
+
+class KpiTile(BaseModel):
+    """Número em destaque: a 1ª coluna da 1ª linha do resultado do SQL."""
+    type: Literal["kpi"]
+    id: BlockId
+    title: str = Field(default="", max_length=200)
+    sql: str = Field(default="", max_length=100_000)
+    decimals: int = Field(default=0, ge=0, le=6)
+    prefix: str = Field(default="", max_length=10)
+    suffix: str = Field(default="", max_length=10)
+    layout: TileLayout
+
+
+Tile = Annotated[Union[TextTile, ChartTile, KpiTile], Field(discriminator="type")]
+
+
+class DashboardIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    tiles: list[Tile] = Field(default_factory=list, max_length=MAX_TILES)
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("title must not be blank")
+        return v
+
+    @field_validator("tiles")
+    @classmethod
+    def _unique_ids(cls, tiles: list) -> list:
+        ids = [t.id for t in tiles]
+        if len(ids) != len(set(ids)):
+            raise ValueError("tile ids must be unique within a dashboard")
+        return tiles
+
+
+class DashboardUpdate(DashboardIn):
+    version: int = Field(ge=1, description="versão que o cliente está editando (bloqueio otimista)")
+
+
+class Dashboard(DashboardIn):
+    id: str
+    version: int
+    created_at: str
+    updated_at: str
