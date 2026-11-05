@@ -14,12 +14,16 @@ interface Props {
   loading?: boolean;
   /** "svg" = vetorial (nítido no PDF/impressão); "canvas" = melhor com muitos pontos. */
   renderer?: "canvas" | "svg";
+  /** Clique numa barra/ponto: recebe o nome da categoria (eixo X). Usado pelo cross-filter dos dashboards. */
+  onPointClick?: (name: string) => void;
 }
 
-export function Chart({ option, height = 360, label, loading, renderer = "canvas" }: Props) {
+export function Chart({ option, height = 360, label, loading, renderer = "canvas", onPointClick }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
   const optionRef = useRef(option);
+  const clickRef = useRef(onPointClick);
+  clickRef.current = onPointClick;
 
   useEffect(() => {
     const el = host.current!;
@@ -28,6 +32,7 @@ export function Chart({ option, height = 360, label, loading, renderer = "canvas
     const ro = new ResizeObserver(() => c.resize());
     ro.observe(el);
     c.setOption(optionRef.current, true);
+    c.on("click", (e: { name?: unknown }) => { if (e.name !== undefined && e.name !== "") clickRef.current?.(String(e.name)); });
     return () => { ro.disconnect(); c.dispose(); chart.current = null; };
   }, [renderer]);
 
@@ -36,5 +41,5 @@ export function Chart({ option, height = 360, label, loading, renderer = "canvas
     chart.current?.setOption(option, true); // true = substitui (troca de tipo/séries sem sobras)
   }, [option]);
 
-  return <div ref={host} className={`chart-box${loading ? " loading" : ""}`} style={{ height }} role="img" aria-label={label} />;
+  return <div ref={host} className={`chart-box${loading ? " loading" : ""}${onPointClick ? " clickable" : ""}`} style={{ height }} role="img" aria-label={label} />;
 }

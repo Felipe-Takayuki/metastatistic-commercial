@@ -63,7 +63,7 @@ class AnalysisResponse(BaseModel):
 # --- Relatórios -------------------------------------------------------------
 from typing import Annotated, Union  # noqa: E402
 
-from pydantic import StringConstraints, field_validator  # noqa: E402
+from pydantic import StringConstraints, field_validator, model_validator  # noqa: E402
 
 BlockId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 MAX_BLOCKS = 100
@@ -153,12 +153,25 @@ class TileLayout(BaseModel):
         return w
 
 
+FilterName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,39}$")]
+MAX_FILTERS = 10
+
+
+class DashFilter(BaseModel):
+    """Filtro do dashboard: aparece como `{{nome}}` no SQL dos tiles (a substituição, com literal escapado, é feita no cliente)."""
+    name: FilterName
+    label: str = Field(default="", max_length=80)
+    type: Literal["text", "number", "date"]
+    default: str = Field(default="", max_length=200)
+
+
 class TextTile(TextBlock):
     layout: TileLayout
 
 
 class ChartTile(ChartBlock):
     layout: TileLayout
+    click_param: FilterName | None = Field(default=None, description="filtro definido ao clicar numa barra/ponto (cross-filter)")
 
 
 class KpiTile(BaseModel):
@@ -179,6 +192,7 @@ Tile = Annotated[Union[TextTile, ChartTile, KpiTile], Field(discriminator="type"
 class DashboardIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     tiles: list[Tile] = Field(default_factory=list, max_length=MAX_TILES)
+    filters: list[DashFilter] = Field(default_factory=list, max_length=MAX_FILTERS)
 
     @field_validator("title")
     @classmethod
@@ -195,6 +209,16 @@ class DashboardIn(BaseModel):
         if len(ids) != len(set(ids)):
             raise ValueError("tile ids must be unique within a dashboard")
         return tiles
+
+    @model_validator(mode="after")
+    def _filters_consistent(self):
+        names = [f.name for f in self.filters]
+        if len(names) != len(set(names)):
+            raise ValueError("filter names must be unique within a dashboard")
+        for t in self.tiles:
+            if getattr(t, "click_param", None) and t.click_param not in names:
+                raise ValueError(f"tile {t.id} sets unknown filter {t.click_param!r} on click")
+        return self
 
 
 class DashboardUpdate(DashboardIn):

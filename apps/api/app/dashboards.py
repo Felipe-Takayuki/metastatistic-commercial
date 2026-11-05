@@ -25,18 +25,21 @@ def _now() -> str:
 
 
 def _row(row) -> Dashboard:
-    return Dashboard(id=row["id"], title=row["title"], tiles=json.loads(row["tiles_json"]), version=row["version"],
+    return Dashboard(id=row["id"], title=row["title"], tiles=json.loads(row["tiles_json"]), filters=json.loads(row["filters_json"]), version=row["version"],
                      created_at=row["created_at"], updated_at=row["updated_at"])
 
 
-def _dump(d: DashboardIn) -> str:
-    return json.dumps([t.model_dump(mode="json") for t in d.tiles], ensure_ascii=False)
+def _dump(d: DashboardIn) -> tuple[str, str]:
+    return (json.dumps([t.model_dump(mode="json") for t in d.tiles], ensure_ascii=False),
+            json.dumps([f.model_dump(mode="json") for f in d.filters], ensure_ascii=False))
 
 
 def create_dashboard(d: DashboardIn) -> Dashboard:
     dash_id, now = uuid.uuid4().hex, _now()
     with closing(db.connect()) as con, con:
-        con.execute("INSERT INTO dashboards VALUES (?,?,?,?,?,?)", [dash_id, d.title, _dump(d), 1, now, now])
+        tiles, filters = _dump(d)
+        con.execute("INSERT INTO dashboards (id, title, tiles_json, version, created_at, updated_at, filters_json) VALUES (?,?,?,?,?,?,?)",
+                    [dash_id, d.title, tiles, 1, now, now, filters])
     return get_dashboard(dash_id)
 
 
@@ -57,10 +60,11 @@ def list_dashboards() -> list[dict]:
 
 def update_dashboard(dash_id: str, d: DashboardUpdate) -> Dashboard:
     """UPDATE condicional na versão: se outro cliente salvou antes, 0 linhas mudam e devolvemos conflito."""
+    tiles, filters = _dump(d)
     with closing(db.connect()) as con, con:
         changed = con.execute(
-            "UPDATE dashboards SET title = ?, tiles_json = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?",
-            [d.title, _dump(d), _now(), dash_id, d.version],
+            "UPDATE dashboards SET title = ?, tiles_json = ?, filters_json = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?",
+            [d.title, tiles, filters, _now(), dash_id, d.version],
         ).rowcount
     if changed == 0:
         current = get_dashboard(dash_id)  # 404 se não existe

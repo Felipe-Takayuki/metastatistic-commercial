@@ -23,4 +23,7 @@ def connect() -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     for ddl in _SCHEMA:
         con.execute(ddl)
+    # migração: dashboards criados antes dos filtros não têm a coluna
+    if "filters_json" not in {r["name"] for r in con.execute("PRAGMA table_info(dashboards)")}:
+        con.execute("ALTER TABLE dashboards ADD COLUMN filters_json TEXT NOT NULL DEFAULT '[]'")
     return con

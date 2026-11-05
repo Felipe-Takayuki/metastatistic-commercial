@@ -1,7 +1,7 @@
-# Fase 5 (projeto) — Dashboards, fatia 5.1 ✅ (2026-11-05)
+# Fase 5 (projeto) — Dashboards: fatias 5.1 e 5.2 ✅ (2026-11-05)
 
 Corresponde à **"Fase 4: Dashboards e colaboração" do PLAN.md** (a numeração do projeto andou à frente: a Fase 4 daqui foi "mais análises").
-Esta fatia entrega a **grade arrastável**; cross-filter, drill-down, coleções, RBAC e segurança por linha continuam pendentes.
+A **5.1** entrega a grade arrastável; a **5.2** (seção final) entrega filtros globais e cross-filter. Drill-down, coleções, RBAC e segurança por linha continuam pendentes.
 Interface: http://localhost:8080 → **Dashboards** (`#/dashboards`).
 
 ## O que existe
@@ -31,9 +31,40 @@ API: `POST/GET /dashboards`, `GET/PUT/DELETE /dashboards/{id}` (a lista devolve 
 - A barra superior estourava a largura em telas estreitas (já existia; o 3º link a agravou): agora a navegação desce para a 2ª linha (`max-width: 640px`).
 
 ## Pendências
-- **Cross-filter e drill-down** (clicar numa barra filtra os demais tiles) e **parâmetros/filtros globais** (`{{param}}` no SQL).
+- **Drill-down** (clicar numa barra abre o detalhe).
 - Tile de **análise estatística** (hoje só KPI, gráfico e texto); tile de tabela.
 - Exportar PDF do dashboard; coleções/pastas; RBAC e segurança por linha (exigem autenticação, que não existe).
 - Em tela estreita não se reposicionam tiles. Sem desfazer/refazer. Sem tiles duplicados ("duplicar").
 - Mesmo problema de largura em **Explorar** (`#/`) a 420 px (a barra lateral/tabelas estouram); não tratado aqui.
 - Tema escuro dos dashboards não revisado visualmente.
+
+---
+
+# Fatia 5.2 — filtros globais e cross-filter ✅
+
+## O que existe
+| Peça | Detalhe |
+|---|---|
+| **Filtros** | Até 10 por dashboard, tipos **texto / número / data**, com nome (identificador), rótulo e valor inicial. Editor em "Filtros do dashboard" (modo Editar); barra de filtros acima da grade (também em leitura) com "Limpar filtros" |
+| **Uso no SQL** | `{{nome}}` em qualquer SQL de tile. Filtro vazio vale `NULL`: `WHERE ({{grupo}} IS NULL OR "group" = {{grupo}})` |
+| **Cross-filter** | Cada gráfico pode "definir o filtro X ao clicar numa barra ou ponto"; clicar de novo na mesma categoria limpa. Todos os tiles que usam `{{X}}` recarregam |
+| **Persistência** | As **definições** (e o filtro de clique de cada gráfico) são salvas com o dashboard; os **valores** não (cada visitante filtra do seu jeito; recarregar volta ao valor inicial) |
+
+## Decisões e segurança
+- **A substituição é feita no cliente com literais escapados** (`lib/params.ts`) e o servidor continua vendo SQL comum, validado pelo mesmo sandbox de leitura. Texto: aspas simples duplicadas; número: só `-?\d+([.,]\d+)?`; data: `AAAA-MM-DD` existente (`DATE '…'`); vazio: `NULL`. Nada digitado vira SQL, e o valor **não é re-substituído** (digitar `{{outro}}` fica como texto). Testes unitários incluem tentativas de injeção; o e2e digita `x' OR '1'='1` e vê KPI 0 sem erro.
+- Filtro desconhecido ou valor inválido: o tile mostra o erro e **não consulta**.
+- O servidor valida: nomes `[A-Za-z_][A-Za-z0-9_]{0,39}` únicos, tipos, máx. 10, e `click_param` só pode apontar para filtro declarado (422 se não).
+- Lista de filtros com problema (nome vazio/repetido) **não é salva** até corrigir (a UI avisa), em vez de entrar em laço de erro 422.
+- Remover um filtro limpa o `click_param` dos gráficos que o usavam. **Renomear não reescreve os SQLs** (avisado na tela).
+- **Migração**: bancos criados antes da 5.2 ganham a coluna `filters_json` automaticamente (`db.connect`; teste com banco antigo).
+- O editor de KPI/gráfico aplica os filtros atuais ao SQL de prévia, então o que se vê no diálogo é o que o tile mostrará.
+
+## Verificado
+- `pytest` 167 (9 novos), `vitest` 118 (12 novos, `lib/params.ts`), e2e `dashboard-filters.mjs` (22 checks); `e2e:all` = 5 suítes verdes.
+- O e2e cobre: definir filtro (salvo com nome/rótulo/tipo), **nome repetido avisa e não envia**, KPI com `{{grupo}}` (valor inicial vazio = todas as linhas), filtrar digitando (a, b, inexistente, aspas), limpar, **clicar na barra filtra o KPI e clicar de novo limpa**, definições persistem e valores não, leitura não altera o servidor.
+
+## Pendências desta fatia
+- Filtro de **lista de valores** (select com os valores distintos da coluna) e de **intervalo de datas**; hoje o texto é digitado.
+- Os valores dos filtros não vão na URL (não dá para compartilhar um dashboard já filtrado).
+- Cross-filter só em gráficos de **barras/linhas/pontos pela categoria do eixo X** (não por série). Sem destaque visual da barra selecionada.
+- Placeholders dentro de literais/comentários do SQL também são substituídos (comportamento simples e previsível, mas atenção ao escrever).

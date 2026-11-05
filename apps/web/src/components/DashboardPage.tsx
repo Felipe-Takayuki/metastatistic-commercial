@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactGridLayout, { useContainerWidth, verticalCompactor } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
-import { api, ApiError, type Dashboard, type Dataset, type Tile } from "../api";
+import { api, ApiError, type Dashboard, type DashFilter, type Dataset, type Tile } from "../api";
 import { applyLayout, GRID_COLS, GRID_GAP, newTile, readingOrder, ROW_HEIGHT, STACK_BELOW, toGrid, type TileType } from "../lib/dashboard";
+import { filterProblems, reconcileValues, substitute } from "../lib/params";
 import { routeHref } from "../lib/route";
 import { Saver, type SaveStatus } from "../lib/saver";
+import { FilterBar, FiltersEditor } from "./dashboard/Filters";
+import { ParamsContext, type ParamsCtx } from "./dashboard/params";
 import { TILE_LABEL, TileBody, TileEditor, tileHeading } from "./dashboard/TileViews";
 
 const STATUS_TEXT: Record<SaveStatus, string> = { saved: "Salvo", dirty: "Alterações não salvas…", saving: "Salvando…", error: "Erro ao salvar", conflict: "Conflito" };
@@ -31,6 +34,9 @@ export function DashboardPage({ id, datasets }: { id: string; datasets: Dataset[
 function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; datasets: Dataset[]; onReload: () => void }) {
   const [title, setTitle] = useState(initial.title);
   const [tiles, setTiles] = useState<Tile[]>(initial.tiles);
+  const [filters, setFilters] = useState<DashFilter[]>(initial.filters);
+  const [values, setValues] = useState<Record<string, string>>(() => reconcileValues(initial.filters, {}));
+  const filtersRef = useRef(initial.filters);
   const [mode, setMode] = useState<"edit" | "view">(initial.tiles.length === 0 ? "edit" : "view");
   const [editingId, setEditingId] = useState<string | null>(null);
   // SQL do tile em edição NO MOMENTO em que o editor abriu. O tile de fundo usa este valor até o editor fechar: sem isso
@@ -45,22 +51,32 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
   const { width, containerRef, mounted } = useContainerWidth();
 
   const saver = useMemo(
-    () => new Saver<{ title: string; tiles: Tile[] }>(
-      async (p) => { version.current = (await api.saveDashboard(initial.id, p.title, p.tiles, version.current)).version; },
+    () => new Saver<{ title: string; tiles: Tile[]; filters: DashFilter[] }>(
+      async (p) => { version.current = (await api.saveDashboard(initial.id, p.title, p.tiles, p.filters, version.current)).version; },
       (s, msg) => setStatus({ s, msg }),
       (e) => (e instanceof ApiError && e.status === 409 ? "conflict" : "retry"),
     ),
     [initial.id],
   );
 
-  const commit = useCallback((patch: { title?: string; tiles?: Tile[] }) => {
-    if (patch.tiles === tilesRef.current && patch.title === undefined) return; // nada mudou: não marca como alterado
+  const commit = useCallback((patch: { title?: string; tiles?: Tile[]; filters?: DashFilter[] }) => {
+    if (patch.tiles === tilesRef.current && patch.title === undefined && patch.filters === undefined) return; // nada mudou: não marca como alterado
     titleRef.current = patch.title ?? titleRef.current;
     tilesRef.current = patch.tiles ?? tilesRef.current;
+    filtersRef.current = patch.filters ?? filtersRef.current;
     setTitle(titleRef.current);
     setTiles(tilesRef.current);
-    saver.schedule({ title: titleRef.current.trim() || "Dashboard sem título", tiles: tilesRef.current });
+    setFilters(filtersRef.current);
+    if (patch.filters) setValues((v) => reconcileValues(patch.filters!, v));
+    // Lista de filtros inválida (nome vazio/repetido) ficaria 422 no servidor: não agenda salvamento até corrigir.
+    if (filterProblems(filtersRef.current).length === 0) saver.schedule({ title: titleRef.current.trim() || "Dashboard sem título", tiles: tilesRef.current, filters: filtersRef.current });
   }, [saver]);
+
+  const params = useMemo<ParamsCtx>(() => ({
+    filters, values,
+    resolve: (sql) => substitute(sql, filters, values),
+    setValue: (name, value) => setValues((v) => (name in v ? { ...v, [name]: value } : v)),
+  }), [filters, values]);
 
   useEffect(() => () => { void saver.flush(); }, [saver]);
   useEffect(() => {
@@ -88,6 +104,12 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
     if (editingId === t.id) closeEditor();
     commit({ tiles: tilesRef.current.filter((x) => x.id !== t.id) });
   };
+  const changeFilters = (next: DashFilter[]) => {
+    // filtro removido: os gráficos que o definiam ao clicar deixam de apontar para ele
+    const names = new Set(next.map((f) => f.name));
+    const cleaned = tilesRef.current.map((t) => (t.type === "chart" && t.click_param && !names.has(t.click_param) ? { ...t, click_param: null } : t));
+    commit({ filters: next, tiles: cleaned.some((t, i) => t !== tilesRef.current[i]) ? cleaned : tilesRef.current });
+  };
   const update = (t: Tile) => commit({ tiles: tilesRef.current.map((x) => (x.id === t.id ? t : x)) });
 
   useEffect(() => {
@@ -113,6 +135,7 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
   );
 
   return (
+    <ParamsContext.Provider value={params}>
     <div className="dash-page">
       <div className="report-toolbar no-print">
         <a className="btn ghost sm" href={routeHref({ name: "dashboards" })}>← Dashboards</a>
@@ -148,6 +171,9 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
           {stacked && <span className="muted small">Tela estreita: os tiles aparecem empilhados; para mudar posições, use uma tela mais larga.</span>}
         </div>
       )}
+
+      {editing && <FiltersEditor filters={filters} onChange={changeFilters} />}
+      <FilterBar filters={filters} values={values} onChange={params.setValue} />
 
       {tiles.length === 0 && !editing && <p className="muted">Este dashboard está vazio. Clique em <strong>Editar</strong> para adicionar tiles.</p>}
 
@@ -187,5 +213,6 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
         </div>
       )}
     </div>
+    </ParamsContext.Provider>
   );
 }

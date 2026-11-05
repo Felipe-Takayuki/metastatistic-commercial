@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type ChartTile, type KpiTile, type QueryResult, type TextTile, type Tile } from "../../api";
+import { type ChartTile, type KpiTile, type TextTile, type Tile } from "../../api";
 import { reconcile } from "../../lib/chartSpec";
 import { formatKpi } from "../../lib/dashboard";
 import { renderMarkdown } from "../../lib/markdown";
-import { useRemote } from "../../lib/remote";
 import { ChartView } from "../ChartView";
 import { DataTable } from "../DataTable";
+import { useParams, useTileQuery } from "./params";
 import { ChartBlockEditor } from "../report/ChartBlock";
 import { SqlEditor } from "../SqlEditor";
 import { TextBlockEditor } from "../report/TextBlock";
 
-const useQuery = (sql: string) => useRemote<QueryResult>(sql.trim() ? `q:${sql}` : null, () => api.runQuery(sql));
 
 /** Altura útil do corpo do tile (acompanha o redimensionamento ao vivo). */
 function useBoxHeight() {
@@ -27,21 +26,25 @@ function useBoxHeight() {
 }
 
 function ChartTileBody({ tile }: { tile: ChartTile }) {
-  const { data, error, loading } = useQuery(tile.sql);
+  const { data, error, loading } = useTileQuery(tile.sql);
+  const { values, setValue } = useParams();
+  const param = tile.click_param;
+  // Clicar na mesma categoria de novo limpa o filtro (alterna).
+  const onPointClick = param ? (name: string) => setValue(param, values[param] === name ? "" : name) : undefined;
   const spec = useMemo(() => (data ? reconcile(tile.chart, data) : null), [data, tile.chart]);
   const [ref, h] = useBoxHeight();
   return (
     <div ref={ref} className="tile-fill">
       {!tile.sql.trim() && <div className="alert info small">Este tile ainda não tem uma consulta SQL.</div>}
       {error && <div className="alert small" role="alert">{error}</div>}
-      {data && h > 0 && (spec ? <ChartView result={data} spec={spec} showTitle={false} height={Math.max(80, h)} /> : <DataTable columns={data.columns} rows={data.rows} maxRows={50} />)}
+      {data && h > 0 && (spec ? <ChartView result={data} spec={spec} showTitle={false} height={Math.max(80, h)} onPointClick={onPointClick} /> : <DataTable columns={data.columns} rows={data.rows} maxRows={50} />)}
       {!data && loading && <div className="empty"><span className="spinner" aria-label="Carregando" /></div>}
     </div>
   );
 }
 
 function KpiTileBody({ tile }: { tile: KpiTile }) {
-  const { data, error, loading } = useQuery(tile.sql);
+  const { data, error, loading } = useTileQuery(tile.sql);
   if (!tile.sql.trim()) return <div className="alert info small">Este tile ainda não tem uma consulta SQL.</div>;
   if (error) return <div className="alert small" role="alert">{error}</div>;
   if (!data && loading) return <div className="empty"><span className="spinner" aria-label="Carregando" /></div>;
@@ -62,7 +65,7 @@ export function tileHeading(t: Tile): string {
 
 function KpiEditor({ tile, onChange }: { tile: KpiTile; onChange: (t: KpiTile) => void }) {
   const [ran, setRan] = useState(tile.sql);
-  const { data, error } = useQuery(ran);
+  const { data, error } = useTileQuery(ran);
   return (
     <>
       <label className="field">Título
@@ -93,6 +96,22 @@ function KpiEditor({ tile, onChange }: { tile: KpiTile; onChange: (t: KpiTile) =
 /** Editor do conteúdo de um tile (a posição é editada arrastando na grade). */
 export function TileEditor({ tile, onChange }: { tile: Tile; onChange: (t: Tile) => void }) {
   if (tile.type === "text") return <TextBlockEditor block={tile} onChange={(b) => onChange({ ...tile, ...b } as TextTile)} />;
-  if (tile.type === "chart") return <ChartBlockEditor block={tile} onChange={(b) => onChange({ ...tile, ...b } as ChartTile)} />;
+  if (tile.type === "chart") return <ChartTileEditor tile={tile} onChange={onChange} />;
   return <KpiEditor tile={tile} onChange={onChange} />;
+}
+
+function ChartTileEditor({ tile, onChange }: { tile: ChartTile; onChange: (t: Tile) => void }) {
+  const { filters, resolve } = useParams();
+  return (
+    <>
+      <ChartBlockEditor block={tile} resolve={resolve} onChange={(b) => onChange({ ...tile, ...b } as ChartTile)} />
+      <label className="field">Ao clicar numa barra ou ponto, definir o filtro
+        <select value={tile.click_param ?? ""} onChange={(e) => onChange({ ...tile, click_param: e.target.value || null })} disabled={filters.length === 0}>
+          <option value="">— nenhum (gráfico sem cross-filter)</option>
+          {filters.map((f) => <option key={f.name} value={f.name}>{f.label || f.name} ({`{{${f.name}}}`})</option>)}
+        </select>
+        {filters.length === 0 && <span className="muted small">Crie um filtro em “Filtros do dashboard” para usar o cross-filter.</span>}
+      </label>
+    </>
+  );
 }

@@ -4,7 +4,7 @@ L = lambda x, y, w=4, h=3: {"x": x, "y": y, "w": w, "h": h}  # noqa: E731
 TILES = [
     {"type": "kpi", "id": "k1", "title": "Receita", "sql": "SELECT 1 AS a", "decimals": 2, "prefix": "R$ ", "suffix": "", "layout": L(0, 0, 3, 2)},
     {"type": "chart", "id": "c1", "title": "Por região", "sql": "SELECT 1 AS a",
-     "chart": {"type": "bar", "x": "regiao", "ys": ["receita"], "slots": {"receita": 0}}, "layout": L(3, 0, 9, 4)},
+     "chart": {"type": "bar", "x": "regiao", "ys": ["receita"], "slots": {"receita": 0}}, "click_param": None, "layout": L(3, 0, 9, 4)},
     {"type": "text", "id": "t1", "markdown": "## Notas\n\nTexto.", "layout": L(0, 4, 12, 2)},
 ]
 
@@ -85,3 +85,51 @@ async def test_duplicate_tile_ids_blank_title_and_missing_layout_are_422(client)
 async def test_too_many_tiles_is_422(client):
     many = [{**TILES[2], "id": f"t{i}"} for i in range(61)]
     assert (await client.post("/dashboards", json={"title": "x", "tiles": many})).status_code == 422
+
+
+FILTERS = [{"name": "grupo", "label": "Grupo", "type": "text", "default": ""}, {"name": "minimo", "label": "Mínimo", "type": "number", "default": "5"}]
+
+
+async def test_filters_and_click_param_roundtrip(client):
+    chart = {**TILES[1], "click_param": "grupo"}
+    r = await client.post("/dashboards", json={"title": "x", "tiles": [chart, TILES[0]], "filters": FILTERS})
+    assert r.status_code == 201, r.text
+    got = (await client.get(f"/dashboards/{r.json()['id']}")).json()
+    assert got["filters"] == FILTERS and got["tiles"][0]["click_param"] == "grupo"
+    # dashboard antigo (sem filtros) continua válido e volta com lista vazia
+    assert (await create(client))["filters"] == []
+
+
+async def test_update_changes_filters(client):
+    d = await create(client)
+    r = await client.put(f"/dashboards/{d['id']}", json={"title": "x", "tiles": TILES, "filters": FILTERS, "version": 1})
+    assert r.status_code == 200 and r.json()["filters"] == FILTERS
+
+
+@pytest.mark.parametrize("bad", [
+    [{"name": "a b", "type": "text"}],                       # nome inválido (espaço)
+    [{"name": "1abc", "type": "text"}],                      # começa com dígito
+    [{"name": "ok", "type": "boolean"}],                     # tipo desconhecido
+    [{"name": "dup", "type": "text"}, {"name": "dup", "type": "date"}],  # duplicado
+    [{"name": f"f{i}", "type": "text"} for i in range(11)],  # filtros demais
+])
+async def test_invalid_filters_are_422(client, bad):
+    assert (await client.post("/dashboards", json={"title": "x", "tiles": [], "filters": bad})).status_code == 422
+
+
+async def test_click_param_must_reference_a_declared_filter(client):
+    r = await client.post("/dashboards", json={"title": "x", "tiles": [{**TILES[1], "click_param": "nao_existe"}], "filters": FILTERS})
+    assert r.status_code == 422 and "unknown filter" in r.text
+
+
+async def test_old_database_without_filters_column_is_migrated(client, data_dir):
+    import sqlite3
+    data_dir.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(data_dir / "meta.db")
+    con.execute("CREATE TABLE dashboards (id TEXT PRIMARY KEY, title TEXT NOT NULL, tiles_json TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+    con.execute("INSERT INTO dashboards VALUES ('a'||hex(randomblob(15)),'Antigo','[]',1,'t','t')")
+    con.commit(); con.close()
+    rows = (await client.get("/dashboards")).json()
+    assert [r["title"] for r in rows] == ["Antigo"]
+    got = (await client.get(f"/dashboards/{rows[0]['id']}")).json()
+    assert got["filters"] == []

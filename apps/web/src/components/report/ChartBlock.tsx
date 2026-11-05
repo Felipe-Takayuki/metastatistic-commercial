@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type ChartBlock, type QueryResult } from "../../api";
 import { reconcile } from "../../lib/chartSpec";
+import type { Resolved } from "../../lib/params";
 import { useRemote } from "../../lib/remote";
 import { ChartView } from "../ChartView";
 import { DataTable } from "../DataTable";
 import { SqlEditor } from "../SqlEditor";
 
-const useQuery = (sql: string) => useRemote<QueryResult>(sql.trim() ? `q:${sql}` : null, () => api.runQuery(sql));
+const useQuery = (sql: string, resolve?: (sql: string) => Resolved) => {
+  const r: Resolved = resolve ? resolve(sql) : { sql };
+  const q = useRemote<QueryResult>("sql" in r && r.sql.trim() ? `q:${r.sql}` : null, () => api.runQuery((r as { sql: string }).sql));
+  return "error" in r ? { data: undefined, error: r.error, loading: false } : q;
+};
 
 function DataDetails({ data }: { data: QueryResult }) {
   // A tabela é o "alívio" de acessibilidade do gráfico (valores completos sem depender de cor ou hover).
@@ -33,9 +38,10 @@ export function ChartBlockView({ block }: { block: ChartBlock }) {
   );
 }
 
-export function ChartBlockEditor({ block, onChange }: { block: ChartBlock; onChange: (b: ChartBlock) => void }) {
+/** `resolve` (opcional): troca `{{filtros}}` do dashboard pelo valor atual antes de consultar. */
+export function ChartBlockEditor({ block, onChange, resolve }: { block: ChartBlock; onChange: (b: ChartBlock) => void; resolve?: (sql: string) => Resolved }) {
   const [ran, setRan] = useState(block.sql); // SQL cujo resultado está na tela
-  const { data, error, loading } = useQuery(ran);
+  const { data, error, loading } = useQuery(ran, resolve);
   const blockRef = useRef(block);
   blockRef.current = block;
   const onChangeRef = useRef(onChange);

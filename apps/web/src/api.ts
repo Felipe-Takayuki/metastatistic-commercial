@@ -42,10 +42,11 @@ export interface ReportSummary { id: string; title: string; n_blocks: number; ve
 
 export interface TileLayout { x: number; y: number; w: number; h: number }
 export type TextTile = TextBlock & { layout: TileLayout };
-export type ChartTile = ChartBlock & { layout: TileLayout };
+export type ChartTile = ChartBlock & { layout: TileLayout; click_param?: string | null };
 export interface KpiTile { type: "kpi"; id: string; title: string; sql: string; decimals: number; prefix: string; suffix: string; layout: TileLayout }
 export type Tile = TextTile | ChartTile | KpiTile;
-export interface Dashboard { id: string; title: string; tiles: Tile[]; version: number; created_at: string; updated_at: string }
+export interface DashFilter { name: string; label: string; type: "text" | "number" | "date"; default: string }
+export interface Dashboard { id: string; title: string; tiles: Tile[]; filters: DashFilter[]; version: number; created_at: string; updated_at: string }
 export interface DashboardSummary { id: string; title: string; n_tiles: number; version: number; updated_at: string }
 
 export interface AnalysisStatus {
@@ -107,10 +108,10 @@ export const api = {
     request<Report>(`/reports/${id}`, json("PUT", { title, blocks, version })),
   deleteReport: (id: string) => request<void>(`/reports/${id}`, { method: "DELETE" }),
   listDashboards: () => request<DashboardSummary[]>("/dashboards"),
-  createDashboard: (title: string, tiles: Tile[]) => request<Dashboard>("/dashboards", json("POST", { title, tiles })),
+  createDashboard: (title: string, tiles: Tile[], filters: DashFilter[] = []) => request<Dashboard>("/dashboards", json("POST", { title, tiles, filters })),
   getDashboard: (id: string) => request<Dashboard>(`/dashboards/${id}`),
-  saveDashboard: (id: string, title: string, tiles: Tile[], version: number) =>
-    request<Dashboard>(`/dashboards/${id}`, json("PUT", { title, tiles, version })),
+  saveDashboard: (id: string, title: string, tiles: Tile[], filters: DashFilter[], version: number) =>
+    request<Dashboard>(`/dashboards/${id}`, json("PUT", { title, tiles, filters, version })),
   deleteDashboard: (id: string) => request<void>(`/dashboards/${id}`, { method: "DELETE" }),
   analysisStatus: () => request<AnalysisStatus>("/analyses/status"),
   runAnalysis: (analysis: string, dataset_id: string, options: Record<string, unknown>) =>

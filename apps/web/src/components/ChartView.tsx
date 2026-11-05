@@ -20,11 +20,12 @@ interface Props {
   showTitle?: boolean;
   /** Relatórios usam vetor (PDF nítido). Com muitos pontos o SVG fica pesado e volta ao canvas. */
   vector?: boolean;
+  onPointClick?: (name: string) => void;
 }
 
 export const MAX_VECTOR_POINTS = 3000;
 
-export function ChartView({ result, spec, onSpec, height, showTitle = true, vector = false }: Props) {
+export function ChartView({ result, spec, onSpec, height, showTitle = true, vector = false, onPointClick }: Props) {
   const theme = useResolvedTheme();
   const tokens = useMemo(() => readChartTokens(), [theme]); // eslint-disable-line react-hooks/exhaustive-deps
   const built = useMemo(() => (spec ? buildChart(result, spec, tokens) : null), [result, spec, tokens]);
@@ -71,7 +72,7 @@ export function ChartView({ result, spec, onSpec, height, showTitle = true, vect
         </div>
       )}
       {showTitle && spec.ys.length > 0 && <div className="chart-title">{spec.ys.join(", ")} por {spec.x}</div>}
-      {built?.problem ? <div className="alert info">{built.problem}</div> : built ? <Chart option={built.option} label={label} height={height} renderer={vector && result.rows.length * spec.ys.length <= MAX_VECTOR_POINTS ? "svg" : "canvas"} /> : null}
+      {built?.problem ? <div className="alert info">{built.problem}</div> : built ? <Chart option={built.option} label={label} height={height} renderer={vector && result.rows.length * spec.ys.length <= MAX_VECTOR_POINTS ? "svg" : "canvas"} onPointClick={onPointClick} /> : null}
     </>
   );
 }

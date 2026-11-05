@@ -313,3 +313,12 @@ input[type="number"] { padding: 6px 10px; border: 1px solid var(--border); borde
   .topnav { order: 3; width: 100%; margin-left: 0; overflow-x: auto; }
   .topnav a { padding: 6px 10px; white-space: nowrap; }
 }
+
+/* --- dashboards: filtros e cross-filter --- */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 4px 0 4px; padding: 10px 14px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; }
+.filter-bar .field { min-width: 140px; }
+.filters-editor { margin: 4px 0 10px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); }
+.filters-editor summary { cursor: pointer; font-weight: 600; }
+.filter-row { display: grid; grid-template-columns: 1.1fr 1.3fr .8fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 10px; }
+.chart-box.clickable canvas, .chart-box.clickable svg { cursor: pointer; }
+@media (max-width: 700px) { .filter-row { grid-template-columns: 1fr 1fr; } }
