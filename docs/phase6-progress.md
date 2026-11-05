@@ -122,3 +122,35 @@ Armadilha: `docker cp <dir> <container>:/tmp/fx` quando `/tmp/fx` já existe cop
 - Sem verificação em correlação (normalidade bivariada), regressão (resíduos, multicolinearidade, homocedasticidade), logística e qui-quadrado (frequências esperadas < 5).
 - Shapiro-Wilk é muito sensível com n grande: o aviso não considera o tamanho da amostra.
 
+---
+
+# Fatia 6.6 — versões bayesianas: testes t e ANOVA ✅
+
+O catálogo passa de 10 para **14 análises**.
+
+| Análise | Função JASP | Opções expostas |
+|---|---|---|
+| **t independente bayesiano** | `TTestBayesianIndependentSamples` (jaspTTests) | hipótese (bilateral/maior/menor), largura do prior de Cauchy (0,707), BF₁₀ / BF₀₁ / log(BF₁₀), descritivas, gráficos prior-posterior e robustez |
+| **t pareado bayesiano** | `TTestBayesianPairedSamples` | idem (duas caixas "1ª/2ª medida" → `pairs`) |
+| **t de uma amostra bayesiano** | `TTestBayesianOneSample` | idem + valor de referência |
+| **ANOVA bayesiana** | `AnovaBayesian` (jaspAnova) | fatores, interações (opcional), prior dos efeitos fixos (r = 0,5), BF₁₀/BF₀₁/log, comparar com o melhor modelo ou com o nulo, BF de inclusão (todos os modelos / matched), estimativas a posteriori |
+
+## Mudanças no motor
+- `engine.R`: as 4 funções entram no registro fechado (os pacotes `BayesFactor` e `bridgesampling` já estavam na imagem). **`AnovaBayesian` entra em `PATCH_MODEL_TERMS`**: sem o remendo o JASP repovoa o modelo com a interação (5 modelos em vez de 4), como na ANOVA clássica.
+- **A ANOVA bayesiana fixa a semente** (`setSeed: true, seed: 1`; o JASP por padrão não fixa) para que o mesmo pedido dê o mesmo resultado. Os testes t são determinísticos (integração numérica).
+- **`init_jasp` desliga `reinstall.modules`.** Por padrão o jaspTools reinstalou TODOS os módulos a partir do fonte em cada partida do motor: ~1 min no melhor caso e, com os 2 workers (limite de 1,5 GB) ao mesmo tempo, as instalações expiraram e deixaram `jaspAnova` apagado no contêiner ("The installation of jaspAnova failed"; `/usr/local/lib/R/site-library/00LOCK-jaspAnova`). Os módulos já estão na imagem (install-modules.sh); a partida caiu de ~60 s para **~4 s**.
+
+## Conferido contra o R (pacote BayesFactor, `r_reference.json → bayes`)
+- `ttestBF` (rscale 0,707): independente, uma amostra (bilateral e unilateral = `nullInterval = c(0, Inf)`) e pareado; BF₀₁ = 1/BF₁₀ e log(BF₁₀) = log(BF₁₀).
+- `anovaBF(produtividade ~ tratamento + bloco, rscaleFixed = 0,5)`: BF de cada modelo contra o nulo (tolerância 3%, Monte Carlo: ~0,3% no JASP e ~1% no BayesFactor). Atenção: a tabela do JASP vem relativa ao **melhor modelo**; a referência do R é relativa ao nulo (dividir pelo BF₁₀ do "Null model").
+- Gráficos de prior/posterior e robustez voltam como imagens embutidas.
+- Guarda no vitest: todo `id` do catálogo precisa estar no registro de `engine.R` (senão o worker responde 422).
+
+## Verificado
+`vitest` 152 (3 novos), `pytest` 185 (5 novos), `e2e:all` 6 suítes verdes (análises: t bayesiano com BF igual ao do R, BF₀₁ como inverso, ANOVA bayesiana aditiva sem interações e razão do melhor modelo contra o nulo).
+
+## Pendências
+- Sem **interpretação textual** do fator de Bayes (ex.: "evidência moderada a favor de H₁", faixas de Jeffreys/Lee-Wagenmakers) nem estimativa de efeito a posteriori nos testes t.
+- Sem t bayesiano com Wilcoxon (amostragem MCMC) nem priors informativos/Dienes, sem ANCOVA/medidas repetidas/correlação/regressão/qui-quadrado bayesianos (as funções existem no JASP instalado).
+- O seletor de análises tem 14 botões em lista única; vale agrupar (clássicas / bayesianas / descritivas).
+

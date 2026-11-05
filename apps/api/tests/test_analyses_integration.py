@@ -81,6 +81,7 @@ def data():
     ids["nivel"] = derive("e2e-nivel", f"SELECT CASE WHEN produtividade >= 196 THEN 'alto' ELSE 'baixo' END AS nivel, * FROM \"{raw['table_name']}\"")["id"]
     ids["fatorial"] = upload("e2e-fatorial.csv", FIX / "fatorial.csv")["id"]
     ids["pres"] = upload("e2e-pressupostos.csv", FIX / "pressupostos.csv")["id"]
+    ids["tt"] = upload("e2e-ttest.csv", FIX / "ttest.csv")["id"]
     src = upload("e2e-faixa-src.csv", FIX / "ttest.csv")
     faixas = derive("e2e-faixas", f'SELECT "group" AS grupo, CASE WHEN score < 9 THEN \'baixo\' WHEN score < 11 THEN \'medio\' ELSE \'alto\' END AS faixa FROM "{src["table_name"]}"')
     ids["faixas"] = faixas["id"]
@@ -383,3 +384,52 @@ def test_assumption_checks_match_R(data):
     lv = table(a, "leveneTable")["data"][0]
     close(lv["F"], ref["levene_mean"]["F"]); close(lv["p"], ref["levene_mean"]["p"])
     assert (lv["df1"], lv["df2"]) == (ref["levene_mean"]["df1"], ref["levene_mean"]["df2"])
+
+
+def test_bayesian_ttests_match_BayesFactor(data):
+    """Fator de Bayes (BF10, prior de Cauchy 0,707) do JASP = ttestBF do pacote BayesFactor."""
+    ref = REF["bayes"]
+    ind = run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group"})
+    close(table(ind, "ttestTable")["data"][0]["BF"], ref["indep"], rel=1e-4)
+    one = run("TTestBayesianOneSample", data["dbc"], {"dependent": ["produtividade"], "testValue": 200})
+    close(table(one, "ttestTable")["data"][0]["BF"], ref["one"], rel=1e-4)
+    # unilateral: "greater" = média > valor de referência = o intervalo (0, +inf) do BayesFactor
+    gt = run("TTestBayesianOneSample", data["dbc"], {"dependent": ["produtividade"], "testValue": 200, "alternative": "greater"})
+    close(table(gt, "ttestTable")["data"][0]["BF"], ref["one_nullint"][0], rel=1e-3)
+    pr = run("TTestBayesianPairedSamples", data["dbc"], {"pairs": [["altura", "diametro"]]})
+    close(table(pr, "ttestTable")["data"][0]["BF"], ref["paired"], rel=1e-4)
+
+
+def test_bayes_factor_type_bf01_is_the_reciprocal(data):
+    bf10 = table(run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group"}), "ttestTable")["data"][0]["BF"]
+    bf01 = table(run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group", "bayesFactorType": "BF01"}), "ttestTable")["data"][0]["BF"]
+    close(bf01, 1 / bf10, rel=1e-6)
+    log = table(run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group", "bayesFactorType": "LogBF10"}), "ttestTable")["data"][0]["BF"]
+    close(log, math.log(bf10), rel=1e-6)
+
+
+def test_bayesian_anova_additive_model_matches_BayesFactor(data):
+    """Modelo aditivo (tratamento + bloco): sem o remendo do modelTerms o JASP acrescentaria a interação (5 modelos em vez de 4)."""
+    ref = REF["bayes"]["anova"]
+    res = run("AnovaBayesian", data["dbc"], {"dependent": "produtividade", "fixedFactors": ["tratamento", "bloco"], "setSeed": True, "seed": 1,
+                                            "modelTerms": [{"components": ["tratamento"]}, {"components": ["bloco"]}]})
+    rows = {r["Models"]: r for r in table(res, "tableModelComparison")["data"]}
+    assert set(rows) == {"Null model", "tratamento", "bloco", "tratamento + bloco"}, list(rows)
+    null = rows["Null model"]["BF10"]   # o JASP ordena por BF10 relativo ao melhor modelo; a referência do R é relativa ao nulo
+    for name, want in zip(ref["models"], ref["bf"]):
+        if name in rows:
+            close(rows[name]["BF10"] / null, want, rel=0.03)   # Monte Carlo: erro de ~0,3% no JASP e ~1% no BayesFactor
+
+
+def _images(node):
+    if isinstance(node, dict):
+        return [v for k, v in node.items() if k == "data" and isinstance(v, str) and v.startswith("data:image/")] + [i for v in node.values() for i in _images(v)]
+    if isinstance(node, list):
+        return [i for v in node for i in _images(v)]
+    return []
+
+
+def test_bayesian_plots_come_back_as_embedded_images(data):
+    res = run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group", "priorAndPosteriorPlot": True, "bfRobustnessPlot": True})
+    assert len(_images(res["results"])) == 2
+    assert not _images(run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group"})["results"])

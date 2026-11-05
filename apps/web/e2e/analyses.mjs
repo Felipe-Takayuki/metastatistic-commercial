@@ -98,6 +98,22 @@ try {
   await shot("a2k-kruskal");
   await page.getByLabel("Teste de Kruskal-Wallis").uncheck();
 
+  // --- ANOVA bayesiana (modelo ADITIVO tratamento + bloco: sem o remendo do modelTerms o JASP incluiria a interação) ---
+  await pickAnalysis("ANOVA bayesiana");
+  await page.getByLabel(/^tratamento/).check();
+  await page.getByLabel(/^bloco/).check();
+  check("ANOVA bayesiana: sem interações por padrão", !(await page.getByLabel("Incluir interações entre os fatores").isChecked()));
+  await run();
+  t = await resultText();
+  const BB = REF.bayes.anova;
+  check("ANOVA bayesiana: 4 modelos (nulo, tratamento, bloco, tratamento + bloco) e nenhuma interação", has(t, "Null model", "tratamento + bloco") && !t.includes("✻"), t.slice(0, 700));
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /** BF10 de um modelo na "Model Comparison": nome, P(M), P(M|data), BFM, BF10. */
+  const bf10Of = (name) => { const m = t.match(new RegExp(`${esc(name)}\\s+[\\d.]+\\s+[\\d.]+\\s+[\\d.]+\\s+([\\d.]+)`)); return m ? Number(m[1]) : NaN; };
+  const bestRatio = bf10Of("tratamento + bloco") / bf10Of("Null model");
+  check("ANOVA bayesiana: BF do melhor modelo contra o nulo igual ao BayesFactor (±3%)", Math.abs(bestRatio / BB.bf[2] - 1) < 0.03, `${bestRatio} vs ${BB.bf[2]} | ${t.slice(0, 600)}`);
+  await shot("a2c-anova-bayesiana");
+
   // interação ligada: aparece a linha tratamento ✻ bloco? (1 obs. por célula -> o JASP recusa; só confirmamos que a UI mostra algo)
   // --- Correlação ---
   await pickAnalysis("Correlação");
@@ -230,6 +246,17 @@ try {
   await notes().waitFor({ timeout: 90000 });
   nt = (await notes().innerText()).replace(/\s+/g, " ");
   check("t independente com pressupostos ok: a nota diz que não há alerta", has(nt, "nenhum alerta") && !nt.includes("Atenção"), nt);
+  // t independente bayesiano sobre os mesmos dados: BF10 igual ao ttestBF do R
+  await pickAnalysis("Teste t independente bayesiano");
+  await run();
+  t = await resultText();
+  check("t bayesiano: BF₁₀ igual ao BayesFactor (R)", has(t, REF.bayes.indep.toFixed(3)), t.slice(0, 500));
+  check("t bayesiano: sem avisos de pressupostos (não se aplicam)", (await notes().count()) === 0);
+  await page.getByLabel(/^Fator de Bayes/).selectOption("BF01");
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText((1 / REF.bayes.indep).toFixed(3)).first().waitFor({ timeout: 90000 });
+  check("t bayesiano: BF₀₁ é o inverso do BF₁₀", has(await resultText(), (1 / REF.bayes.indep).toFixed(3)));
+  await shot("a3g-t-bayesiano");
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
   await runSql(`SELECT "group" AS grupo, CASE WHEN score < 9 THEN 'baixo' WHEN score < 11 THEN 'medio' ELSE 'alto' END AS faixa FROM e2e_faixa_src`);
   await page.getByRole("tab", { name: "Tabela" }).click();

@@ -350,7 +350,96 @@ export const LOGISTIC_DEF: AnalysisDef = {
   },
 };
 
-export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF];
+// ------------------------------------------------------------------------------------------------------------------
+// Versões bayesianas (fatia 6.6). Fator de Bayes com prior de Cauchy sobre o tamanho do efeito (testes t) ou sobre os
+// efeitos fixos (ANOVA). Valores conferidos contra o pacote BayesFactor nos testes de integração.
+const bfType = (): Item => ({
+  type: "choice", key: "bayesFactorType", label: "Fator de Bayes", default: "BF10",
+  options: [{ value: "BF10", label: "BF₁₀ (evidência para H₁ contra H₀)" }, { value: "BF01", label: "BF₀₁ (evidência para H₀ contra H₁)" }, { value: "LogBF10", label: "log(BF₁₀)" }],
+});
+const cauchyWidth = (key: string, label: string, def: number): Item => ({ type: "number", key, label, default: def, min: 0.05, max: 2, step: 0.01 });
+const BAYES_T_PRIOR = { title: "Prior (Cauchy sobre o tamanho do efeito)", items: [cauchyWidth("priorWidth", "Largura do prior (0,707 = “médio”)", 0.707)] };
+const BAYES_T_PLOTS = { title: "Gráficos", items: [toggle("priorAndPosteriorPlot", "Prior e posterior"), toggle("bfRobustnessPlot", "Robustez do fator de Bayes à largura do prior")] };
+
+export const BAYES_TTEST_DEF: AnalysisDef = {
+  id: "TTestBayesianIndependentSamples",
+  title: "Teste t independente bayesiano",
+  description: "Fator de Bayes para a diferença de médias entre dois grupos: quanto os dados favorecem “há diferença” (H₁) contra “não há” (H₀).",
+  slots: TTEST_DEF.slots,
+  sections: [
+    { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (grupo 1 vs grupo 2)")] },
+    BAYES_T_PRIOR,
+    { title: "Resultado", items: [bfType(), toggle("descriptives", "Estatísticas descritivas", true), toggle("descriptivesPlot", "Gráfico descritivo")] },
+    BAYES_T_PLOTS,
+  ],
+  check: ({ dataset, state }) => {
+    const g = state.vars.group[0];
+    const n = g ? colOf(dataset, g)?.n_distinct ?? null : null;
+    return n !== null && n !== 2 ? [`${g} tem ${levelsLabel(n)}, e o teste t compara exatamente 2 grupos. Escolha outra variável ou filtre os dados (aba Consulta SQL).`] : [];
+  },
+};
+
+export const BAYES_PAIRED_TTEST_DEF: AnalysisDef = {
+  id: "TTestBayesianPairedSamples",
+  title: "Teste t pareado bayesiano",
+  description: "Fator de Bayes para a diferença entre duas medidas da mesma unidade (antes/depois).",
+  slots: PAIRED_TTEST_DEF.slots,
+  sections: [
+    { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (1ª − 2ª)")] },
+    BAYES_T_PRIOR,
+    { title: "Resultado", items: [bfType(), toggle("descriptives", "Estatísticas descritivas", true), toggle("descriptivesPlot", "Gráfico descritivo")] },
+    BAYES_T_PLOTS,
+  ],
+  derive: PAIRED_TTEST_DEF.derive,
+  parseVars: PAIRED_TTEST_DEF.parseVars,
+};
+
+export const BAYES_ONESAMPLE_TTEST_DEF: AnalysisDef = {
+  id: "TTestBayesianOneSample",
+  title: "Teste t de uma amostra bayesiano",
+  description: "Fator de Bayes para a média de uma variável contra um valor de referência.",
+  slots: ONESAMPLE_TTEST_DEF.slots,
+  sections: [
+    { title: "Referência", items: [{ type: "number", key: "testValue", label: "Valor de referência", default: 0, min: -1e12, max: 1e12, step: 0.1 }] },
+    { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (média vs referência)")] },
+    BAYES_T_PRIOR,
+    { title: "Resultado", items: [bfType(), toggle("descriptives", "Estatísticas descritivas", true), toggle("descriptivesPlot", "Gráfico descritivo")] },
+    BAYES_T_PLOTS,
+  ],
+};
+
+export const BAYES_ANOVA_DEF: AnalysisDef = {
+  id: "AnovaBayesian",
+  title: "ANOVA bayesiana",
+  description: "Compara modelos (nulo, cada fator, combinações) pelo fator de Bayes e mede a evidência de cada efeito. Em blocos casualizados, inclua o bloco como fator.",
+  slots: ANOVA_DEF.slots,
+  sections: [
+    { title: "Modelo", items: [toggle("interactions", "Incluir interações entre os fatores", false, { local: true })] },
+    { title: "Prior (Cauchy sobre os efeitos fixos)", items: [cauchyWidth("cauchyPriorScaleFixedEffects", "Largura do prior (r)", 0.5)] },
+    {
+      title: "Resultado",
+      items: [
+        bfType(),
+        { type: "choice", key: "bayesFactorOrder", label: "Comparar com", default: "bestModelTop", options: [{ value: "bestModelTop", label: "o melhor modelo" }, { value: "nullModelTop", label: "o modelo nulo" }] },
+        toggle("effects", "Evidência de cada efeito (BF de inclusão)", true),
+        { type: "choice", key: "effectsType", label: "Inclusão calculada sobre", default: "allModels", showIf: (v) => !!v.effects, options: [{ value: "allModels", label: "todos os modelos" }, { value: "matchedModels", label: "modelos equivalentes (matched)" }] },
+        toggle("descriptives", "Estatísticas descritivas"),
+        toggle("posteriorEstimates", "Estimativas a posteriori (média e IC credível)"),
+      ],
+    },
+  ],
+  // Resultados reproduzíveis: a ANOVA bayesiana usa amostragem de Monte Carlo; fixamos a semente (o JASP, por padrão, não fixa).
+  derive: (s) => {
+    const f = s.vars.fixedFactors;
+    const terms = f.map((x) => ({ components: [x] }));
+    if (s.values.interactions) for (const combo of interactionTerms(f)) terms.push({ components: combo });
+    return { modelTerms: terms, setSeed: true, seed: 1 };
+  },
+  parse: (o) => ({ interactions: ANOVA_DEF.parse!(o).interactions }),
+  check: ANOVA_DEF.check,
+};
+
+export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF];
 export const getDef = (id: string): AnalysisDef | undefined => ANALYSES.find((d) => d.id === id);
 
 // ------------------------------------------------------------------------------------------------------------------

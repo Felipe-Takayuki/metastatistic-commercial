@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANCOVA_DEF, ANOVA_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -17,9 +19,15 @@ const resolve = (def: Parameters<typeof resolveState>[0], d: Dataset, s: FormSta
 describe("catálogo", () => {
   it("ids únicos e conhecidos pelo worker", () => {
     expect(new Set(ANALYSES.map((a) => a.id)).size).toBe(ANALYSES.length);
-    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives"]);
+    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives",
+      "TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"]);
     expect(getDef("Anova")).toBe(ANOVA_DEF);
     expect(getDef("Inexistente")).toBeUndefined();
+  });
+  it("todo id do catálogo está no registro fechado do motor (engine.R): senão o worker responde 422", () => {
+    const engine = readFileSync(fileURLToPath(new URL("../../../../engines/r-worker/engine.R", import.meta.url)), "utf8");
+    const registry = engine.slice(engine.indexOf("ANALYSIS_MODULE <- c("), engine.indexOf("ALLOWED_ANALYSES"));
+    for (const a of ANALYSES) expect(registry, a.id).toMatch(new RegExp(`\\b${a.id}\\s*=`));
   });
   it("chaves de opção não se repetem dentro de uma análise (uma sobrescreveria a outra)", () => {
     for (const def of ANALYSES) {
@@ -133,6 +141,29 @@ describe("toOptions — o contrato com o motor JASP", () => {
     // Dunn marcado, mas Kruskal desligado: nada vai ao motor
     const orphan = full(ANOVA_DEF, DBC, state({ fixedFactors: ["trat"] }, { kruskal: false, dunn: true }, defaultState(ANOVA_DEF)));
     expect(orphan.postHocTypeDunn).toBe(false);
+  });
+  it("ANOVA bayesiana: modelo aditivo por padrão, interações só se pedidas, semente fixa e opções do prior/BF", () => {
+    const ds1 = ds([col("y", "scale"), col("A", "nominal", 2), col("B", "nominal", 3)]);
+    const o = full(BAYES_ANOVA_DEF, ds1, state({ fixedFactors: ["A", "B"] }, {}, defaultState(BAYES_ANOVA_DEF)));
+    expect(o.modelTerms).toEqual([{ components: ["A"] }, { components: ["B"] }]);
+    expect(o.setSeed).toBe(true);
+    expect(o.seed).toBe(1);
+    expect(o.cauchyPriorScaleFixedEffects).toBe(0.5);
+    expect(o.bayesFactorType).toBe("BF10");
+    expect(o).not.toHaveProperty("interactions");
+    const full2 = full(BAYES_ANOVA_DEF, ds1, state({ fixedFactors: ["A", "B"] }, { interactions: true }, defaultState(BAYES_ANOVA_DEF)));
+    expect(full2.modelTerms).toEqual([{ components: ["A"] }, { components: ["B"] }, { components: ["A", "B"] }]);
+  });
+  it("t bayesiano: prior 0,707, BF10 e hipótese bilateral por padrão; pareado monta `pairs`; grupo precisa de 2 níveis", () => {
+    const d2 = ds([col("y", "scale"), col("z", "scale"), col("g", "nominal", 2)]);
+    const ind = full(BAYES_TTEST_DEF, d2, state({ dependent: ["y"], group: ["g"] }, {}, defaultState(BAYES_TTEST_DEF)));
+    expect(ind).toMatchObject({ dependent: ["y"], group: "g", priorWidth: 0.707, bayesFactorType: "BF10", alternative: "twoSided" });
+    const pair = full(BAYES_PAIRED_TTEST_DEF, d2, state({ first: ["y"], second: ["z"] }, {}, defaultState(BAYES_PAIRED_TTEST_DEF)));
+    expect(pair.pairs).toEqual([["y", "z"]]);
+    expect(pair).not.toHaveProperty("first");
+    expect(full(BAYES_ONESAMPLE_TTEST_DEF, d2, state({ dependent: ["y"] }, { testValue: 5 }, defaultState(BAYES_ONESAMPLE_TTEST_DEF))).testValue).toBe(5);
+    const bad = ds([col("y", "scale"), col("g", "nominal", 3)]);
+    expect(problems(BAYES_TTEST_DEF, bad, resolveState(BAYES_TTEST_DEF, bad, state({ dependent: ["y"], group: ["g"] }, {}, defaultState(BAYES_TTEST_DEF))))[0]).toMatch(/exatamente 2 grupos/);
   });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);

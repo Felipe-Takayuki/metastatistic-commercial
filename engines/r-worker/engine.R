@@ -7,7 +7,8 @@ MODULES_DIR <- Sys.getenv("JASP_MODULES_DIR")
 # Lista FECHADA do que a plataforma expõe: análise -> módulo JASP que a implementa.
 ANALYSIS_MODULE <- c(
   TTestIndependentSamples = "jaspTTests", TTestPairedSamples = "jaspTTests", TTestOneSample = "jaspTTests",
-  Anova = "jaspAnova", Ancova = "jaspAnova",
+  TTestBayesianIndependentSamples = "jaspTTests", TTestBayesianPairedSamples = "jaspTTests", TTestBayesianOneSample = "jaspTTests",
+  Anova = "jaspAnova", Ancova = "jaspAnova", AnovaBayesian = "jaspAnova",
   Correlation = "jaspRegression", RegressionLinear = "jaspRegression", RegressionLogistic = "jaspRegression",
   ContingencyTables = "jaspFrequencies",
   Descriptives = "jaspDescriptives"
@@ -35,7 +36,7 @@ WARM_SPECS <- list(
 REQ <- new.env()   # estado da requisição em curso: modelTerms pedido e nomes originais das variáveis
 NAME_OPTIONS <- c("dependent", "fixedFactors", "randomFactors", "covariates", "factors")
 # Só onde o problema existe (Anova e Ancova: controle de interação com fatores). No RegressionLinear/RegressionLogistic, `modelTerms` é uma lista de MODELOS (blocos) e o QML a respeita.
-PATCH_MODEL_TERMS <- c("Anova", "Ancova")
+PATCH_MODEL_TERMS <- c("Anova", "Ancova", "AnovaBayesian")
 
 restore_model_terms <- function(parsed) {
   want <- REQ$modelTerms
@@ -69,6 +70,10 @@ install_bridge_patch <- function() {
 # (as demais análises seguem); o resultado por módulo volta ao supervisor, que registra no log.
 init_jasp <- function() {
   setPkgOption("module.dirs", file.path(MODULES_DIR, unique(ANALYSIS_MODULE)))
+  # Os módulos já foram instalados na imagem (install-modules.sh). Sem isto, o jaspTools reinstala TODOS a partir do fonte
+  # em cada partida do motor: lento (~minutos com 2 workers) e, se a instalação for interrompida/falhar, deixa o módulo
+  # apagado no contêiner (visto na 6.6: "The installation of jaspAnova failed").
+  setPkgOption("reinstall.modules", FALSE)
   install_bridge_patch()
   vapply(names(WARM_SPECS), function(a) {
     tryCatch({

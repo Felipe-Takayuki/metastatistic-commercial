@@ -67,6 +67,16 @@ pr <- read.csv(file.path(dir, "pressupostos.csv")); pr$grupo <- factor(pr$grupo)
 lev <- function(ctr) { z <- abs(pr$y - ave(pr$y, pr$grupo, FUN = ctr)); a <- anova(lm(z ~ pr$grupo)); list(F = a$`F value`[1], p = a$`Pr(>F)`[1], df1 = a$Df[1], df2 = a$Df[2]) }
 sw <- shapiro.test(resid(lm(y ~ grupo, data = pr)))   # o JASP testa os RESÍDUOS no t independente
 out$pressupostos <- list(levene_mean = lev(mean), levene_median = lev(median), shapiro_resid = list(W = unname(sw$statistic), p = sw$p.value))
+# --- catálogo 6.6: versões bayesianas (pacote BayesFactor: prior Cauchy de largura 0,707; efeitos fixos da ANOVA r = 0,5) ---
+suppressMessages(library(BayesFactor)); set.seed(1)
+bfv <- function(x) extractBF(x)$bf
+tt$group <- factor(tt$group)
+eb <- extractBF(anovaBF(produtividade ~ tratamento + bloco, data = d, rscaleFixed = 0.5))
+out$bayes <- list(indep = bfv(ttestBF(formula = score ~ group, data = tt, rscale = 0.707)),
+  one = bfv(ttestBF(d$produtividade, mu = 200, rscale = 0.707)),
+  one_nullint = bfv(ttestBF(d$produtividade, mu = 200, rscale = 0.707, nullInterval = c(0, Inf))),
+  paired = bfv(ttestBF(d$altura, d$diametro, paired = TRUE, rscale = 0.707)),
+  anova = list(models = rownames(eb), bf = eb$bf))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")
