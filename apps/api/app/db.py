@@ -1,0 +1,23 @@
+"""Conexão SQLite compartilhada (metadados de datasets e relatórios). Uma conexão por operação."""
+import sqlite3
+
+from .config import settings
+
+_SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS datasets (
+         id TEXT PRIMARY KEY, name TEXT NOT NULL, table_name TEXT NOT NULL UNIQUE,
+         n_rows INTEGER NOT NULL, columns_json TEXT NOT NULL, created_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS reports (
+         id TEXT PRIMARY KEY, title TEXT NOT NULL, blocks_json TEXT NOT NULL,
+         version INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+)
+
+
+def connect() -> sqlite3.Connection:
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    (settings.data_dir / "datasets").mkdir(exist_ok=True)
+    con = sqlite3.connect(settings.data_dir / "meta.db")
+    con.row_factory = sqlite3.Row
+    for ddl in _SCHEMA:
+        con.execute(ddl)
+    return con

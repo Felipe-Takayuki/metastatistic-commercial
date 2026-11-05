@@ -1,0 +1,39 @@
+# Workers R: cada contêiner = um supervisor leve + um motor JASP filho; atende UMA análise por vez.
+# Para mais paralelismo, copie o serviço (r-worker-3…) e acrescente a URL em R_WORKER_URLS da API.
+x-r-worker: &r-worker
+  build: ./engines/r-worker
+  image: metastatistic-r-worker:spike
+  init: true                  # tini como PID 1: repassa sinais e recolhe processos órfãos
+  restart: unless-stopped     # se o supervisor morrer, o contêiner volta
+  mem_limit: 1536m            # o motor com 4 módulos JASP usa ~560 MB em repouso; estouro mata o motor (detectado e recriado), não a máquina
+  cpus: 2
+  environment:
+    ANALYSIS_TIMEOUT_S: "60"
+  volumes:
+    - datasets:/data:ro       # os workers só leem os Parquets
+
+services:
+  r-worker-1:
+    <<: *r-worker
+    ports: ["8001:8000"]      # exposto só para os testes de integração falarem direto com um worker
+  r-worker-2:
+    <<: *r-worker
+
+  api:
+    build: ./apps/api
+    environment:
+      R_WORKER_URLS: http://r-worker-1:8000,http://r-worker-2:8000
+      ANALYSIS_TIMEOUT_S: "60"
+      DATA_DIR: /data
+    ports: ["8000:8000"]
+    volumes:
+      - datasets:/data
+    depends_on: [r-worker-1, r-worker-2]
+
+  web:
+    build: ./apps/web
+    ports: ["8080:80"]
+    depends_on: [api]
+
+volumes:
+  datasets:

@@ -1,0 +1,1 @@
+{"analysis": "TTestIndependentSamples", "options": {"dependent": "score", "group": "group", "student": true, "welch": true}}
