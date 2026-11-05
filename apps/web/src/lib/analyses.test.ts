@@ -201,6 +201,21 @@ describe("toOptions — o contrato com o motor JASP", () => {
     expect(mixed.postHocTerms).toEqual(["momento"]);
     expect(mixed.effectSizeEstimates).toBe(true);
   });
+  it("ANOVA de medidas repetidas: Friedman desligado por padrão; ligado vale para o fator intra, e Conover só com ele", () => {
+    const d3 = ds([col("t1", "scale"), col("t2", "scale"), col("grupo", "nominal", 2)]);
+    const st = (values = {}) => state({ repeatedMeasuresCells: ["t1", "t2"], betweenSubjectFactors: ["grupo"] }, values, defaultState(RM_ANOVA_DEF));
+    const off = full(RM_ANOVA_DEF, d3, st());
+    expect(off.friedmanWithinFactor).toEqual([]);
+    expect(off.conoverTest).toBe(false);
+    const on = full(RM_ANOVA_DEF, d3, st({ friedman: true, conover: true, factorName: "visita" }));
+    expect(on.friedmanWithinFactor).toEqual(["visita"]);
+    expect(on.conoverTest).toBe(true);
+    expect(on).not.toHaveProperty("friedmanBetweenFactor");   // com agrupamento o Conover do JASP devolve NaN
+    expect(full(RM_ANOVA_DEF, d3, st({ friedman: false, conover: true })).conoverTest).toBe(false);   // Conover órfão não vai ao motor
+    for (const k of ["friedman", "conover"]) expect(on).not.toHaveProperty(k);
+    const back = fromOptions(RM_ANOVA_DEF, toOptions(RM_ANOVA_DEF, st({ friedman: true, conover: true })));
+    expect(back.values).toMatchObject({ friedman: true, conover: true });
+  });
   it("ANOVA de medidas repetidas: exige 2+ medidas, nome do fator preenchido e diferente das colunas; ida e volta preserva nome e post hoc", () => {
     const d3 = ds([col("t1", "scale"), col("t2", "scale"), col("grupo", "nominal", 2)]);
     const pr = (cells: string[], values = {}) => problems(RM_ANOVA_DEF, d3, resolveState(RM_ANOVA_DEF, d3, state({ repeatedMeasuresCells: cells, betweenSubjectFactors: [] }, values, defaultState(RM_ANOVA_DEF))));

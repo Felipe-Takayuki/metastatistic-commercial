@@ -290,6 +290,22 @@ try {
   check("medidas repetidas: nome do fator vazio bloqueia a execução", await page.getByRole("button", { name: "Executar análise" }).isDisabled());
   await page.getByLabel("Nome do fator (ex.: tempo)").fill("visita");
 
+  // --- Friedman + Conover (alternativa não paramétrica; dados com empates e sobreposição) ---
+  await upload("e2e-friedman.csv", readFileSync(join(FIX, "friedman.csv"), "utf8"));
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await pickAnalysis("ANOVA de medidas repetidas");
+  for (const c of ["c1", "c2", "c3"]) await page.getByRole("checkbox", { name: new RegExp(`^${c}$`) }).check();
+  check("Friedman: desligado por padrão e sem a opção de Conover visível", !(await page.getByLabel(/^Teste de Friedman/).isChecked()) && (await page.getByLabel(/Post hoc de Conover/).count()) === 0);
+  await page.getByLabel(/^Teste de Friedman/).check();
+  await page.getByLabel(/Post hoc de Conover/).check();
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText(/Conover/).first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  t = await resultText();
+  const FR = REF.friedman;
+  check("Friedman: χ², gl, p e W de Kendall iguais ao R", has(t, "Friedman", f3(FR.chi), p3(FR.p), f3(FR.kendall)), t.slice(0, 900));
+  check("Conover: t (do 1º par) e p iguais ao R, com gl = (n−1)(k−1) = 38", has(t, "Conover", f3(Math.abs(FR.conover[0].t)), f3(FR.conover[0].p).replace(/^0/, ""), " 38 "), t.slice(0, 1400));
+  await shot("a2e-friedman");
+
   // --- Qui-quadrado: dataset derivado com CASE (faixa) ---
   await upload("e2e-faixa-src.csv", readFileSync(join(FIX, "ttest.csv"), "utf8"));
   // dados que cumprem os pressupostos (Levene p ≈ ,06; Shapiro p ≈ ,22): a nota informa que não há alerta

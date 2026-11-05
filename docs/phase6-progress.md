@@ -4,7 +4,7 @@ Pedidos do usuário ainda abertos:
 - [ ] **Teste z de duas amostras** (comparar duas médias com σ conhecido) — **não existe no JASP instalado**; pedido em 2026-11-05. O teste z de **uma** amostra já está na 6.7 (opção `zTest` do t de uma amostra).
 - [ ] **Teste z de proporções** (uma e duas amostras) — não existe no JASP (o mais próximo é o `BinomialTest` exato, jaspFrequencies). Decisão pendente: expor o binomial/ABTest do JASP ou implementar o z fora do JASP (quebra a regra "motor = JASP real", ver memória do projeto).
 
-Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9; faltam vários fatores intra-sujeito e ANOVA de Friedman); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
+Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9 e Friedman na 6.10; faltam vários fatores intra-sujeito); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
 
 ---
 
@@ -222,7 +222,26 @@ Catálogo: **15 análises** (grupo "Comparação de médias"). `AnovaRepeatedMea
 `vitest` 179 (3 novos + ordem do catálogo), `pytest` 189 (3 novos), `e2e:all` 6 suítes verdes (análises: ordem dos níveis, F/GG/HF/Mauchly iguais ao R, nota de esfericidade, delineamento misto, post hoc, nome do fator vazio).
 
 ## Pendências
-- **Só um fator intra-sujeito** (o JASP aceita vários, com níveis combinados na ordem das colunas); sem contrastes, médias marginais, gráficos de perfil, teste de Levene para os grupos nem ANOVA não paramétrica de Friedman (`friedmanBetweenFactor`/`conoverTest` existem no JASP).
+- **Só um fator intra-sujeito** (o JASP aceita vários, com níveis combinados na ordem das colunas); sem contrastes, médias marginais, gráficos de perfil nem teste de Levene para os grupos (o Friedman foi feito na 6.10).
 - O seletor de fatores entre-sujeitos oferece colunas de identificação (ex.: `sujeito`, 24 níveis); vale esconder colunas com tantos níveis quanto linhas.
 - Formato longo (uma linha por medida) não é suportado: exige pivotar o dataset (SQL, aba Consulta SQL → "Salvar como dataset").
+
+---
+
+# Fatia 6.10 — teste de Friedman e post hoc de Conover ✅ (sem mudança no motor)
+
+Friedman é **opção da `AnovaRepeatedMeasures`** (`friedmanWithinFactor`, `conoverTest`), então entra no formulário da 6.9, na seção "Não paramétrico" (nenhum rebuild do worker).
+
+- **Teste de Friedman** (desligado por padrão): χ², gl, p e W de Kendall; **post hoc de Conover** (Bonferroni e Holm) só aparece com o Friedman ligado. `conover` e `friedman` são toggles locais; `derive` só envia `conoverTest` se o Friedman estiver ligado (sem opção órfã).
+- **Ignora os grupos**: com o fator entre-sujeitos como `friedmanBetweenFactor` o Conover do JASP devolve `NaN` (verificado), então o teste vale para todos os sujeitos juntos (o rótulo avisa). Os fatores entre-sujeitos continuam valendo na ANOVA paramétrica da mesma execução.
+- Conferido contra o R (`friedman.csv`: 20 sujeitos, 3 condições, empates): `friedman.test` (χ², gl, p), W = χ²/(n(k−1)), somas de postos, e o Conover pela fórmula de Conover (1999): t = (R_i − R_j)/√(2(n·ΣΣr² − ΣR_j²)/((n−1)(k−1))), gl = (n−1)(k−1), p bilateral + Bonferroni/Holm.
+- Descoberta: na fixture degenerada da 6.9 (todo sujeito t1 < t2 < t3) o JASP dá W = 1 e t = ∞ no Conover; por isso o Friedman tem fixture própria.
+- **Descoberta de produto**: colunas de inteiros com poucos valores distintos são inferidas como **ordinais** (aqui `c1`, 8 valores) e não aparecem como medidas repetidas (que exigem escalar). A fixture usa meio ponto (mesmos postos) para ficar escalar.
+
+## Verificado
+`vitest` 180 (1 novo), `pytest` 190 (1 novo), `e2e:all` 6 suítes verdes (análises: Friedman e Conover pela interface com os números do R).
+
+## Pendências
+- **Dados ordinais inteiros (Likert) não entram como medidas repetidas**, e é exatamente o público do Friedman. Resolver exige aceitar `ordinal` no slot e tratar no motor (`load_dataset` converte ordinais em fator; para o Friedman/RM deveriam ir como número) ou orientar o usuário a marcar a coluna como escalar na aba Dados. Hoje a mensagem só aparece quando não há nenhuma candidata.
+- Friedman por grupo (estratificado) não é suportado.
 

@@ -109,6 +109,13 @@ pv <- vapply(tp, function(x) x$p.value, numeric(1))
 out$rm$posthoc <- lapply(seq_along(prs), function(i) list(a = prs[[i]][1], b = prs[[i]][2], estimate = unname(tp[[i]]$estimate), t = unname(tp[[i]]$statistic), df = unname(tp[[i]]$parameter),
   se = unname(tp[[i]]$stderr), holm = p.adjust(pv, "holm")[i], bonferroni = p.adjust(pv, "bonferroni")[i]))
 out$rm$one$partial_eta <- t1$ss / (t1$ss + w1["Residuals", "Sum Sq"])
+# --- catálogo 6.10: Friedman + Conover (friedman.csv: 20 sujeitos, 3 condições, com empates) ---
+fr <- read.csv(file.path(dir, "friedman.csv")); Yf <- as.matrix(fr[, c("c1", "c2", "c3")]); nf <- nrow(Yf); kf <- ncol(Yf)
+ft <- friedman.test(Yf); Rk <- t(apply(Yf, 1, rank)); Rj <- colSums(Rk); A1 <- sum(Rk^2)
+cden <- sqrt(2 * (nf * A1 - sum(Rj^2)) / ((nf - 1) * (kf - 1))); cdf <- (nf - 1) * (kf - 1)
+cp <- combn(kf, 2, simplify = FALSE); cpt <- vapply(cp, function(ij) (Rj[ij[1]] - Rj[ij[2]]) / cden, numeric(1)); cpp <- 2 * pt(-abs(cpt), cdf)
+out$friedman <- list(chi = unname(ft$statistic), df = unname(ft$parameter), p = ft$p.value, kendall = unname(ft$statistic) / (nf * (kf - 1)), rank_sums = unname(Rj),
+  conover = lapply(seq_along(cp), function(i) list(a = colnames(Yf)[cp[[i]][1]], b = colnames(Yf)[cp[[i]][2]], t = cpt[i], df = cdf, p = cpp[i], bonferroni = p.adjust(cpp, "bonferroni")[i], holm = p.adjust(cpp, "holm")[i])))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

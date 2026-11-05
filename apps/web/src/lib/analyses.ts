@@ -469,6 +469,13 @@ export const RM_ANOVA_DEF: AnalysisDef = {
       title: "Comparações múltiplas entre os níveis do fator intra",
       items: [toggle("posthoc", "Comparar os níveis dois a dois", false, { local: true }), toggle("postHocCorrectionHolm", "Holm", true, { showIf: (v) => !!v.posthoc }), toggle("postHocCorrectionBonferroni", "Bonferroni", false, { showIf: (v) => !!v.posthoc })],
     },
+    {
+      title: "Não paramétrico (um teste só, com todos os sujeitos)",
+      items: [
+        toggle("friedman", "Teste de Friedman (alternativa à ANOVA; ignora os grupos)", false, { local: true }),
+        toggle("conover", "Post hoc de Conover (Bonferroni e Holm)", false, { local: true, showIf: (v) => !!v.friedman }),
+      ],
+    },
   ],
   derive: (s) => {
     const name = String(s.values.factorName ?? "").trim();
@@ -480,11 +487,19 @@ export const RM_ANOVA_DEF: AnalysisDef = {
       betweenModelTerms: between.map((b) => ({ components: [b] })),
       effectSizeEstimates: anyEffect,
       postHocTerms: s.values.posthoc ? [name] : [],
+      // Friedman com fator de agrupamento do JASP devolveria NaN no Conover: por isso o teste vale para todos os sujeitos juntos
+      friedmanWithinFactor: s.values.friedman ? [name] : [],
+      conoverTest: !!(s.values.friedman && s.values.conover),
     };
   },
   parse: (o) => {
     const f = Array.isArray(o.repeatedMeasuresFactors) ? (o.repeatedMeasuresFactors[0] as { name?: unknown } | undefined) : undefined;
-    return { factorName: typeof f?.name === "string" ? f.name : "tempo", posthoc: Array.isArray(o.postHocTerms) && o.postHocTerms.length > 0 };
+    return {
+      factorName: typeof f?.name === "string" ? f.name : "tempo",
+      posthoc: Array.isArray(o.postHocTerms) && o.postHocTerms.length > 0,
+      friedman: Array.isArray(o.friedmanWithinFactor) && o.friedmanWithinFactor.length > 0,
+      conover: o.conoverTest === true,
+    };
   },
   check: ({ state }) => {
     const name = String(state.values.factorName ?? "").trim();

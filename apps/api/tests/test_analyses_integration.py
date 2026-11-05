@@ -83,6 +83,7 @@ def data():
     ids["pres"] = upload("e2e-pressupostos.csv", FIX / "pressupostos.csv")["id"]
     ids["tt"] = upload("e2e-ttest.csv", FIX / "ttest.csv")["id"]
     ids["rm"] = upload("e2e-medidas-repetidas.csv", FIX / "medidas_repetidas.csv")["id"]
+    ids["friedman"] = upload("e2e-friedman.csv", FIX / "friedman.csv")["id"]
     src = upload("e2e-faixa-src.csv", FIX / "ttest.csv")
     faixas = derive("e2e-faixas", f'SELECT "group" AS grupo, CASE WHEN score < 9 THEN \'baixo\' WHEN score < 11 THEN \'medio\' ELSE \'alto\' END AS faixa FROM "{src["table_name"]}"')
     ids["faixas"] = faixas["id"]
@@ -506,3 +507,23 @@ def test_repeated_measures_posthoc_effect_size_and_descriptives_match_R(data):
         close(got["holm"], want["holm"]); close(got["bonferroni"], want["bonferroni"])
     close(rm_within(res)[("tempo", "None")]["partialEta"], ref["one"]["partial_eta"])
     assert [r["tempo."] for r in table(res, "tableDescriptives")["data"]] == ["t1", "t2", "t3"]
+
+
+def test_friedman_and_conover_match_R(data):
+    """Friedman é opção da AnovaRepeatedMeasures (`friedmanWithinFactor`); o Conover do JASP segue a fórmula de Conover (1999) com gl = (n−1)(k−1)."""
+    ref = REF["friedman"]
+    opts = {"repeatedMeasuresFactors": [{"name": "cond", "levels": ["c1", "c2", "c3"]}], "repeatedMeasuresCells": ["c1", "c2", "c3"],
+            "withinModelTerms": [{"components": ["cond"]}], "friedmanWithinFactor": ["cond"], "conoverTest": True}
+    res = run("AnovaRepeatedMeasures", data["friedman"], opts)
+    row = table(res, "friedmanTable")["data"][0]
+    assert row["Factor"] == "cond" and row["df"] == ref["df"]
+    close(row["chiSqr"], ref["chi"]); close(row["p"], ref["p"]); close(row["kendall"], ref["kendall"])
+    cv = {(r["(I)"], r["(J)"]): r for r in table(res, "conoverContainer_cond")["data"]}
+    assert len(cv) == len(ref["conover"]) == 3
+    for want in ref["conover"]:
+        got = cv[(want["a"], want["b"])]
+        assert got["df"] == want["df"]
+        close(abs(got["t"]), abs(want["t"])); close(got["pval"], want["p"]); close(got["bonferroni"], want["bonferroni"]); close(got["holm"], want["holm"])
+    assert [cv[("c1", "c2")]["wA"], cv[("c1", "c2")]["wB"]] == [ref["rank_sums"][0], ref["rank_sums"][1]]
+    off = run("AnovaRepeatedMeasures", data["friedman"], {**opts, "friedmanWithinFactor": [], "conoverTest": False})
+    assert not [p for p in tables(off["results"]) if "friedman" in p.lower() or "conover" in p.lower()]
