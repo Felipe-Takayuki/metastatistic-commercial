@@ -98,6 +98,14 @@ export const ANOVA_DEF: AnalysisDef = {
     { title: "Pressupostos", items: [toggle("homogeneityTests", "Homogeneidade de variâncias (Levene)"), toggle("qqPlot", "Gráfico Q-Q dos resíduos")] },
     { title: "Estatísticas", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("effectSizeEtaSquared", "η² (eta ao quadrado)"), toggle("effectSizePartialEtaSquared", "η² parcial"), toggle("effectSizeOmegaSquared", "ω² (ômega ao quadrado)")] },
     { title: "Comparações múltiplas (todos os fatores)", items: [toggle("postHocCorrectionTukey", "Tukey", true), toggle("postHocCorrectionBonferroni", "Bonferroni"), toggle("postHocCorrectionHolm", "Holm")] },
+    {
+      title: "Não paramétrico (um teste por fator)",
+      items: [
+        toggle("kruskal", "Teste de Kruskal-Wallis", false, { local: true }),
+        toggle("kruskalEffect", "Tamanho de efeito (ε² e η² de postos)", false, { local: true, showIf: (v) => !!v.kruskal }),
+        toggle("dunn", "Post hoc de Dunn (Bonferroni e Holm)", false, { local: true, showIf: (v) => !!v.kruskal }),
+      ],
+    },
   ],
   derive: (s) => {
     const f = s.vars.fixedFactors;
@@ -105,11 +113,22 @@ export const ANOVA_DEF: AnalysisDef = {
     if (s.values.interactions) for (const combo of interactionTerms(f)) terms.push({ components: combo });
     const anyEffect = !!(s.values.effectSizeEtaSquared || s.values.effectSizePartialEtaSquared || s.values.effectSizeOmegaSquared);
     const anyPostHoc = !!(s.values.postHocCorrectionTukey || s.values.postHocCorrectionBonferroni || s.values.postHocCorrectionHolm);
-    return { modelTerms: terms, effectSizeEstimates: anyEffect, postHocTerms: anyPostHoc ? f : [] };
+    const kw = !!s.values.kruskal;
+    return {
+      modelTerms: terms, effectSizeEstimates: anyEffect, postHocTerms: anyPostHoc ? f : [],
+      kruskalWallisFactors: kw ? f : [],
+      kruskalEffectSizeEstimates: kw && !!s.values.kruskalEffect, kruskalEpsilon: true, kruskalEta: true,
+      postHocTypeDunn: kw && !!s.values.dunn,
+    };
   },
   parse: (o) => {
     const terms = Array.isArray(o.modelTerms) ? (o.modelTerms as { components?: unknown[] }[]) : [];
-    return { interactions: terms.some((t) => Array.isArray(t.components) && t.components.length > 1) };
+    return {
+      interactions: terms.some((t) => Array.isArray(t.components) && t.components.length > 1),
+      kruskal: Array.isArray(o.kruskalWallisFactors) && o.kruskalWallisFactors.length > 0,
+      kruskalEffect: o.kruskalEffectSizeEstimates === true,
+      dunn: o.postHocTypeDunn === true,
+    };
   },
   check: ({ dataset, state }) =>
     state.vars.fixedFactors.flatMap((name) => {
@@ -256,6 +275,7 @@ export const DESCRIPTIVES_DEF: AnalysisDef = {
         { type: "number", key: "meanCiLevel", label: "Nível de confiança", default: 0.95, min: 0.5, max: 0.999, step: 0.01, showIf: (v) => !!v.meanCi },
       ],
     },
+    { title: "Tabelas", items: [toggle("frequencyTables", "Tabelas de frequência (variáveis categóricas)")] },
     { title: "Gráficos", items: [toggle("distributionPlots", "Distribuição (histograma)"), toggle("boxPlot", "Boxplot"), toggle("qqPlot", "Gráfico Q-Q")] },
   ],
   check: ({ state }) => {
@@ -286,7 +306,7 @@ export const ANCOVA_DEF: AnalysisDef = {
     const anyEffect = !!(s.values.effectSizeEtaSquared || s.values.effectSizePartialEtaSquared || s.values.effectSizeOmegaSquared);
     return { modelTerms: terms, effectSizeEstimates: anyEffect };
   },
-  parse: ANOVA_DEF.parse,
+  parse: (o) => ({ interactions: ANOVA_DEF.parse!(o).interactions }),
   check: ANOVA_DEF.check,
 };
 

@@ -62,3 +62,33 @@ Com a 6.1 o catálogo tinha **8 análises**; a 6.2 (seção final) levou a **10*
 - `AnalysisSession` (`lib/analyses.ts`: análise escolhida, opções de cada análise, última execução) agora vive no `App`, **por dataset**; `AnalysisTab` recebe `session` + `onSession`. Trocar entre Dados / Consulta SQL / Análise, ou entre datasets, não perde nada; o resultado reaparece (vem do cache da API).
 - e2e (`analyses.mjs`): após a regressão linear, vai a "Consulta SQL" e volta, e confere análise selecionada, variáveis marcadas e resultado.
 - Verificado: `typecheck` e `vitest` (138) verdes. **O e2e novo NÃO foi executado** (Docker parado nesta sessão).
+
+---
+
+# Fatia 6.4 — Kruskal-Wallis, post hoc de Dunn e tabelas de frequência ✅
+
+Sem mudança no motor (nada de rebuild do worker): os dois recursos já existem no JASP instalado, como **opções de funções já registradas**.
+
+| Recurso | Onde | Opções JASP |
+|---|---|---|
+| **Kruskal-Wallis** (um teste por fator) | seção "Não paramétrico" da **ANOVA** | `kruskalWallisFactors` (= os fatores), `kruskalEffectSizeEstimates` + `kruskalEpsilon`/`kruskalEta`, `postHocTypeDunn` |
+| **Post hoc de Dunn** (Bonferroni e Holm) | idem | `postHocTypeDunn` |
+| **Tabelas de frequência** | **Estatísticas descritivas** (seção "Tabelas") | `frequencyTables` (variáveis nominais/ordinais; o seletor já aceitava essas) |
+
+- Front: `kruskal`, `kruskalEffect` e `dunn` são toggles **locais**; `derive` monta as opções reais e só envia Dunn/efeito se o Kruskal estiver ligado (evita opção órfã). `parse` recupera os três de blocos salvos (ida e volta testada). A ANCOVA **não** tem Kruskal (o JASP só o oferece na ANOVA).
+- A tabela de frequência do JASP termina com as linhas **Missing** e **Total**.
+
+## Conferido contra o R puro
+- `kruskal.test`: H, gl, p; ε² = H/(N−1) e η² de postos = (H−k+1)/(N−k) (fórmulas conferidas com a saída do JASP).
+- Dunn: z, p, Bonferroni e Holm dos 28 pares, com a fórmula de Dunn **com correção de empates**, calculada em R.
+- Frequência: n, % e % acumulada de uma coluna categórica derivada por SQL.
+
+## Verificado
+`pytest` 180 (3 novos), `vitest` 141 (3 novos), `e2e:all` = 6 suítes verdes (a de análises cobre Kruskal+Dunn e a tabela de frequência pela interface).
+Armadilha do e2e: `run()` espera a primeira `table.apa-table`, que já pode ser a da execução ANTERIOR; ao trocar só uma opção, esperar por um texto próprio do novo resultado.
+
+## Pendências
+- Kruskal-Wallis só como parte da ANOVA (sem entrada própria no seletor; a tabela da ANOVA aparece junto).
+- Sem gráficos de frequência (barras) nem frequências cruzadas além do qui-quadrado.
+- **Verificação automática de pressupostos** com avisos na saída continua pendente.
+

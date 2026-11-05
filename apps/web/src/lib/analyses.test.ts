@@ -119,6 +119,29 @@ describe("toOptions — o contrato com o motor JASP", () => {
     expect(o.effectSizeEstimates).toBe(false);
     expect(o).not.toHaveProperty("interactions"); // valor só da interface não vaza para o motor
   });
+  it("ANOVA: Kruskal-Wallis desligado por padrão; ligado, vale para todos os fatores e Dunn/efeito só com ele", () => {
+    const off = full(ANOVA_DEF, DBC, state({ fixedFactors: ["trat", "bloco"] }, {}, defaultState(ANOVA_DEF)));
+    expect(off.kruskalWallisFactors).toEqual([]);
+    expect(off.postHocTypeDunn).toBe(false);
+    expect(off.kruskalEffectSizeEstimates).toBe(false);
+    for (const k of ["kruskal", "kruskalEffect", "dunn"]) expect(off).not.toHaveProperty(k); // só da interface
+    const on = full(ANOVA_DEF, DBC, state({ fixedFactors: ["trat", "bloco"] }, { kruskal: true, kruskalEffect: true, dunn: true }, defaultState(ANOVA_DEF)));
+    expect(on.kruskalWallisFactors).toEqual(["trat", "bloco"]);
+    expect(on.kruskalEffectSizeEstimates).toBe(true);
+    expect(on.kruskalEpsilon).toBe(true);
+    expect(on.postHocTypeDunn).toBe(true);
+    // Dunn marcado, mas Kruskal desligado: nada vai ao motor
+    const orphan = full(ANOVA_DEF, DBC, state({ fixedFactors: ["trat"] }, { kruskal: false, dunn: true }, defaultState(ANOVA_DEF)));
+    expect(orphan.postHocTypeDunn).toBe(false);
+  });
+  it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
+    expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);
+  });
+  it("Descritivas: tabelas de frequência desligadas por padrão e enviadas ao motor quando marcadas", () => {
+    const ds1 = ds([col("g", "nominal", 3)]);
+    expect(full(DESCRIPTIVES_DEF, ds1, state({ variables: ["g"] }, {}, defaultState(DESCRIPTIVES_DEF))).frequencyTables).toBe(false);
+    expect(full(DESCRIPTIVES_DEF, ds1, state({ variables: ["g"] }, { frequencyTables: true }, defaultState(DESCRIPTIVES_DEF))).frequencyTables).toBe(true);
+  });
   it("ANOVA: interações geradas por tamanho (principais, 2 a 2, 3 a 3)", () => {
     const o = full(ANOVA_DEF, ds([col("y", "scale"), col("A", "nominal", 2), col("B", "nominal", 2), col("C", "nominal", 2)]),
       state({ fixedFactors: ["A", "B", "C"] }, { interactions: true }, defaultState(ANOVA_DEF)));
@@ -149,7 +172,7 @@ describe("toOptions — o contrato com o motor JASP", () => {
 describe("fromOptions — recuperar um bloco salvo", () => {
   const cases: [string, Parameters<typeof resolveState>[0], FormState][] = [
     ["t-test", TTEST_DEF, state({ dependent: ["prod"], group: ["grupo"] }, { welch: false, mannWhitneyU: true }, defaultState(TTEST_DEF))],
-    ["ANOVA", ANOVA_DEF, state({ dependent: ["prod"], fixedFactors: ["trat", "bloco"] }, { interactions: true, effectSizeOmegaSquared: true, postHocCorrectionHolm: true }, defaultState(ANOVA_DEF))],
+    ["ANOVA", ANOVA_DEF, state({ dependent: ["prod"], fixedFactors: ["trat", "bloco"] }, { interactions: true, effectSizeOmegaSquared: true, postHocCorrectionHolm: true, kruskal: true, kruskalEffect: true, dunn: true }, defaultState(ANOVA_DEF))],
     ["correlação", CORRELATION_DEF, state({ variables: ["prod", "altura"] }, { kendallsTauB: true, ci: true, ciLevel: 0.9, alternative: "greater" }, defaultState(CORRELATION_DEF))],
     ["regressão", REGRESSION_DEF, state({ dependent: ["prod"], covariates: ["altura"], factors: ["grupo"] }, { coefficientCi: true }, defaultState(REGRESSION_DEF))],
     ["qui-quadrado", CONTINGENCY_DEF, state({ rows: ["grupo"], columns: ["regiao"] }, { likelihoodRatio: true, percentagesRow: true }, defaultState(CONTINGENCY_DEF))],

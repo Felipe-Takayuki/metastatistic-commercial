@@ -52,6 +52,16 @@ out$logit <- list(coefs = rownames(sg$coefficients), est = unname(sg$coefficient
   or = unname(exp(coef(gm))), lo_profile = unname(cp[, 1]), hi_profile = unname(cp[, 2]), lo_wald = unname(cw[, 1]), hi_wald = unname(cw[, 2]),
   deviance = deviance(gm), null_deviance = gm$null.deviance, df_resid = gm$df.residual, aic = AIC(gm), bic = BIC(gm), accuracy = mean(predpos == pos), auc = auc,
   obs_alto_pred_alto = sum(!pos & !predpos), obs_alto_pred_baixo = sum(!pos & predpos), obs_baixo_pred_alto = sum(pos & !predpos), obs_baixo_pred_baixo = sum(pos & predpos), n = nrow(d))
+# --- catálogo 6.4: Kruskal-Wallis (+ Dunn com correção de empates, Bonferroni/Holm) e tabela de frequência ---
+kw <- kruskal.test(produtividade ~ tratamento, data = d); N <- nrow(d); k <- nlevels(d$tratamento)
+rk <- rank(d$produtividade); mr <- tapply(rk, d$tratamento, mean); ns <- tapply(rk, d$tratamento, length)
+tie <- sum(table(d$produtividade)^3 - table(d$produtividade)); lv <- levels(d$tratamento)
+dunn <- do.call(rbind, lapply(combn(k, 2, simplify = FALSE), function(ij) { i <- ij[1]; j <- ij[2]
+  z <- (mr[i] - mr[j]) / sqrt((N * (N + 1) / 12 - tie / (12 * (N - 1))) * (1 / ns[i] + 1 / ns[j])); data.frame(contrast = paste(lv[i], "-", lv[j]), z = unname(z), p = 2 * pnorm(-abs(z))) }))
+dunn$bonferroni <- pmin(1, p.adjust(dunn$p, "bonferroni")); dunn$holm <- p.adjust(dunn$p, "holm")
+out$kruskal <- list(H = unname(kw$statistic), df = unname(kw$parameter), p = kw$p.value, epsilon = unname(kw$statistic) / (N - 1),
+  eta = (unname(kw$statistic) - k + 1) / (N - k), dunn = lapply(seq_len(nrow(dunn)), function(i) as.list(dunn[i, ])))
+fq <- table(d$nivel); out$freq <- list(levels = names(fq), n = as.vector(fq), percent = as.vector(fq) / sum(fq) * 100, cumulative = cumsum(as.vector(fq)) / sum(fq) * 100)
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

@@ -81,6 +81,21 @@ try {
   check("ANOVA: sem mensagem de erro do JASP", !/residual df|error/i.test(t));
   await shot("a2-anova");
 
+  // Kruskal-Wallis (opção da ANOVA, um teste por fator) + Dunn; opções dependentes só aparecem com o teste ligado
+  check("Kruskal-Wallis: desligado por padrão e sem opções de efeito/Dunn visíveis",
+    !(await page.getByLabel("Teste de Kruskal-Wallis").isChecked()) && (await page.getByLabel(/Post hoc de Dunn/).count()) === 0);
+  await page.getByLabel("Teste de Kruskal-Wallis").check();
+  await page.getByLabel(/Tamanho de efeito \(ε²/).check();
+  await page.getByLabel(/Post hoc de Dunn/).check();
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText(/Kruskal-Wallis/).first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  t = await resultText();
+  const K = REF.kruskal;
+  check("Kruskal-Wallis: gl e p do fator tratamento iguais ao R", has(t, "Kruskal-Wallis", p3(K.p), f3(K.epsilon).replace(/^0/, "")) || has(t, "Kruskal-Wallis", p3(K.p), f3(K.epsilon)), t.slice(0, 900));
+  check("Dunn: z e p do 1º par iguais ao R", has(t, "1 - 2", f3(K.dunn[0].z), f3(K.dunn[0].p).replace(/^0/, "")) || has(t, "1 - 2", f3(K.dunn[0].z), f3(K.dunn[0].p)), t.slice(0, 1200));
+  await shot("a2k-kruskal");
+  await page.getByLabel("Teste de Kruskal-Wallis").uncheck();
+
   // interação ligada: aparece a linha tratamento ✻ bloco? (1 obs. por célula -> o JASP recusa; só confirmamos que a UI mostra algo)
   // --- Correlação ---
   await pickAnalysis("Correlação");
@@ -190,6 +205,15 @@ try {
   await page.locator(".card table.data tbody tr").first().waitFor();
   await saveAsDataset("e2e-faixas");
   await page.getByRole("tab", { name: "Análise estatística" }).click();
+  // --- tabela de frequência (Descritivas sobre uma coluna categórica) ---
+  await pickAnalysis("Estatísticas descritivas");
+  await page.getByLabel(/^faixa/).check();
+  await page.getByLabel(/Tabelas de frequência/).check();
+  await run();
+  t = await resultText();
+  const nFaixa = readFileSync(join(FIX, "ttest.csv"), "utf8").split("\n").map((l) => l.trim()).filter(Boolean).length - 1;
+  check("frequência: níveis alto/baixo/medio e Total igual ao nº de linhas", has(t, "alto", "baixo", "medio", "Total", String(nFaixa)), t.slice(0, 600));
+  await shot("a3e-frequencias");
   await pickAnalysis("Qui-quadrado (tabela de contingência)");
   check("Qui-quadrado: linhas e colunas escolhidas por padrão (2 categóricas)",
     (await page.getByLabel(/^Linhas/).inputValue()) !== "" && (await page.getByLabel(/^Colunas/).inputValue()) !== "");

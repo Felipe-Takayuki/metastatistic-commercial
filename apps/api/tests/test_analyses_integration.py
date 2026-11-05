@@ -334,3 +334,37 @@ def test_endurance_many_distinct_concurrent_analyses_never_hang(data):
         times = list(ex.map(one, jobs))
     assert len(times) >= 48 and max(times) < 30, f"mais lenta: {max(times):.1f}s"
 
+
+
+def test_kruskal_wallis_and_dunn_match_R(data):
+    """Kruskal-Wallis é opção da Anova (`kruskalWallisFactors`); o Dunn do JASP usa a correção de empates (conferido na fórmula em R)."""
+    ref = REF["kruskal"]
+    res = run("Anova", data["dbc"], {"dependent": "produtividade", "fixedFactors": ["tratamento"], "modelTerms": [{"components": ["tratamento"]}],
+                                     "kruskalWallisFactors": ["tratamento"], "kruskalEffectSizeEstimates": True, "kruskalEpsilon": True, "kruskalEta": True, "postHocTypeDunn": True})
+    row = table(res, "kruskalTable")["data"][0]
+    assert row["factor"] == "tratamento" and row["df"] == ref["df"]
+    close(row["statistic"], ref["H"]); close(row["p"], ref["p"]); close(row["epsiSqr"], ref["epsilon"]); close(row["etaSqr"], ref["eta"])
+    dunn = {r["contrast"]: r for r in table(res, "dunnContainer_tratamento")["data"]}
+    assert len(dunn) == len(ref["dunn"]) == 28
+    for want in ref["dunn"]:
+        got = dunn[want["contrast"]]
+        close(got["z"], want["z"]); close(got["pval"], want["p"]); close(got["bonferroni"], want["bonferroni"]); close(got["holm"], want["holm"])
+
+
+def test_kruskal_wallis_is_off_unless_asked(data):
+    res = run("Anova", data["dbc"], {"dependent": "produtividade", "fixedFactors": ["tratamento"], "modelTerms": [{"components": ["tratamento"]}],
+                                     "kruskalWallisFactors": [], "postHocTypeDunn": False})
+    assert not [p for p in tables(res["results"]) if "kruskal" in p.lower()]
+
+
+def test_descriptives_frequency_table_matches_R(data):
+    ref = REF["freq"]
+    res = run("Descriptives", data["nivel"], {"variables": ["nivel"], "splitBy": [], "valid": True, "frequencyTables": True})
+    all_rows = table(res, "tables_nivel")["data"]
+    assert [r["Level"] for r in all_rows[-2:]] == ["Missing", "Total"]   # o JASP fecha a tabela com ausentes e total
+    rows = all_rows[:-2]
+    assert [r["Level"] for r in rows] == ref["levels"]
+    assert all_rows[-2]["Frequency"] == 0 and all_rows[-1]["Frequency"] == sum(ref["n"])
+    for r, n, pc, cu in zip(rows, ref["n"], ref["percent"], ref["cumulative"]):
+        assert r["Frequency"] == n
+        close(r["Percent"], pc); close(r["Valid Percent"], pc); close(r["Cumulative Percent"], cu)
