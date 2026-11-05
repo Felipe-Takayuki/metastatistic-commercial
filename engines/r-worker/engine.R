@@ -119,12 +119,24 @@ simplify_deep <- function(x) {
   x
 }
 
+# jaspTools serializa as opções com toJSON(auto_unbox = TRUE), que transforma um vetor de comprimento 1 em ESCALAR:
+# `components: ["altura"]` chegava ao QML como `"altura"` e a regressão (linear e logística) com UM só preditor ficava com
+# o modelo VAZIO (R² = 0, só o intercepto), sem erro. I() (AsIs) impede o desembrulho. Só os `components` dos termos de modelo.
+protect_components <- function(x) {
+  if (!is.list(x)) return(x)
+  for (i in seq_along(x)) {
+    if (identical(names(x)[i], "components") && is.atomic(x[[i]]) && length(x[[i]]) == 1) x[[i]] <- I(x[[i]])
+    else x[[i]] <- protect_components(x[[i]])
+  }
+  x
+}
+
 # Mescla opções do pedido sobre os defaults do QML da análise.
 build_options <- function(analysis, overrides) {
   opts <- analysisOptions(analysis)
   unknown <- setdiff(names(overrides), valid_option_names(analysis, opts))
   if (length(unknown)) bad_request(sprintf("unknown option(s) for %s: %s", analysis, paste(unknown, collapse = ", ")))
-  for (nm in names(overrides)) opts[[nm]] <- simplify_deep(overrides[[nm]])
+  for (nm in names(overrides)) opts[[nm]] <- protect_components(simplify_deep(overrides[[nm]]))
   opts
 }
 

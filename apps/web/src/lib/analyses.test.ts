@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANALYSIS_GROUPS, groupedAnalyses, RM_ANOVA_DEF, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANALYSIS_GROUPS, groupedAnalyses, isNumericDtype, ordinalAsScale, RM_ANOVA_DEF, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -228,6 +228,38 @@ describe("toOptions — o contrato com o motor JASP", () => {
     expect(toOptions(RM_ANOVA_DEF, fromOptions(RM_ANOVA_DEF, options))).toEqual(options);
     expect(fromOptions(RM_ANOVA_DEF, options).values).toMatchObject({ factorName: "visita", posthoc: true });
     expect(fromOptions(RM_ANOVA_DEF, options).vars.repeatedMeasuresCells).toEqual(["t2", "t1"]);
+  });
+  it("ordinal NUMÉRICA (Likert) vale onde se pede escalar; ordinal de texto, nominal numérica e campos de fator ficam como estavam", () => {
+    const likert: Column = { name: "likert", dtype: "BIGINT", measurement: "ordinal", n_distinct: 5 };
+    const rotulos: Column = { name: "rotulos", dtype: "VARCHAR", measurement: "ordinal", n_distinct: 3 };
+    const codigo: Column = { name: "codigo", dtype: "BIGINT", measurement: "nominal", n_distinct: 4 };
+    const dec: Column = { name: "nota", dtype: "DECIMAL(21,1)", measurement: "ordinal", n_distinct: 6 };
+    const real: Column = col("peso", "scale");
+    const d = ds([likert, rotulos, codigo, dec, real, col("grupo", "nominal", 2)]);
+    const dep = ANOVA_DEF.slots[0], factors = ANOVA_DEF.slots[1];
+    expect(candidates(dep, d).map((c) => c.name)).toEqual(["peso", "likert", "nota"]);   // escalar de verdade primeiro; sem texto nem nominal
+    expect(ordinalAsScale(dep, likert)).toBe(true);
+    expect(ordinalAsScale(dep, rotulos)).toBe(false);
+    expect(ordinalAsScale(dep, codigo)).toBe(false);
+    expect(candidates(factors, d).map((c) => c.name)).toEqual(["likert", "rotulos", "codigo", "nota", "grupo"]);   // fator: como antes
+    expect(candidates(factors, d).every((c) => !ordinalAsScale(factors, c))).toBe(true);
+    // slots que já aceitam ordinal (correlação, descritivas) não são afetados
+    expect(candidates(CORRELATION_DEF.slots[0], d).map((c) => c.name)).toEqual(["likert", "rotulos", "nota", "peso"]);
+    expect(isNumericDtype("DECIMAL(21,1)")).toBe(true);
+    expect(isNumericDtype("VARCHAR")).toBe(false);
+  });
+  it("Likert vira medida repetida, covariável e variável dependente; o preenchimento automático prefere a escalar genuína", () => {
+    const likert: Column = { name: "c1", dtype: "BIGINT", measurement: "ordinal", n_distinct: 8 };
+    const d = ds([likert, col("c2", "scale"), col("c3", "scale")]);
+    const rm = resolveState(RM_ANOVA_DEF, d, state({ repeatedMeasuresCells: ["c1", "c2", "c3"], betweenSubjectFactors: [] }, {}, defaultState(RM_ANOVA_DEF)));
+    expect(rm.vars.repeatedMeasuresCells).toEqual(["c1", "c2", "c3"]);   // c1 não é descartada
+    expect(problems(RM_ANOVA_DEF, d, rm)).toEqual([]);
+    const t1 = resolveState(TTEST_DEF, ds([likert, col("c2", "scale"), col("g", "nominal", 2)]), defaultState(TTEST_DEF));
+    expect(t1.vars.dependent).toEqual(["c2"]);   // c1 (ordinal) aparece depois da escalar: autofill pega c2
+    const only = resolveState(TTEST_DEF, ds([likert, col("g", "nominal", 2)]), defaultState(TTEST_DEF));
+    expect(only.vars.dependent).toEqual(["c1"]);   // sem escalar, a Likert serve (antes: "Nenhuma coluna escalar disponível")
+    const reg = resolveState(REGRESSION_DEF, d, state({ dependent: ["c2"], covariates: ["c1"], factors: [] }, {}, defaultState(REGRESSION_DEF)));
+    expect(reg.vars.covariates).toEqual(["c1"]);
   });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);

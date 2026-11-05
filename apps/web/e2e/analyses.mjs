@@ -152,12 +152,25 @@ try {
   await page.locator("table.apa-table").first().waitFor({ timeout: 30000 });
   check("troca de aba: o resultado reaparece", has(await resultText(), f3(R.F)));
 
+  // regressão com UM único preditor: antes o modelo ficava vazio (R² = 0) sem nenhum erro
+  await page.getByLabel(/^diametro/).uncheck();
+  await run();
+  const R1 = REF.one_predictor.reg;
+  await page.locator(".analysis-grid .card").nth(1).getByText(f3(R1.R2), { exact: true }).first().waitFor({ timeout: 90000 }); // run() vê a tabela anterior
+  t = await resultText();
+  check("regressão com um preditor: R² e coeficiente de altura iguais ao R (modelo não vazio)", has(t, f3(R1.R2), f3(R1.est[1]), f3(R1.est[0])) && !/R\s+R²\s+Adjusted R²[^]*0\.000\s+0\.000/.test(t), t.slice(0, 600));
+  await page.getByLabel(/^diametro/).check();
+
   // --- ANCOVA: tratamento + bloco + covariável altura (aditivo) ---
   await pickAnalysis("ANCOVA");
   await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
-  await page.getByLabel(/^tratamento/).check();
-  await page.getByLabel(/^bloco/).check();
-  await page.getByLabel(/^altura/).check();
+  // tratamento/bloco são inteiros ordinais: aparecem também em "Covariáveis" (como ordinal tratada como escalar); aqui são FATORES
+  check("Likert: tratamento (ordinal numérica) também é oferecido como covariável, com rótulo explícito",
+    (await page.getByRole("group", { name: /^Covariáveis/ }).getByLabel(/^tratamento \(ordinal, 8 valores: tratada como escalar\)/).count()) === 1);
+  await page.getByRole("group", { name: /^Fatores/ }).getByLabel(/^tratamento/).check();
+  await page.getByRole("group", { name: /^Fatores/ }).getByLabel(/^bloco/).check();
+  check("Likert: marcado como fator, tratamento some da lista de covariáveis", (await page.getByRole("group", { name: /^Covariáveis/ }).getByLabel(/^tratamento/).count()) === 0);
+  await page.getByRole("group", { name: /^Covariáveis/ }).getByLabel(/^altura/).check();
   await run();
   t = await resultText();
   const AC = REF.ancova_blocks;
@@ -294,7 +307,8 @@ try {
   await upload("e2e-friedman.csv", readFileSync(join(FIX, "friedman.csv"), "utf8"));
   await page.getByRole("tab", { name: "Análise estatística" }).click();
   await pickAnalysis("ANOVA de medidas repetidas");
-  for (const c of ["c1", "c2", "c3"]) await page.getByRole("checkbox", { name: new RegExp(`^${c}$`) }).check();
+  check("Likert: a coluna ordinal numérica é oferecida como medida repetida, com rótulo explícito", (await page.getByRole("group", { name: /^Medidas repetidas/ }).getByRole("checkbox", { name: /^c1 \(ordinal, 8 valores: tratada como escalar\)$/ }).count()) === 1);
+  for (const c of ["c1", "c2", "c3"]) await page.getByRole("group", { name: /^Medidas repetidas/ }).getByRole("checkbox", { name: new RegExp(`^${c}( |$)`) }).check();
   check("Friedman: desligado por padrão e sem a opção de Conover visível", !(await page.getByLabel(/^Teste de Friedman/).isChecked()) && (await page.getByLabel(/Post hoc de Conover/).count()) === 0);
   await page.getByLabel(/^Teste de Friedman/).check();
   await page.getByLabel(/Post hoc de Conover/).check();
@@ -305,6 +319,16 @@ try {
   check("Friedman: χ², gl, p e W de Kendall iguais ao R", has(t, "Friedman", f3(FR.chi), p3(FR.p), f3(FR.kendall)), t.slice(0, 900));
   check("Conover: t (do 1º par) e p iguais ao R, com gl = (n−1)(k−1) = 38", has(t, "Conover", f3(Math.abs(FR.conover[0].t)), f3(FR.conover[0].p).replace(/^0/, ""), " 38 "), t.slice(0, 1400));
   await shot("a2e-friedman");
+
+  // --- Likert (c1 ordinal): vale como variável escalar no t de uma amostra, com o t do R (a coluna não precisa virar "escalar") ---
+  await pickAnalysis("Teste t de uma amostra");
+  check("Likert: a coluna ordinal numérica é oferecida no t de uma amostra", (await page.getByRole("checkbox", { name: /^c1 \(ordinal/ }).count()) === 1);
+  await page.getByRole("checkbox", { name: /^c1 \(ordinal/ }).check();
+  await page.getByLabel("Valor de referência").fill("10");
+  await run();
+  t = await resultText();
+  check("Likert: t e p do t de uma amostra sobre a coluna ordinal iguais ao R", has(t, f3(REF.ordinal.onesample.t), " 19 "), t.slice(0, 500));
+  await shot("a3h-likert-t");
 
   // --- Qui-quadrado: dataset derivado com CASE (faixa) ---
   await upload("e2e-faixa-src.csv", readFileSync(join(FIX, "ttest.csv"), "utf8"));

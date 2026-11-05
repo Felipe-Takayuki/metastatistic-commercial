@@ -116,6 +116,27 @@ cden <- sqrt(2 * (nf * A1 - sum(Rj^2)) / ((nf - 1) * (kf - 1))); cdf <- (nf - 1)
 cp <- combn(kf, 2, simplify = FALSE); cpt <- vapply(cp, function(ij) (Rj[ij[1]] - Rj[ij[2]]) / cden, numeric(1)); cpp <- 2 * pt(-abs(cpt), cdf)
 out$friedman <- list(chi = unname(ft$statistic), df = unname(ft$parameter), p = ft$p.value, kendall = unname(ft$statistic) / (nf * (kf - 1)), rank_sums = unname(Rj),
   conover = lapply(seq_along(cp), function(i) list(a = colnames(Yf)[cp[[i]][1]], b = colnames(Yf)[cp[[i]][2]], t = cpt[i], df = cdf, p = cpp[i], bonferroni = p.adjust(cpp, "bonferroni")[i], holm = p.adjust(cpp, "holm")[i])))
+# --- catálogo 6.11: ordinais numéricos (Likert) em papéis escalares: friedman.csv com c1 ORDINAL (inteiros, 8 valores) e c2/c3 escalares ---
+lk <- fr; lk$grupo <- factor(ifelse(seq_len(nrow(lk)) %% 2 == 0, "a", "b")); lk$nivel <- factor(ifelse(lk$c3 >= 16, "alto", "baixo"))
+ot <- t.test(lk$c1, mu = 10); pt_ <- t.test(lk$c1, lk$c2, paired = TRUE); it <- t.test(lk$c1 ~ lk$grupo, var.equal = TRUE)
+an <- anova(lm(c1 ~ grupo, lk)); ac <- drop1(lm(c2 ~ grupo + c1, lk), ~., test = "F"); ack <- rownames(ac) != "<none>"
+lr <- summary(lm(c2 ~ c1, lk)); lr2 <- summary(lm(c1 ~ c2, lk)); lg <- summary(glm(nivel ~ c1, data = lk, family = binomial))
+lng <- data.frame(y = c(lk$c1, lk$c2, lk$c3), cond = factor(rep(c("c1", "c2", "c3"), each = nrow(lk))), id = factor(rep(seq_len(nrow(lk)), 3)))
+out$ordinal <- list(
+  onesample = list(t = unname(ot$statistic), df = unname(ot$parameter), p = ot$p.value, diff = unname(ot$estimate) - 10),
+  paired = list(t = unname(pt_$statistic), df = unname(pt_$parameter), p = pt_$p.value),
+  indep = list(t = unname(it$statistic), df = unname(it$parameter), p = it$p.value),
+  anova = list(F = an$`F value`[1], p = an$`Pr(>F)`[1], df = an$Df[1]),
+  ancova = list(terms = rownames(ac)[ack], F = ac$`F value`[ack], p = ac$`Pr(>F)`[ack]),
+  reg_cov = list(est = unname(coef(lr)[, 1]), se = unname(coef(lr)[, 2]), p = unname(coef(lr)[, 4]), R2 = lr$r.squared),
+  reg_dep = list(est = unname(coef(lr2)[, 1]), R2 = lr2$r.squared),
+  logit = list(est = unname(coef(lg)[, 1]), se = unname(coef(lg)[, 2]), p = unname(coef(lg)[, 4])),
+  rm = list(F = summary(aov(y ~ cond + Error(id / cond), lng))[[2]][[1]]$`F value`[1]),
+  bayes_paired = bfv(ttestBF(lk$c1, lk$c2, paired = TRUE, rscale = 0.707)))
+# --- regressão com UM preditor (o modelo ficava vazio: components de comprimento 1 virava escalar no JSON) ---
+r1 <- summary(lm(produtividade ~ altura, data = d)); g1 <- summary(glm(nivel ~ altura, data = d, family = binomial))
+out$one_predictor <- list(reg = list(est = unname(coef(r1)[, 1]), se = unname(coef(r1)[, 2]), p = unname(coef(r1)[, 4]), R2 = r1$r.squared, F = unname(r1$fstatistic[1])),
+  logit = list(est = unname(coef(g1)[, 1]), se = unname(coef(g1)[, 2]), p = unname(coef(g1)[, 4])))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

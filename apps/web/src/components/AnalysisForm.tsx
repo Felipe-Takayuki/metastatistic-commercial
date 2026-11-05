@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Column, Dataset } from "../api";
-import { candidates, problems, resolveState, type AnalysisDef, type FormState, type Item, type NumberItem, type VarSlot } from "../lib/analyses";
+import { candidates, ordinalAsScale, problems, resolveState, type AnalysisDef, type FormState, type Item, type NumberItem, type VarSlot } from "../lib/analyses";
 
 const levelsLabel = (n: number) => `${n} ${n === 1 ? "nível" : "níveis"}`;
-const colLabel = (c: Column) => (c.measurement !== "scale" && c.n_distinct !== null ? `${c.name} (${levelsLabel(c.n_distinct)})` : c.name);
+const colLabel = (c: Column, slot?: VarSlot) =>
+  slot && ordinalAsScale(slot, c) ? `${c.name} (ordinal, ${c.n_distinct ?? "?"} valores: tratada como escalar)`
+  : c.measurement !== "scale" && c.n_distinct !== null ? `${c.name} (${levelsLabel(c.n_distinct)})` : c.name;
 
 /** `taken`: colunas já escolhidas em OUTROS campos. Nas listas de caixas (multi) elas somem: a mesma coluna não pode ser desfecho e preditor. */
 function SlotField({ slot, dataset, chosen, taken, onPick }: { slot: VarSlot; dataset: Dataset; chosen: string[]; taken: Set<string>; onPick: (names: string[]) => void }) {
@@ -14,7 +16,7 @@ function SlotField({ slot, dataset, chosen, taken, onPick }: { slot: VarSlot; da
       <label className="field">{slot.label}
         <select value={chosen[0] ?? ""} onChange={(e) => onPick(e.target.value ? [e.target.value] : [])} disabled={cands.length === 0}>
           {chosen.length === 0 && <option value="">{slot.required ? "Escolha…" : "—"}</option>}
-          {cands.map((c) => <option key={c.name} value={c.name}>{colLabel(c)}</option>)}
+          {cands.map((c) => <option key={c.name} value={c.name}>{colLabel(c, slot)}</option>)}
         </select>
       </label>
     );
@@ -28,7 +30,7 @@ function SlotField({ slot, dataset, chosen, taken, onPick }: { slot: VarSlot; da
         {cands.map((c) => (
           <label key={c.name} className="check">
             <input type="checkbox" checked={chosen.includes(c.name)} onChange={(e) => onPick(e.target.checked ? [...chosen, c.name] : chosen.filter((n) => n !== c.name))} />
-            {colLabel(c)}
+            {colLabel(c, slot)}
           </label>
         ))}
       </div>

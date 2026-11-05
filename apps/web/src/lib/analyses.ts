@@ -535,10 +535,24 @@ export function defaultState(def: AnalysisDef): FormState {
 }
 
 /** Colunas que podem ocupar o campo, em ordem de preferência. */
+const NUMERIC_DTYPES = new Set(["TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT", "UHUGEINT", "FLOAT", "DOUBLE", "REAL", "DECIMAL"]);
+export const isNumericDtype = (dtype: string) => NUMERIC_DTYPES.has(dtype.split("(")[0].toUpperCase());
+
+/**
+ * Ordinal NUMÉRICA (escala Likert 1–5, inteiros com poucos valores distintos) num campo que pede variável ESCALAR.
+ * Vale: o JASP lê cada variável pelo papel que ela tem na análise (conferido contra o R em testes de integração), então
+ * a coluna não precisa virar "escalar" na aba Dados. Ordinal de texto (rótulos) continua fora.
+ */
+export const ordinalAsScale = (slot: VarSlot, c: Column) =>
+  c.measurement === "ordinal" && isNumericDtype(c.dtype) && slot.levels.includes("scale") && !slot.levels.includes("ordinal");
+
 export function candidates(slot: VarSlot, dataset: Dataset | undefined): Column[] {
-  const cols = (dataset?.columns ?? []).filter((c) => slot.levels.includes(c.measurement));
-  if (slot.preferLevels === undefined) return cols;
-  return [...cols].sort((a, b) => Number(b.n_distinct === slot.preferLevels) - Number(a.n_distinct === slot.preferLevels));
+  // as genuinamente do nível pedido vêm primeiro (o preenchimento automático não escolhe uma Likert antes de uma escalar)
+  const cols = (dataset?.columns ?? []).filter((c) => slot.levels.includes(c.measurement) || ordinalAsScale(slot, c));
+  const rank = (c: Column) => Number(ordinalAsScale(slot, c));
+  const sorted = [...cols].sort((a, b) => rank(a) - rank(b));
+  if (slot.preferLevels === undefined) return sorted;
+  return sorted.sort((a, b) => Number(b.n_distinct === slot.preferLevels) - Number(a.n_distinct === slot.preferLevels));
 }
 
 /**

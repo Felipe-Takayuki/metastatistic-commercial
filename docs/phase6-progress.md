@@ -4,6 +4,8 @@ Pedidos do usuário ainda abertos:
 - [ ] **Teste z de duas amostras** (comparar duas médias com σ conhecido) — **não existe no JASP instalado**; pedido em 2026-11-05. O teste z de **uma** amostra já está na 6.7 (opção `zTest` do t de uma amostra).
 - [ ] **Teste z de proporções** (uma e duas amostras) — não existe no JASP (o mais próximo é o `BinomialTest` exato, jaspFrequencies). Decisão pendente: expor o binomial/ABTest do JASP ou implementar o z fora do JASP (quebra a regra "motor = JASP real", ver memória do projeto).
 
+Resolvido na 6.11: dados ordinais numéricos (Likert) em papéis escalares, e regressão com um único preditor (bug do motor).
+
 Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9 e Friedman na 6.10; faltam vários fatores intra-sujeito); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
 
 ---
@@ -242,6 +244,32 @@ Friedman é **opção da `AnovaRepeatedMeasures`** (`friedmanWithinFactor`, `con
 `vitest` 180 (1 novo), `pytest` 190 (1 novo), `e2e:all` 6 suítes verdes (análises: Friedman e Conover pela interface com os números do R).
 
 ## Pendências
-- **Dados ordinais inteiros (Likert) não entram como medidas repetidas**, e é exatamente o público do Friedman. Resolver exige aceitar `ordinal` no slot e tratar no motor (`load_dataset` converte ordinais em fator; para o Friedman/RM deveriam ir como número) ou orientar o usuário a marcar a coluna como escalar na aba Dados. Hoje a mensagem só aparece quando não há nenhuma candidata.
+- ~~**Dados ordinais inteiros (Likert) não entram como medidas repetidas**~~ — resolvido na 6.11 (abaixo). Texto original: é exatamente o público do Friedman. Resolver exige aceitar `ordinal` no slot e tratar no motor (`load_dataset` converte ordinais em fator; para o Friedman/RM deveriam ir como número) ou orientar o usuário a marcar a coluna como escalar na aba Dados. Hoje a mensagem só aparece quando não há nenhuma candidata.
 - Friedman por grupo (estratificado) não é suportado.
+
+---
+
+# Fase 6.11 — dados ordinais numéricos (Likert) e correção da regressão com um preditor ✅
+
+## Problema
+Inteiros com poucos valores distintos (≤ 10, ex.: escala Likert 1–5) são inferidos como **ordinais** (`infer_measurement`) e **não apareciam** em nenhum campo "escalar" (t, ANOVA, ANCOVA, regressão, medidas repetidas…). O usuário só via "Nenhuma coluna escalar disponível", ou a coluna sumia da lista sem explicação.
+
+## Decisão e prova
+Antes de mexer no motor, conferi **cada papel escalar contra o R puro** com a coluna ordinal chegando ao worker como **fator**: t de uma amostra, pareado e independente, t bayesiano, ANOVA, ANCOVA (covariável), regressão linear (como covariável e como dependente), logística (covariável), medidas repetidas e Friedman. **Todos idênticos ao R.** Motivo: o JASP lê cada variável **pelo papel** que ela tem na análise (converte para numérico sozinho). Logo **a API e o motor não mudam** para isso, e relatórios/dashboards herdam o comportamento (as opções salvas já citam as colunas); o bloqueio era só o formulário.
+
+## O que mudou
+- `candidates()` (`lib/analyses.ts`): em campos que pedem **escalar** (e não aceitam ordinal), entram também colunas **ordinais com tipo numérico** (`ordinalAsScale`, `isNumericDtype`). Ordinal de **texto** (rótulos) e **nominal numérica** continuam fora; campos de fator, correlação e descritivas (que já aceitavam ordinal) não mudam.
+- **Ordem:** as escalares genuínas vêm primeiro; o preenchimento automático nunca escolhe uma Likert antes de uma escalar.
+- **Rótulo explícito** nas listas: "c1 (ordinal, 8 valores: tratada como escalar)".
+- Consequência assumida: inteiros que são **códigos de grupo** (ex.: `tratamento` 1–8, `bloco`) também são oferecidos como covariável, com o rótulo acima; ao marcá-los como fator, somem da lista de covariáveis.
+
+## Bug do motor encontrado no caminho (existia desde a Fase 2): regressão com UM preditor
+`jaspTools` serializa as opções com `toJSON(auto_unbox = TRUE)`: `components: ["altura"]` chegava ao QML como o escalar `"altura"` e a **regressão linear e a logística com uma só covariável ficavam com o modelo VAZIO** (R² = 0, só o intercepto), **sem erro**. Nunca apareceu porque todos os testes usavam dois preditores. Correção em `engine.R` (`protect_components`: `I()` nos `components` de comprimento 1, que o `toJSON` não "desembrulha"; rebuild do worker). Agora `produtividade ~ altura`: R² = 0,0577, coeficientes iguais ao `lm`/`glm`.
+
+## Verificado
+`pytest` 196 (6 novos: regressão e logística com um preditor, e um teste por papel escalar com coluna Likert vs R), `vitest` 182 (2 novos), `e2e:all` 6 suítes verdes (análises: regressão com um preditor, Friedman/Conover e t de uma amostra sobre a coluna ordinal, rótulo, ordem e desaparecimento da lista).
+
+## Pendências
+- Todo inteiro com ≤ 10 valores é oferecido como candidato escalar: não há como distinguir "Likert" de "código de grupo". Alternativa futura: aviso na aba Dados.
+- Regressão/logística com **fatores** de um nível só e `modelTerms` com mais de um bloco continuam sem teste.
 

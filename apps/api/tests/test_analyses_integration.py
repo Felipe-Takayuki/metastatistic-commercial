@@ -83,7 +83,11 @@ def data():
     ids["pres"] = upload("e2e-pressupostos.csv", FIX / "pressupostos.csv")["id"]
     ids["tt"] = upload("e2e-ttest.csv", FIX / "ttest.csv")["id"]
     ids["rm"] = upload("e2e-medidas-repetidas.csv", FIX / "medidas_repetidas.csv")["id"]
-    ids["friedman"] = upload("e2e-friedman.csv", FIX / "friedman.csv")["id"]
+    fr = upload("e2e-friedman.csv", FIX / "friedman.csv")
+    ids["friedman"] = fr["id"]
+    # Likert: c1 é ORDINAL (inteiros, 8 valores distintos); c2/c3 são escalares; grupo/nivel derivados por SQL
+    ids["lik"] = derive("e2e-likert", f"SELECT CASE WHEN CAST(substr(sujeito, 2) AS INTEGER) % 2 = 0 THEN 'a' ELSE 'b' END AS grupo, "
+                                      f"CASE WHEN c3 >= 16 THEN 'alto' ELSE 'baixo' END AS nivel, * FROM \"{fr['table_name']}\"")["id"]
     src = upload("e2e-faixa-src.csv", FIX / "ttest.csv")
     faixas = derive("e2e-faixas", f'SELECT "group" AS grupo, CASE WHEN score < 9 THEN \'baixo\' WHEN score < 11 THEN \'medio\' ELSE \'alto\' END AS faixa FROM "{src["table_name"]}"')
     ids["faixas"] = faixas["id"]
@@ -527,3 +531,82 @@ def test_friedman_and_conover_match_R(data):
     assert [cv[("c1", "c2")]["wA"], cv[("c1", "c2")]["wB"]] == [ref["rank_sums"][0], ref["rank_sums"][1]]
     off = run("AnovaRepeatedMeasures", data["friedman"], {**opts, "friedmanWithinFactor": [], "conoverTest": False})
     assert not [p for p in tables(off["results"]) if "friedman" in p.lower() or "conover" in p.lower()]
+
+
+def test_single_predictor_regression_is_not_an_empty_model(data):
+    """Bug que existia: `components: ["altura"]` virava escalar no JSON e o modelo com UM preditor ficava vazio (R² = 0, só o intercepto)."""
+    ref = REF["one_predictor"]
+    res = run("RegressionLinear", data["dbc"], {"dependent": "produtividade", "covariates": ["altura"], "factors": [], "modelFit": True, "coefficientEstimate": True,
+                                               "modelTerms": [{"components": ["altura"], "name": "model1", "title": "Model 1"}]})
+    summary = table(res, "summaryTable")["data"]
+    assert len(summary) == 1
+    close(summary[0]["R2"], ref["reg"]["R2"])
+    coefs = {r["name"]: r for r in table(res, "coeffTable")["data"]}
+    assert set(coefs) == {"(Intercept)", "altura"}, list(coefs)
+    close(coefs["altura"]["unstandCoeff"], ref["reg"]["est"][1]); close(coefs["altura"]["SE"], ref["reg"]["se"][1]); close(coefs["altura"]["p"], ref["reg"]["p"][1])
+    close(coefs["(Intercept)"]["unstandCoeff"], ref["reg"]["est"][0])
+
+
+def test_single_predictor_logistic_matches_R(data):
+    ref = REF["one_predictor"]["logit"]
+    res = run("RegressionLogistic", data["nivel"], {"dependent": "nivel", "covariates": ["altura"], "factors": [], "coefficientEstimate": True,
+                                                    "modelTerms": [{"components": ["altura"], "name": "model1", "title": "Model 1"}]})
+    est = {r["param"]: r for r in table(res, "estimatesTable")["data"]}   # um único modelo (rótulo "M₀")
+    assert set(est) == {"(Intercept)", "altura"}, list(est)
+    close(est["altura"]["est"], ref["est"][1]); close(est["altura"]["se"], ref["se"][1]); close(est["altura"]["pval"], ref["p"][1])
+    close(est["(Intercept)"]["est"], ref["est"][0])
+
+
+LIKERT = ("lik", "c1")   # (dataset, coluna ordinal)
+
+
+def test_likert_column_is_ordinal_and_the_engine_reads_it_by_role(data):
+    """c1 chega ao worker como fator (ordinal), mas o JASP lê as variáveis pelo PAPEL (escalar): os números são os do R com a coluna numérica."""
+    ref = REF["ordinal"]
+    ds = httpx.get(f"{API}/datasets/{data['lik']}").json()
+    assert {c["name"]: c["measurement"] for c in ds["columns"]}["c1"] == "ordinal"
+    one = table(run("TTestOneSample", data["lik"], {"dependent": ["c1"], "testValue": 10, "student": True, "meanDifference": True}), "ttest")["data"][0]
+    close(one["t"], ref["onesample"]["t"]); close(one["p"], ref["onesample"]["p"]); close(one["m"], ref["onesample"]["diff"])
+    pr = table(run("TTestPairedSamples", data["lik"], {"pairs": [["c1", "c2"]], "student": True}), "ttest")["data"][0]
+    close(pr["t"], ref["paired"]["t"]); close(pr["p"], ref["paired"]["p"])
+    ind = table(run("TTestIndependentSamples", data["lik"], {"dependent": ["c1"], "group": "grupo", "student": True}), "ttest")["data"][0]
+    close(ind["Statistic"], ref["indep"]["t"]); close(ind["p"], ref["indep"]["p"])
+    bf = table(run("TTestBayesianPairedSamples", data["lik"], {"pairs": [["c1", "c2"]]}), "ttestTable")["data"][0]["BF"]
+    close(bf, ref["bayes_paired"], rel=1e-4)
+
+
+def test_likert_column_in_anova_ancova_and_repeated_measures_matches_R(data):
+    ref = REF["ordinal"]
+    an = {r["cases"]: r for r in table(run("Anova", data["lik"], {"dependent": "c1", "fixedFactors": ["grupo"], "modelTerms": [{"components": ["grupo"]}]}), "anovaTable")["data"]}
+    close(an["grupo"]["F value"], ref["anova"]["F"]); close(an["grupo"]["Pr(>F)"], ref["anova"]["p"])
+    ac = {r["cases"]: r for r in table(run("Ancova", data["lik"], {"dependent": "c2", "fixedFactors": ["grupo"], "covariates": ["c1"],
+                                                                 "modelTerms": [{"components": ["grupo"]}, {"components": ["c1"]}]}), "anovaTable")["data"]}
+    for name, f, p in zip(ref["ancova"]["terms"], ref["ancova"]["F"], ref["ancova"]["p"]):
+        close(ac[name]["F value"], f); close(ac[name]["Pr(>F)"], p)
+    rm = run("AnovaRepeatedMeasures", data["lik"], {**RM_BASE_C, "sphericityTests": False})
+    close(next(r for r in table(rm, "withinAnovaTable")["data"] if r["case"] == "cond")["F value"], ref["rm"]["F"])
+
+
+RM_BASE_C = {"repeatedMeasuresFactors": [{"name": "cond", "levels": ["c1", "c2", "c3"]}], "repeatedMeasuresCells": ["c1", "c2", "c3"], "withinModelTerms": [{"components": ["cond"]}]}
+
+
+def test_likert_column_in_regression_and_logistic_matches_R(data):
+    ref = REF["ordinal"]
+    reg = run("RegressionLinear", data["lik"], {"dependent": "c2", "covariates": ["c1"], "factors": [], "modelFit": True, "coefficientEstimate": True,
+                                               "modelTerms": [{"components": ["c1"], "name": "model1", "title": "Model 1"}]})
+    close(table(reg, "summaryTable")["data"][0]["R2"], ref["reg_cov"]["R2"])
+    c = {r["name"]: r for r in table(reg, "coeffTable")["data"]}
+    close(c["c1"]["unstandCoeff"], ref["reg_cov"]["est"][1]); close(c["c1"]["p"], ref["reg_cov"]["p"][1])
+    dep = run("RegressionLinear", data["lik"], {"dependent": "c1", "covariates": ["c2"], "factors": [], "modelFit": True, "coefficientEstimate": True,
+                                               "modelTerms": [{"components": ["c2"], "name": "model1", "title": "Model 1"}]})
+    close(table(dep, "summaryTable")["data"][0]["R2"], ref["reg_dep"]["R2"])
+    lg = run("RegressionLogistic", data["lik"], {"dependent": "nivel", "covariates": ["c1"], "factors": [], "coefficientEstimate": True,
+                                                 "modelTerms": [{"components": ["c1"], "name": "model1", "title": "Model 1"}]})
+    est = {r["param"]: r for r in table(lg, "estimatesTable")["data"]}
+    close(est["c1"]["est"], ref["logit"]["est"][1]); close(est["c1"]["pval"], ref["logit"]["p"][1])
+
+
+def test_friedman_accepts_a_likert_ordinal_column(data):
+    """O Friedman (ranks) com c1 ordinal dá o mesmo χ² da fixture com c1 escalar (os postos não mudam)."""
+    res = run("AnovaRepeatedMeasures", data["lik"], {**RM_BASE_C, "friedmanWithinFactor": ["cond"]})
+    close(table(res, "friedmanTable")["data"][0]["chiSqr"], REF["friedman"]["chi"])
