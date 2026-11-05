@@ -11,6 +11,7 @@ const CHECKS: Record<string, Record<string, boolean>> = {
   TTestOneSample: { normalityTest: true },
   Anova: { homogeneityTests: true },
   Ancova: { homogeneityTests: true },
+  AnovaRepeatedMeasures: { sphericityTests: true },
 };
 
 export const ALPHA = 0.05;
@@ -81,6 +82,15 @@ export function assumptionNotes(analysis: string, results: unknown): Note[] {
       checked++;
       const advice = analysis === "Anova" ? "Considere o teste de Kruskal-Wallis ou transformar a variável." : "Interprete com cautela ou transforme a variável.";
       if (p < ALPHA) warn.push({ level: "warn", text: `Homogeneidade de variâncias rejeitada (Levene${f !== null ? `, F = ${fmtStat(f)}` : ""}, ${fmtP(p)}). ${advice}` });
+    }
+  }
+
+  for (const rows of tablesEndingWith(results, "sphericityTable")) {
+    for (const r of rows) {
+      const p = num(r["p-value"]), w = num(r["Test statistic"]), gg = num(r["GG eps"]);
+      if (p === null) continue;
+      checked++;
+      if (p < ALPHA) warn.push({ level: "warn", text: `Esfericidade violada${typeof r.case === "string" ? ` em ${r.case}` : ""} (Mauchly${w !== null ? `, W = ${fmtStat(w)}` : ""}, ${fmtP(p)}). Use os resultados com correção de Greenhouse-Geisser${gg !== null ? ` (ε = ${fmtStat(gg)})` : ""} ou Huynh-Feldt.` });
     }
   }
 

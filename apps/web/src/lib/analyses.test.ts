@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANALYSIS_GROUPS, groupedAnalyses, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANALYSIS_GROUPS, groupedAnalyses, RM_ANOVA_DEF, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -19,7 +19,7 @@ const resolve = (def: Parameters<typeof resolveState>[0], d: Dataset, s: FormSta
 describe("catálogo", () => {
   it("ids únicos e conhecidos pelo worker", () => {
     expect(new Set(ANALYSES.map((a) => a.id)).size).toBe(ANALYSES.length);
-    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives",
+    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "AnovaRepeatedMeasures", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives",
       "TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"]);
     expect(getDef("Anova")).toBe(ANOVA_DEF);
     expect(getDef("Inexistente")).toBeUndefined();
@@ -182,6 +182,37 @@ describe("toOptions — o contrato com o motor JASP", () => {
     expect(only).toEqual([]);
     const none = problems(ONESAMPLE_TTEST_DEF, d1, resolveState(ONESAMPLE_TTEST_DEF, d1, state({ dependent: ["y"] }, { zTest: false, student: false, wilcoxon: false }, defaultState(ONESAMPLE_TTEST_DEF))));
     expect(none).toEqual(["Selecione ao menos um teste."]);
+  });
+  it("ANOVA de medidas repetidas: níveis = colunas na ORDEM escolhida, fator com o nome dado, entre-sujeitos opcional", () => {
+    const d3 = ds([col("t1", "scale"), col("t2", "scale"), col("t3", "scale"), col("grupo", "nominal", 2)]);
+    const st = (cells: string[], between: string[], values = {}) => state({ repeatedMeasuresCells: cells, betweenSubjectFactors: between }, values, defaultState(RM_ANOVA_DEF));
+    const o = full(RM_ANOVA_DEF, d3, st(["t3", "t1", "t2"], []));   // a ordem de marcação vale (t3, t1, t2), não a das colunas
+    expect(o.repeatedMeasuresCells).toEqual(["t3", "t1", "t2"]);
+    expect(o.repeatedMeasuresFactors).toEqual([{ name: "tempo", levels: ["t3", "t1", "t2"] }]);
+    expect(o.withinModelTerms).toEqual([{ components: ["tempo"] }]);
+    expect(o.betweenModelTerms).toEqual([]);
+    expect(o.postHocTerms).toEqual([]);
+    expect(o.effectSizeEstimates).toBe(false);
+    for (const k of ["factorName", "posthoc"]) expect(o).not.toHaveProperty(k);   // só da interface
+    const mixed = full(RM_ANOVA_DEF, d3, st(["t1", "t2"], ["grupo"], { factorName: "  momento ", posthoc: true, effectSizePartialEtaSquared: true }));
+    expect(mixed.repeatedMeasuresFactors).toEqual([{ name: "momento", levels: ["t1", "t2"] }]);
+    expect(mixed.betweenModelTerms).toEqual([{ components: ["grupo"] }]);
+    expect(mixed.betweenSubjectFactors).toEqual(["grupo"]);
+    expect(mixed.postHocTerms).toEqual(["momento"]);
+    expect(mixed.effectSizeEstimates).toBe(true);
+  });
+  it("ANOVA de medidas repetidas: exige 2+ medidas, nome do fator preenchido e diferente das colunas; ida e volta preserva nome e post hoc", () => {
+    const d3 = ds([col("t1", "scale"), col("t2", "scale"), col("grupo", "nominal", 2)]);
+    const pr = (cells: string[], values = {}) => problems(RM_ANOVA_DEF, d3, resolveState(RM_ANOVA_DEF, d3, state({ repeatedMeasuresCells: cells, betweenSubjectFactors: [] }, values, defaultState(RM_ANOVA_DEF))));
+    expect(pr(["t1"])[0]).toMatch(/Escolha ao menos 2/);
+    expect(pr(["t1", "t2"])).toEqual([]);
+    expect(pr(["t1", "t2"], { factorName: "   " })[0]).toMatch(/Dê um nome ao fator/);
+    expect(pr(["t1", "t2"], { factorName: "t2" })[0]).toMatch(/não pode ser igual ao de uma coluna/);
+    const s0 = state({ repeatedMeasuresCells: ["t2", "t1"], betweenSubjectFactors: ["grupo"] }, { factorName: "visita", posthoc: true, postHocCorrectionBonferroni: true }, defaultState(RM_ANOVA_DEF));
+    const options = toOptions(RM_ANOVA_DEF, s0);
+    expect(toOptions(RM_ANOVA_DEF, fromOptions(RM_ANOVA_DEF, options))).toEqual(options);
+    expect(fromOptions(RM_ANOVA_DEF, options).values).toMatchObject({ factorName: "visita", posthoc: true });
+    expect(fromOptions(RM_ANOVA_DEF, options).vars.repeatedMeasuresCells).toEqual(["t2", "t1"]);
   });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);

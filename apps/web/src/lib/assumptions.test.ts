@@ -48,6 +48,15 @@ describe("assumptionNotes", () => {
     expect(assumptionNotes("Anova", t)[0].text).toMatch(/Homogeneidade.*F = 4,20.*Kruskal-Wallis/);
     expect(assumptionNotes("Ancova", t)[0].text).not.toMatch(/Kruskal/);
   });
+  it("medidas repetidas: esfericidade violada sugere Greenhouse-Geisser com o ε; respeitada = nota de nenhum alerta", () => {
+    const bad = tree({ "rmAnovaContainer_assumptionsContainer_sphericityTable": [{ case: "tempo", "Test statistic": 0.52, "p-value": 0.004, "GG eps": 0.68, "HF eps": 0.74 }] }).results;
+    const n = assumptionNotes("AnovaRepeatedMeasures", bad);
+    expect(n[0].level).toBe("warn");
+    expect(n[0].text).toMatch(/Esfericidade violada em tempo \(Mauchly, W = 0,52, p = ,004\).*Greenhouse-Geisser \(ε = 0,68\)/);
+    const ok = tree({ "x_sphericityTable": [{ case: "tempo", "Test statistic": 0.86, "p-value": 0.2, "GG eps": 0.88 }] }).results;
+    expect(assumptionNotes("AnovaRepeatedMeasures", ok)[0].level).toBe("ok");
+    expect(assumptionOptions("AnovaRepeatedMeasures", { a: 1 })).toEqual({ a: 1, sphericityTests: true });
+  });
   it("sem violações: um único aviso informativo", () => {
     const n = assumptionNotes("Anova", tree({ "x_leveneTable": [{ F: 1.4, df1: 7, df2: 24, p: 0.247 }] }).results);
     expect(n).toHaveLength(1);

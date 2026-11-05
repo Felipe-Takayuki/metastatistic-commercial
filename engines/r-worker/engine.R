@@ -8,7 +8,7 @@ MODULES_DIR <- Sys.getenv("JASP_MODULES_DIR")
 ANALYSIS_MODULE <- c(
   TTestIndependentSamples = "jaspTTests", TTestPairedSamples = "jaspTTests", TTestOneSample = "jaspTTests",
   TTestBayesianIndependentSamples = "jaspTTests", TTestBayesianPairedSamples = "jaspTTests", TTestBayesianOneSample = "jaspTTests",
-  Anova = "jaspAnova", Ancova = "jaspAnova", AnovaBayesian = "jaspAnova",
+  Anova = "jaspAnova", Ancova = "jaspAnova", AnovaBayesian = "jaspAnova", AnovaRepeatedMeasures = "jaspAnova",
   Correlation = "jaspRegression", RegressionLinear = "jaspRegression", RegressionLogistic = "jaspRegression",
   ContingencyTables = "jaspFrequencies",
   Descriptives = "jaspDescriptives"

@@ -82,6 +82,7 @@ def data():
     ids["fatorial"] = upload("e2e-fatorial.csv", FIX / "fatorial.csv")["id"]
     ids["pres"] = upload("e2e-pressupostos.csv", FIX / "pressupostos.csv")["id"]
     ids["tt"] = upload("e2e-ttest.csv", FIX / "ttest.csv")["id"]
+    ids["rm"] = upload("e2e-medidas-repetidas.csv", FIX / "medidas_repetidas.csv")["id"]
     src = upload("e2e-faixa-src.csv", FIX / "ttest.csv")
     faixas = derive("e2e-faixas", f'SELECT "group" AS grupo, CASE WHEN score < 9 THEN \'baixo\' WHEN score < 11 THEN \'medio\' ELSE \'alto\' END AS faixa FROM "{src["table_name"]}"')
     ids["faixas"] = faixas["id"]
@@ -448,3 +449,60 @@ def test_one_sample_z_test_matches_R(data):
     both = {r["test"]: r for r in table(run("TTestOneSample", data["dbc"], {**opts, "student": True}), "ttest")["data"]}
     assert set(both) == {"Student", "Z"}
     close(both["Z"]["Statistic"], ref["z"])
+
+
+RM_BASE = {"repeatedMeasuresFactors": [{"name": "tempo", "levels": ["t1", "t2", "t3"]}], "repeatedMeasuresCells": ["t1", "t2", "t3"],
+           "withinModelTerms": [{"components": ["tempo"]}], "sphericityTests": True,
+           "sphericityCorrectionNone": True, "sphericityCorrectionGreenhouseGeisser": True, "sphericityCorrectionHuynhFeldt": True}
+
+
+def rm_within(res):
+    return {(r["case"], r["correction"]): r for r in table(res, "withinAnovaTable")["data"]}
+
+
+def test_repeated_measures_anova_one_within_factor_matches_R(data):
+    """Um fator intra-sujeito (3 tempos): F, p, Mauchly, ε de Greenhouse-Geisser/Huynh-Feldt e os p corrigidos (aov + Error() em R)."""
+    ref = REF["rm"]["one"]
+    res = run("AnovaRepeatedMeasures", data["rm"], RM_BASE)
+    w = rm_within(res)
+    row = w[("tempo", "None")]
+    assert row["num Df"] == ref["tempo"]["df"]
+    close(row["Sum Sq"], ref["tempo"]["ss"]); close(row["F value"], ref["tempo"]["F"]); close(row["p"], ref["tempo"]["p"])
+    res_row = w[("Residuals", "None")]
+    assert res_row["num Df"] == ref["resid"]["df"]; close(res_row["Sum Sq"], ref["resid"]["ss"])
+    gg, hf = w[("tempo", "Greenhouse-Geisser")], w[("tempo", "Huynh-Feldt")]
+    close(gg["num Df"], 2 * ref["sph"]["gg"]); close(gg["p"], ref["p_gg"])
+    close(hf["num Df"], 2 * ref["sph"]["hf"]); close(hf["p"], ref["p_hf"])
+    sp = table(res, "sphericityTable")["data"][0]
+    close(sp["Test statistic"], ref["sph"]["W"]); close(sp["approxChi"], ref["sph"]["chi"]); close(sp["p-value"], ref["sph"]["p"])
+    close(sp["GG eps"], ref["sph"]["gg"]); close(sp["HF eps"], ref["sph"]["hf"])
+
+
+def test_repeated_measures_anova_with_between_factor_matches_R(data):
+    """Delineamento misto (tempo intra × grupo entre): efeito de grupo (entre), tempo, interação; a interação entra sozinha no modelo."""
+    ref = REF["rm"]["mixed"]
+    res = run("AnovaRepeatedMeasures", data["rm"], {**RM_BASE, "betweenSubjectFactors": ["grupo"], "betweenModelTerms": [{"components": ["grupo"]}]})
+    between = {r["case"]: r for r in table(res, "betweenTable")["data"]}
+    assert between["grupo"]["num Df"] == ref["grupo"]["df"]
+    close(between["grupo"]["F value"], ref["grupo"]["F"]); close(between["grupo"]["Pr(>F)"], ref["grupo"]["p"])
+    w = rm_within(res)
+    inter = next(v for (case, corr), v in w.items() if corr == "None" and "grupo" in case and "tempo" in case)
+    close(w[("tempo", "None")]["F value"], ref["tempo"]["F"]); close(w[("tempo", "None")]["p"], ref["tempo"]["p"])
+    close(inter["F value"], ref["inter"]["F"]); close(inter["p"], ref["inter"]["p"])
+    close(w[("tempo", "Greenhouse-Geisser")]["p"], ref["p_gg_tempo"]); close(table(res, "sphericityTable")["data"][0]["GG eps"], ref["sph"]["gg"])
+    close(table(res, "sphericityTable")["data"][0]["Test statistic"], ref["sph"]["W"])
+
+
+def test_repeated_measures_posthoc_effect_size_and_descriptives_match_R(data):
+    """Post hoc do fator intra = testes t pareados (erro não agrupado, df = n − 1) com Holm/Bonferroni; η² parcial = SQ/(SQ + SQres)."""
+    ref = REF["rm"]
+    res = run("AnovaRepeatedMeasures", data["rm"], {**RM_BASE, "postHocTerms": ["tempo"], "postHocCorrectionHolm": True, "postHocCorrectionBonferroni": True,
+                                                    "effectSizeEstimates": True, "effectSizePartialEtaSquared": True, "effectSizeOmegaSquared": False, "descriptives": True})
+    ph = {(r["contrast_A"], r["contrast_B"]): r for r in table(res, "postHocStandardContainer_tempo1")["data"]}
+    assert len(ph) == len(ref["posthoc"]) == 3
+    for want in ref["posthoc"]:
+        got = ph[(want["a"], want["b"])]
+        close(got["estimate"], want["estimate"]); close(got["t.ratio"], want["t"]); close(got["SE"], want["se"]); assert got["df"] == want["df"]
+        close(got["holm"], want["holm"]); close(got["bonferroni"], want["bonferroni"])
+    close(rm_within(res)[("tempo", "None")]["partialEta"], ref["one"]["partial_eta"])
+    assert [r["tempo."] for r in table(res, "tableDescriptives")["data"]] == ["t1", "t2", "t3"]

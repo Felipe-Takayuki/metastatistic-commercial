@@ -22,6 +22,7 @@ function SlotField({ slot, dataset, chosen, taken, onPick }: { slot: VarSlot; da
   return (
     <fieldset>
       <legend>{slot.label}</legend>
+      {slot.ordered && chosen.length > 0 && <div className="muted small" aria-label="Ordem dos níveis">Ordem: {chosen.join(" → ")}</div>}
       {cands.length === 0 && <span className="muted small">Nenhuma coluna {slot.levels.map((l) => (l === "scale" ? "escalar" : l)).join(" ou ")} disponível.</span>}
       <div className="check-list">
         {cands.map((c) => (
@@ -56,6 +57,9 @@ function ItemField({ item, value, onChange }: { item: Item; value: boolean | num
     return <label className="check"><input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />{item.label}</label>;
   }
   if (item.type === "number") return <NumberField item={item} value={Number(value)} onCommit={onChange} />;
+  if (item.type === "text") {
+    return <label className="field">{item.label}<input type="text" maxLength={item.maxLength} value={String(value)} onChange={(e) => onChange(e.target.value)} /></label>;
+  }
   return (
     <label className="field">{item.label}
       <select value={String(value)} onChange={(e) => onChange(e.target.value)}>{item.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>

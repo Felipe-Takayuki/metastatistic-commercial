@@ -292,7 +292,7 @@ a.btn { text-decoration: none; color: inherit; }
 .analysis-picker button:hover { background: var(--surface-2); color: var(--text-primary); }
 .analysis-picker button[aria-selected="true"] { background: var(--accent-wash); color: var(--text-primary); font-weight: 600; }
 .check-list { display: flex; flex-direction: column; gap: 6px; max-height: 190px; overflow-y: auto; padding: 2px; }
-input[type="number"] { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); min-width: 0; width: 100%; }
+input[type="number"], .field input[type="text"] { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); min-width: 0; width: 100%; }
 .save-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 
 /* --- dashboards: grade de tiles --- */

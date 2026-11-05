@@ -80,6 +80,35 @@ out$bayes <- list(indep = bfv(ttestBF(formula = score ~ group, data = tt, rscale
   one_nullint = bfv(ttestBF(d$produtividade, mu = 200, rscale = 0.707, nullInterval = c(0, Inf))),
   paired = bfv(ttestBF(d$altura, d$diametro, paired = TRUE, rscale = 0.707)),
   anova = list(models = rownames(eb), bf = eb$bf))
+# --- catálogo 6.9: ANOVA de medidas repetidas (medidas_repetidas.csv: 24 sujeitos, 3 tempos, 2 grupos) ---
+mr <- read.csv(file.path(dir, "medidas_repetidas.csv")); mr$grupo <- factor(mr$grupo); tms <- c("t1", "t2", "t3")
+long <- reshape(mr, direction = "long", varying = tms, v.names = "y", timevar = "tempo", times = tms, idvar = "sujeito")
+long$tempo <- factor(long$tempo); long$sujeito <- factor(long$sujeito)
+stratum <- function(fit, name) { x <- summary(fit)[[name]][[1]]; rownames(x) <- trimws(rownames(x)); x }
+row_of <- function(x, r) list(df = x[r, "Df"], ss = x[r, "Sum Sq"], F = x[r, "F value"], p = x[r, "Pr(>F)"])
+# esfericidade: contrastes ortonormais (Helmert) das k medidas; S = covariância (agrupada por grupo, se houver) dos contrastes
+sph <- function(Y, g = NULL) {
+  k <- ncol(Y); n <- nrow(Y); C <- contr.helmert(k); C <- sweep(C, 2, sqrt(colSums(C^2)), "/"); Z <- Y %*% C
+  grp <- if (is.null(g)) rep(1, n) else as.integer(g); G <- length(unique(grp)); dfe <- n - G
+  S <- Reduce(`+`, lapply(unique(grp), function(u) crossprod(scale(Z[grp == u, , drop = FALSE], scale = FALSE)))) / dfe
+  gg <- sum(diag(S))^2 / ((k - 1) * sum(diag(S %*% S)))
+  hf <- min(1, (n * (k - 1) * gg - 2) / ((k - 1) * (dfe - (k - 1) * gg)))
+  W <- det(S) / (sum(diag(S)) / (k - 1))^(k - 1)
+  chi <- -(dfe - (2 * (k - 1)^2 + (k - 1) + 2) / (6 * (k - 1))) * log(W); dfc <- k * (k - 1) / 2 - 1
+  list(W = W, chi = chi, df = dfc, p = pchisq(chi, dfc, lower.tail = FALSE), gg = gg, hf = hf, dfe = dfe)
+}
+corr_p <- function(Fv, d1, d2, eps) pf(Fv, d1 * eps, d2 * eps, lower.tail = FALSE)
+f1 <- aov(y ~ tempo + Error(sujeito / tempo), data = long); w1 <- stratum(f1, "Error: sujeito:tempo"); t1 <- row_of(w1, "tempo"); s1 <- sph(as.matrix(mr[, tms]))
+f2 <- aov(y ~ tempo * grupo + Error(sujeito / tempo), data = long); b2 <- stratum(f2, "Error: sujeito"); w2 <- stratum(f2, "Error: sujeito:tempo"); s2 <- sph(as.matrix(mr[, tms]), mr$grupo)
+out$rm <- list(
+  one = list(tempo = t1, resid = list(df = w1["Residuals", "Df"], ss = w1["Residuals", "Sum Sq"]), sph = s1, p_gg = corr_p(t1$F, t1$df, w1["Residuals", "Df"], s1$gg), p_hf = corr_p(t1$F, t1$df, w1["Residuals", "Df"], s1$hf)),
+  mixed = list(grupo = row_of(b2, "grupo"), tempo = row_of(w2, "tempo"), inter = row_of(w2, "tempo:grupo"), sph = s2,
+               p_gg_tempo = corr_p(row_of(w2, "tempo")$F, 2, w2["Residuals", "Df"], s2$gg), p_gg_inter = corr_p(row_of(w2, "tempo:grupo")$F, 2, w2["Residuals", "Df"], s2$gg)))
+prs <- combn(tms, 2, simplify = FALSE); tp <- lapply(prs, function(v) t.test(mr[[v[1]]], mr[[v[2]]], paired = TRUE))
+pv <- vapply(tp, function(x) x$p.value, numeric(1))
+out$rm$posthoc <- lapply(seq_along(prs), function(i) list(a = prs[[i]][1], b = prs[[i]][2], estimate = unname(tp[[i]]$estimate), t = unname(tp[[i]]$statistic), df = unname(tp[[i]]$parameter),
+  se = unname(tp[[i]]$stderr), holm = p.adjust(pv, "holm")[i], bonferroni = p.adjust(pv, "bonferroni")[i]))
+out$rm$one$partial_eta <- t1$ss / (t1$ss + w1["Residuals", "Sum Sq"])
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

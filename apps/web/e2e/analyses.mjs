@@ -71,7 +71,7 @@ try {
   await page.locator(".analysis-group-title").first().waitFor();
   check("seletor agrupado: Descritivas, Comparação de médias, Associação e predição, Bayesianas",
     JSON.stringify(await page.locator(".analysis-group-title").evaluateAll((e) => e.map((x) => x.textContent))) === JSON.stringify(["Descritivas", "Comparação de médias", "Associação e predição", "Bayesianas"]));
-  check("seletor agrupado: as 14 análises continuam sendo abas", (await page.locator(".analysis-picker").getByRole("tab").count()) === 14);
+  check("seletor agrupado: as 15 análises continuam sendo abas", (await page.locator(".analysis-picker").getByRole("tab").count()) === 15);
   await pickAnalysis("ANOVA");
   await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
   await page.getByLabel(/^tratamento/).check();
@@ -255,6 +255,40 @@ try {
   await notes().waitFor({ timeout: 90000 });
   nt = (await notes().innerText()).replace(/\s+/g, " ");
   check("ANOVA: avisa homogeneidade (F de Levene igual ao R) e sugere Kruskal-Wallis", has(nt, "Homogeneidade de variâncias rejeitada", `F = ${PR.levene_mean.F.toFixed(2).replace(".", ",")}`, "Kruskal-Wallis"), nt);
+
+  // --- ANOVA de medidas repetidas (formato largo: uma coluna por medida; 24 sujeitos × 3 tempos × 2 grupos) ---
+  await upload("e2e-medidas-repetidas.csv", readFileSync(join(FIX, "medidas_repetidas.csv"), "utf8"));
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await pickAnalysis("ANOVA de medidas repetidas");
+  check("medidas repetidas: sem 2 medidas escolhidas não executa", await page.getByRole("button", { name: "Executar análise" }).isDisabled());
+  for (const c of ["t1", "t2", "t3"]) await page.getByRole("checkbox", { name: new RegExp(`^${c}$`) }).check();
+  check("medidas repetidas: mostra a ordem dos níveis (a da marcação)", (await page.getByLabel("Ordem dos níveis").innerText()).replace(/\s+/g, " ").includes("t1 → t2 → t3"));
+  await run();
+  t = await resultText();
+  const RM = REF.rm;
+  check("medidas repetidas: F, p e SQ do fator tempo iguais ao R (aov + Error)", has(t, f3(RM.one.tempo.F), f3(RM.one.tempo.ss)), t.slice(0, 700));
+  check("medidas repetidas: correções de Greenhouse-Geisser e Huynh-Feldt (gl corrigidos = 2·ε)", has(t, "Greenhouse-Geisser", "Huynh-Feldt", f3(2 * RM.one.sph.gg)), t.slice(0, 900));
+  check("medidas repetidas: Mauchly (W) e ε de Greenhouse-Geisser iguais ao R", has(t, f3(RM.one.sph.W), f3(RM.one.sph.gg)), t.slice(0, 900));
+  await notes().waitFor({ timeout: 90000 });
+  check("medidas repetidas: esfericidade respeitada (p = ,20): nota de nenhum alerta", has((await notes().innerText()).replace(/\s+/g, " "), "nenhum alerta"), await notes().innerText());
+  await shot("a2d-medidas-repetidas");
+  // delineamento misto: grupo entre-sujeitos
+  await page.getByRole("checkbox", { name: /^grupo/ }).check();
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText(/grupo/).first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior; "grupo" só existe no resultado novo
+  t = await resultText();
+  check("medidas repetidas (misto): F de grupo, de tempo e da interação iguais ao R", has(t, f3(RM.mixed.grupo.F), f3(RM.mixed.tempo.F), f3(RM.mixed.inter.F)), t.slice(0, 900));
+  check("medidas repetidas (misto): nenhum erro de nomes codificados do JASP", !/JaspExtraOptions|error/i.test(t), t.slice(0, 300));
+  // comparações dois a dois (sem o grupo): t pareado com Holm
+  await page.getByRole("checkbox", { name: /^grupo/ }).uncheck();
+  await page.getByLabel("Comparar os níveis dois a dois").check();
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText("Post Hoc", { exact: false }).first().waitFor({ timeout: 90000 });
+  t = await resultText();
+  check("medidas repetidas: post hoc (t1 − t2: t pareado igual ao R, df = 23)", has(t, "t1", "t2", f3(RM.posthoc[0].t), " 23 "), t.slice(0, 1200));
+  await page.getByLabel("Nome do fator (ex.: tempo)").fill("");
+  check("medidas repetidas: nome do fator vazio bloqueia a execução", await page.getByRole("button", { name: "Executar análise" }).isDisabled());
+  await page.getByLabel("Nome do fator (ex.: tempo)").fill("visita");
 
   // --- Qui-quadrado: dataset derivado com CASE (faixa) ---
   await upload("e2e-faixa-src.csv", readFileSync(join(FIX, "ttest.csv"), "utf8"));

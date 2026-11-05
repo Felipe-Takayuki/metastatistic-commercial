@@ -4,7 +4,7 @@ Pedidos do usuário ainda abertos:
 - [ ] **Teste z de duas amostras** (comparar duas médias com σ conhecido) — **não existe no JASP instalado**; pedido em 2026-11-05. O teste z de **uma** amostra já está na 6.7 (opção `zTest` do t de uma amostra).
 - [ ] **Teste z de proporções** (uma e duas amostras) — não existe no JASP (o mais próximo é o `BinomialTest` exato, jaspFrequencies). Decisão pendente: expor o binomial/ABTest do JASP ou implementar o z fora do JASP (quebra a regra "motor = JASP real", ver memória do projeto).
 
-Outros itens abertos: ANOVA de medidas repetidas; correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
+Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9; faltam vários fatores intra-sujeito e ANOVA de Friedman); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
 
 ---
 
@@ -201,4 +201,28 @@ Armadilhas do e2e: `innerText` devolve o texto já em maiúsculas quando o CSS u
 ## Pendências
 - A interpretação do BF de inclusão não cobre `BF01`/`LogBF10`; a ANOVA bayesiana não interpreta a comparação entre modelos (melhor modelo × nulo).
 - Faltam notas interpretativas para outras análises (ex.: tamanho de efeito de Cohen).
+
+---
+
+# Fatia 6.9 — ANOVA de medidas repetidas ✅
+
+Catálogo: **15 análises** (grupo "Comparação de médias"). `AnovaRepeatedMeasures` (jaspAnova) entra no registro fechado do `engine.R` (rebuild do worker; **sem** remendo de `modelTerms`: o modelo completo, com a interação tempo × grupo, é o que se espera em medidas repetidas).
+
+## Formulário
+- **Formato largo**: uma coluna por medida. O usuário marca as colunas **na ordem dos níveis** (a ordem da marcação é a ordem dos níveis; a tela mostra "Ordem: t1 → t2 → t3", slot `ordered`). Os níveis do fator levam o nome das colunas.
+- **Um fator intra-sujeito**, com nome livre (item novo `text`; ex.: "tempo"; não pode ser vazio nem igual a uma coluna escolhida). **Fatores entre-sujeitos** opcionais (delineamento misto).
+- Esfericidade: teste de Mauchly e correções (nenhuma, Greenhouse-Geisser, Huynh-Feldt); estatísticas: descritivas, η² parcial, η² generalizado, ω²; comparações dois a dois dos níveis (Holm/Bonferroni; testes t pareados com erro **não agrupado**, df = n − 1).
+- `derive` monta `repeatedMeasuresFactors`, `withinModelTerms`, `betweenModelTerms`, `effectSizeEstimates` e `postHocTerms`; `parse` recupera nome do fator e post hoc de blocos salvos (ida e volta testada).
+- **Aviso automático de esfericidade** (mecanismo da 6.5): se Mauchly p < 0,05, a nota sugere Greenhouse-Geisser com o ε.
+
+## Conferido contra o R puro (`medidas_repetidas.csv`: 24 sujeitos, 3 tempos, 2 grupos)
+`aov(y ~ tempo * grupo + Error(sujeito/tempo))` (F, p, gl, SQ de tempo, grupo e interação); Mauchly (W, χ², gl, p), ε de Greenhouse-Geisser e de Huynh-Feldt calculados à mão a partir da covariância dos contrastes de Helmert (agrupada por grupo no misto); p corrigido = `pf(F, gl·ε, glres·ε)`; post hoc = `t.test(paired = TRUE)` + `p.adjust`; η² parcial = SQ/(SQ + SQres).
+
+## Verificado
+`vitest` 179 (3 novos + ordem do catálogo), `pytest` 189 (3 novos), `e2e:all` 6 suítes verdes (análises: ordem dos níveis, F/GG/HF/Mauchly iguais ao R, nota de esfericidade, delineamento misto, post hoc, nome do fator vazio).
+
+## Pendências
+- **Só um fator intra-sujeito** (o JASP aceita vários, com níveis combinados na ordem das colunas); sem contrastes, médias marginais, gráficos de perfil, teste de Levene para os grupos nem ANOVA não paramétrica de Friedman (`friedmanBetweenFactor`/`conoverTest` existem no JASP).
+- O seletor de fatores entre-sujeitos oferece colunas de identificação (ex.: `sujeito`, 24 níveis); vale esconder colunas com tantos níveis quanto linhas.
+- Formato longo (uma linha por medida) não é suportado: exige pivotar o dataset (SQL, aba Consulta SQL → "Salvar como dataset").
 

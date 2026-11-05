@@ -20,14 +20,16 @@ export interface VarSlot {
   autofill?: boolean;     // único e obrigatório: pré-seleciona o primeiro candidato livre
   preferLevels?: number;  // candidatos com exatamente N níveis vêm primeiro (agrupamento do teste t = 2)
   local?: boolean;        // só da interface: NÃO vai ao JASP (use `derive` para montar a opção real, ex.: `pairs`)
+  ordered?: boolean;      // multi: a ORDEM da escolha importa (ex.: níveis de um fator intra-sujeito) e é mostrada na tela
 }
 
 interface ItemBase { key: string; label: string; local?: boolean; showIf?: (v: Values) => boolean }
 export interface ToggleItem extends ItemBase { type: "toggle"; default: boolean }
 export interface NumberItem extends ItemBase { type: "number"; default: number; min: number; max: number; step: number }
+export interface TextItem extends ItemBase { type: "text"; default: string; maxLength: number }
 export interface ChoiceItem extends ItemBase { type: "choice"; default: string; options: { value: string; label: string }[] }
 /** `local`: valor só da interface (não vai ao JASP; é usado por `derive`). */
-export type Item = ToggleItem | NumberItem | ChoiceItem;
+export type Item = ToggleItem | NumberItem | TextItem | ChoiceItem;
 
 export interface AnalysisDef {
   id: string;             // nome da função JASP
@@ -445,13 +447,61 @@ export const BAYES_ANOVA_DEF: AnalysisDef = {
   check: ANOVA_DEF.check,
 };
 
-export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF];
+// ------------------------------------------------------------------------------------------------------------------
+// ANOVA de medidas repetidas (fatia 6.9): UM fator intra-sujeito. Os níveis são colunas do dataset (formato largo: uma
+// coluna por medida, na ordem em que o usuário as marca); o nome do fator é livre. Fatores entre-sujeitos opcionais.
+export const RM_ANOVA_DEF: AnalysisDef = {
+  id: "AnovaRepeatedMeasures",
+  title: "ANOVA de medidas repetidas",
+  description: "Compara as médias de uma mesma unidade medida várias vezes (tempos, condições). Cada medida é uma coluna: marque-as na ordem. Fatores entre-sujeitos (grupos) são opcionais e dão um delineamento misto.",
+  slots: [
+    { key: "repeatedMeasuresCells", label: "Medidas repetidas (colunas, na ordem dos níveis)", levels: ["scale"], multi: true, required: true, min: 2, ordered: true },
+    { key: "betweenSubjectFactors", label: "Fatores entre-sujeitos (grupos, opcional)", levels: ["nominal", "ordinal"], multi: true },
+  ],
+  sections: [
+    { title: "Fator intra-sujeito", items: [{ type: "text", key: "factorName", label: "Nome do fator (ex.: tempo)", default: "tempo", maxLength: 40, local: true }] },
+    {
+      title: "Esfericidade",
+      items: [toggle("sphericityTests", "Teste de esfericidade (Mauchly)", true), toggle("sphericityCorrectionNone", "Sem correção", true), toggle("sphericityCorrectionGreenhouseGeisser", "Greenhouse-Geisser", true), toggle("sphericityCorrectionHuynhFeldt", "Huynh-Feldt")],
+    },
+    { title: "Estatísticas", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("effectSizePartialEtaSquared", "η² parcial"), toggle("effectSizeGeneralEtaSquared", "η² generalizado"), toggle("effectSizeOmegaSquared", "ω² (ômega ao quadrado)")] },
+    {
+      title: "Comparações múltiplas entre os níveis do fator intra",
+      items: [toggle("posthoc", "Comparar os níveis dois a dois", false, { local: true }), toggle("postHocCorrectionHolm", "Holm", true, { showIf: (v) => !!v.posthoc }), toggle("postHocCorrectionBonferroni", "Bonferroni", false, { showIf: (v) => !!v.posthoc })],
+    },
+  ],
+  derive: (s) => {
+    const name = String(s.values.factorName ?? "").trim();
+    const between = s.vars.betweenSubjectFactors;
+    const anyEffect = !!(s.values.effectSizePartialEtaSquared || s.values.effectSizeGeneralEtaSquared || s.values.effectSizeOmegaSquared);
+    return {
+      repeatedMeasuresFactors: [{ name, levels: s.vars.repeatedMeasuresCells }],
+      withinModelTerms: [{ components: [name] }],
+      betweenModelTerms: between.map((b) => ({ components: [b] })),
+      effectSizeEstimates: anyEffect,
+      postHocTerms: s.values.posthoc ? [name] : [],
+    };
+  },
+  parse: (o) => {
+    const f = Array.isArray(o.repeatedMeasuresFactors) ? (o.repeatedMeasuresFactors[0] as { name?: unknown } | undefined) : undefined;
+    return { factorName: typeof f?.name === "string" ? f.name : "tempo", posthoc: Array.isArray(o.postHocTerms) && o.postHocTerms.length > 0 };
+  },
+  check: ({ state }) => {
+    const name = String(state.values.factorName ?? "").trim();
+    const out: string[] = [];
+    if (name === "") out.push("Dê um nome ao fator intra-sujeito (ex.: tempo).");
+    else if (state.vars.repeatedMeasuresCells.includes(name) || state.vars.betweenSubjectFactors.includes(name)) out.push(`O nome do fator (“${name}”) não pode ser igual ao de uma coluna escolhida.`);
+    return out;
+  },
+};
+
+export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, RM_ANOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF];
 export const getDef = (id: string): AnalysisDef | undefined => ANALYSES.find((d) => d.id === id);
 
 /** Como o seletor agrupa as análises (aba Análise e bloco de relatório). Cada análise do catálogo está em exatamente um grupo. */
 export const ANALYSIS_GROUPS: { title: string; ids: string[] }[] = [
   { title: "Descritivas", ids: ["Descriptives"] },
-  { title: "Comparação de médias", ids: ["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova"] },
+  { title: "Comparação de médias", ids: ["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "AnovaRepeatedMeasures"] },
   { title: "Associação e predição", ids: ["Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables"] },
   { title: "Bayesianas", ids: ["TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"] },
 ];
@@ -498,7 +548,10 @@ export function resolveState(def: AnalysisDef, dataset: Dataset | undefined, sta
   const values: Values = {};
   for (const item of allItems(def)) {
     const v = state.values[item.key];
-    const typeOk = item.type === "toggle" ? typeof v === "boolean" : item.type === "number" ? typeof v === "number" && Number.isFinite(v) : item.options.some((o) => o.value === v);
+    const typeOk = item.type === "toggle" ? typeof v === "boolean"
+      : item.type === "number" ? typeof v === "number" && Number.isFinite(v)
+      : item.type === "text" ? typeof v === "string" && v.length <= item.maxLength
+      : item.options.some((o) => o.value === v);
     values[item.key] = typeOk ? v : item.default;
   }
   return { vars, values };
