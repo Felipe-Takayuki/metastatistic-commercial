@@ -26,6 +26,16 @@ out$fatorial <- list(A = list(df = fx$Df[1], F = fx$`F value`[1], p = fx$`Pr(>F)
   AB = list(df = fx$Df[3], F = fx$`F value`[3], p = fx$`Pr(>F)`[3]), resid = list(df = fx$Df[4], ms = fx$`Mean Sq`[4]))
 fx2 <- summary(aov(y ~ A + B, data = fa))[[1]]   # modelo ADITIVO (sem interação): o JASP, por padrão, acrescentaria A:B
 out$fatorial_add <- list(A = list(df = fx2$Df[1], F = fx2$`F value`[1], p = fx2$`Pr(>F)`[1]), B = list(df = fx2$Df[2], F = fx2$`F value`[2], p = fx2$`Pr(>F)`[2]), resid = list(df = fx2$Df[3], ms = fx2$`Mean Sq`[3]))
+# --- catálogo 6.1: t pareado (altura x diametro), t de uma amostra (produtividade vs 200) e descritivas (produtividade) ---
+pt <- t.test(d$altura, d$diametro, paired = TRUE); wt <- wilcox.test(d$altura, d$diametro, paired = TRUE)   # exato (como o JASP): sem empates e n < 50
+dif <- d$altura - d$diametro
+out$paired <- list(t = unname(pt$statistic), df = unname(pt$parameter), p = pt$p.value, mean_diff = unname(pt$estimate), lo = pt$conf.int[1], hi = pt$conf.int[2],
+  d = mean(dif) / sd(dif), wilcoxon_p = wt$p.value, n = length(dif), p_greater = t.test(d$altura, d$diametro, paired = TRUE, alternative = "greater")$p.value)
+ot <- t.test(d$produtividade, mu = 200); ow <- wilcox.test(d$produtividade, mu = 200); ol <- t.test(d$produtividade, mu = 200, alternative = "greater")
+out$onesample <- list(t = unname(ot$statistic), df = unname(ot$parameter), p = ot$p.value, mean = unname(ot$estimate), lo = ot$conf.int[1], hi = ot$conf.int[2],
+  d = (mean(d$produtividade) - 200) / sd(d$produtividade), wilcoxon_p = ow$p.value, p_greater = ol$p.value)
+x <- d$produtividade
+out$desc <- list(n = length(x), mean = mean(x), sd = sd(x), min = min(x), max = max(x), median = median(x), variance = var(x), se = sd(x) / sqrt(length(x)), sum = sum(x), range = max(x) - min(x))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

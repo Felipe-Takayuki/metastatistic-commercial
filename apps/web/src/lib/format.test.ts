@@ -41,6 +41,19 @@ describe("formatNumber (valores conferidos com a saída do JASP)", () => {
   });
 });
 
+describe("formatCell: célula com formato próprio", () => {
+  it("usa o formato e o tipo da própria célula (descritivas: mediana, mínimo, máximo)", () => {
+    const f = { name: "Median" };
+    expect(formatCell({ value: 193.42, type: "number", format: "sf:4;dp:3" }, f)).toBe("193.420");
+    expect(formatCell({ value: 32, type: "integer" }, f)).toBe("32");
+    expect(formatCell({ value: "a", type: "string" }, f)).toBe("a");
+    expect(formatCell({ value: null, type: "number" }, f)).toBe("");
+  });
+  it("objeto sem `value` aparece como JSON (nunca \"[object Object]\")", () => {
+    expect(formatCell({ x: 1 }, { name: "a" })).toBe('{"x":1}');
+  });
+});
+
 describe("formatCell", () => {
   it("vazio e texto passam sem alteração", () => {
     expect(formatCell(null, { name: "a" })).toBe("");

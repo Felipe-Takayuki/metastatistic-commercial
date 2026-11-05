@@ -9,7 +9,8 @@ ANALYSIS_MODULE <- c(
   TTestIndependentSamples = "jaspTTests", TTestPairedSamples = "jaspTTests", TTestOneSample = "jaspTTests",
   Anova = "jaspAnova",
   Correlation = "jaspRegression", RegressionLinear = "jaspRegression",
-  ContingencyTables = "jaspFrequencies"
+  ContingencyTables = "jaspFrequencies",
+  Descriptives = "jaspDescriptives"
 )
 ALLOWED_ANALYSES <- names(ANALYSIS_MODULE)
 
@@ -21,7 +22,8 @@ WARM_SPECS <- list(
                opts = list(dependent = "y", fixedFactors = "g", modelTerms = list(list(components = "g")))),
   Correlation = list(df = data.frame(a = c(1, 2, 3, 4, 5, 6), b = c(2, 1, 4, 3, 6, 5)), opts = list(variables = c("a", "b"))),
   ContingencyTables = list(df = data.frame(g = factor(c("a", "a", "b", "b", "a", "b")), h = factor(c("x", "y", "x", "y", "y", "x"))),
-                           opts = list(rows = "g", columns = "h"))
+                           opts = list(rows = "g", columns = "h")),
+  Descriptives = list(df = data.frame(a = c(1, 2, 3, 4, 5, 7)), opts = list(variables = "a"))
 )
 
 # ---- Remendo: respeitar o `modelTerms` pedido ------------------------------------------------------------------

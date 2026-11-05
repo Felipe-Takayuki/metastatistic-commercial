@@ -19,6 +19,7 @@ export interface VarSlot {
   min?: number;           // multi: quantidade mínima
   autofill?: boolean;     // único e obrigatório: pré-seleciona o primeiro candidato livre
   preferLevels?: number;  // candidatos com exatamente N níveis vêm primeiro (agrupamento do teste t = 2)
+  local?: boolean;        // só da interface: NÃO vai ao JASP (use `derive` para montar a opção real, ex.: `pairs`)
 }
 
 interface ItemBase { key: string; label: string; local?: boolean; showIf?: (v: Values) => boolean }
@@ -38,6 +39,8 @@ export interface AnalysisDef {
   derive?: (s: FormState) => Record<string, unknown>;
   /** Recupera valores `local` a partir de opções salvas. */
   parse?: (options: Record<string, unknown>) => Values;
+  /** Recupera campos de variável `local` a partir de opções salvas (ex.: `pairs` -> primeira/segunda variável). */
+  parseVars?: (options: Record<string, unknown>) => Record<string, string[]>;
   /** Problemas que impedem a execução (além dos campos obrigatórios). */
   check?: (ctx: { dataset: Dataset; state: FormState }) => string[];
 }
@@ -187,7 +190,81 @@ export const CONTINGENCY_DEF: AnalysisDef = {
     }),
 };
 
-export const ANALYSES: AnalysisDef[] = [TTEST_DEF, ANOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, CONTINGENCY_DEF];
+const alternative = (label: string): Item => ({
+  type: "choice", key: "alternative", label, default: "twoSided",
+  options: [{ value: "twoSided", label: "Diferente (bilateral)" }, { value: "greater", label: "Maior" }, { value: "less", label: "Menor" }],
+});
+
+export const PAIRED_TTEST_DEF: AnalysisDef = {
+  id: "TTestPairedSamples",
+  title: "Teste t pareado",
+  description: "Compara duas medidas escalares da mesma unidade (antes/depois, duas variáveis nas mesmas linhas) pela diferença entre elas.",
+  slots: [
+    { key: "first", label: "1ª medida (escalar)", levels: ["scale"], multi: false, required: true, autofill: true, local: true },
+    { key: "second", label: "2ª medida (escalar)", levels: ["scale"], multi: false, required: true, autofill: true, local: true },
+  ],
+  sections: [
+    { title: "Testes", items: [toggle("student", "Student", true), toggle("wilcoxon", "Wilcoxon (postos sinalizados)")] },
+    { title: "Adicionais", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("meanDifference", "Diferença média", true), toggle("effectSize", "Tamanho do efeito (d de Cohen)", true)] },
+    { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (1ª − 2ª)")] },
+    { title: "Pressupostos e gráficos", items: [toggle("normalityTest", "Normalidade das diferenças (Shapiro-Wilk)"), toggle("qqPlot", "Gráfico Q-Q das diferenças"), toggle("descriptivesPlot", "Gráfico descritivo")] },
+  ],
+  derive: (s) => ({ pairs: s.vars.first.length && s.vars.second.length ? [[s.vars.first[0], s.vars.second[0]]] : [] }),
+  parseVars: (o) => {
+    const p = Array.isArray(o.pairs) && Array.isArray(o.pairs[0]) ? (o.pairs[0] as unknown[]).filter((x): x is string => typeof x === "string") : [];
+    return { first: p[0] ? [p[0]] : [], second: p[1] ? [p[1]] : [] };
+  },
+  check: ({ state }) => (!state.values.student && !state.values.wilcoxon ? ["Selecione ao menos um teste."] : []),
+};
+
+export const ONESAMPLE_TTEST_DEF: AnalysisDef = {
+  id: "TTestOneSample",
+  title: "Teste t de uma amostra",
+  description: "Compara a média de uma variável escalar com um valor de referência.",
+  slots: [{ key: "dependent", label: "Variável (escalar)", levels: ["scale"], multi: true, required: true, min: 1 }],
+  sections: [
+    { title: "Referência", items: [{ type: "number", key: "testValue", label: "Valor de referência", default: 0, min: -1e12, max: 1e12, step: 0.1 }] },
+    { title: "Testes", items: [toggle("student", "Student", true), toggle("wilcoxon", "Wilcoxon")] },
+    { title: "Adicionais", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("meanDifference", "Diferença média", true), toggle("effectSize", "Tamanho do efeito (d de Cohen)", true)] },
+    { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (média vs referência)")] },
+    { title: "Pressupostos e gráficos", items: [toggle("normalityTest", "Normalidade (Shapiro-Wilk)"), toggle("qqPlot", "Gráfico Q-Q"), toggle("descriptivesPlot", "Gráfico descritivo")] },
+  ],
+  check: ({ state }) => (!state.values.student && !state.values.wilcoxon ? ["Selecione ao menos um teste."] : []),
+};
+
+export const DESCRIPTIVES_DEF: AnalysisDef = {
+  id: "Descriptives",
+  title: "Estatísticas descritivas",
+  description: "Resume variáveis (N, média, desvio padrão, quartis…), opcionalmente separadas pelos níveis de uma variável categórica.",
+  slots: [
+    { key: "variables", label: "Variáveis", levels: ["scale", "ordinal", "nominal"], multi: true, required: true, min: 1 },
+    { key: "splitBy", label: "Separar por (categórica, opcional)", levels: ["nominal", "ordinal"], multi: false, asArray: true },
+  ],
+  sections: [
+    {
+      title: "Tendência central e N",
+      items: [toggle("valid", "N válido", true), toggle("missing", "Ausentes", true), toggle("meanArithmetic", "Média", true), toggle("median", "Mediana", true), toggle("mode", "Moda"), toggle("sum", "Soma")],
+    },
+    {
+      title: "Dispersão",
+      items: [toggle("sd", "Desvio padrão", true), toggle("variance", "Variância"), toggle("seMean", "Erro padrão da média"), toggle("coefficientOfVariation", "Coeficiente de variação"), toggle("iqr", "Amplitude interquartil"), toggle("range", "Amplitude (máx. − mín.)"), toggle("minimum", "Mínimo", true), toggle("maximum", "Máximo", true), toggle("quartiles", "Quartis")],
+    },
+    {
+      title: "Forma e intervalo",
+      items: [
+        toggle("skewness", "Assimetria"), toggle("kurtosis", "Curtose"), toggle("shapiroWilkTest", "Normalidade (Shapiro-Wilk)"), toggle("meanCi", "Intervalo de confiança da média"),
+        { type: "number", key: "meanCiLevel", label: "Nível de confiança", default: 0.95, min: 0.5, max: 0.999, step: 0.01, showIf: (v) => !!v.meanCi },
+      ],
+    },
+    { title: "Gráficos", items: [toggle("distributionPlots", "Distribuição (histograma)"), toggle("boxPlot", "Boxplot"), toggle("qqPlot", "Gráfico Q-Q")] },
+  ],
+  check: ({ state }) => {
+    const a = state.vars.variables, g = state.vars.splitBy[0];
+    return g && a.includes(g) ? [`“${g}” não pode ser analisada e usada para separar ao mesmo tempo.`] : [];
+  },
+};
+
+export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, CORRELATION_DEF, REGRESSION_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF];
 export const getDef = (id: string): AnalysisDef | undefined => ANALYSES.find((d) => d.id === id);
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -265,6 +342,7 @@ export function problems(def: AnalysisDef, dataset: Dataset | undefined, state: 
 export function toOptions(def: AnalysisDef, state: FormState): Record<string, unknown> {
   const o: Record<string, unknown> = {};
   for (const slot of def.slots) {
+    if (slot.local) continue;
     const v = state.vars[slot.key] ?? [];
     o[slot.key] = slot.multi || slot.asArray ? v : v[0] ?? "";
   }
@@ -276,12 +354,14 @@ export function toOptions(def: AnalysisDef, state: FormState): Record<string, un
 export function fromOptions(def: AnalysisDef, options: Record<string, unknown>): FormState {
   const base = defaultState(def);
   for (const slot of def.slots) {
+    if (slot.local) continue;
     const raw = options[slot.key];
     const arr = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string" && x !== "") : typeof raw === "string" && raw ? [raw] : [];
     base.vars[slot.key] = arr;
   }
   for (const item of allItems(def)) if (!item.local && typeof options[item.key] === typeof item.default) base.values[item.key] = options[item.key] as boolean | number | string;
   Object.assign(base.values, def.parse?.(options));
+  Object.assign(base.vars, def.parseVars?.(options));
   return base;
 }
 

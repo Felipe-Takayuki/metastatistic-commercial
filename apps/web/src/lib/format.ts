@@ -48,8 +48,13 @@ export function formatNumber(value: number, field: JaspField): string {
 
 export function formatCell(value: unknown, field: JaspField): string {
   if (value === null || value === undefined || value === "") return "";
+  // Célula com formato próprio (ex.: mediana/mínimo/máximo nas descritivas): { value, type, format }
+  if (typeof value === "object" && !Array.isArray(value) && "value" in value) {
+    const c = value as { value: unknown; type?: string; format?: string };
+    return formatCell(c.value, { ...field, type: c.type ?? field.type, format: c.format ?? field.format });
+  }
   if (typeof value === "number") return formatNumber(value, field);
-  return String(value);
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
 /** Valores de dados brutos (preview/SQL): como estão armazenados, nulos como "—". */

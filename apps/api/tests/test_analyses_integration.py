@@ -194,6 +194,62 @@ def test_unknown_option_and_forbidden_analysis_are_rejected_for_the_new_analyses
     assert httpx.post(f"{API}/analyses/run", json={"analysis": "Manova", "dataset_id": data["dbc"], "options": {}}, timeout=60).status_code == 422
 
 
+def cell(v):
+    """Células com formato próprio chegam como {value, type, format}."""
+    return v["value"] if isinstance(v, dict) else v
+
+
+def test_paired_t_test_matches_R(data):
+    ref = REF["paired"]
+    res = run("TTestPairedSamples", data["dbc"], {"pairs": [["altura", "diametro"]], "student": True, "wilcoxon": True, "descriptives": True,
+                                                  "meanDifference": True, "meanDifferenceCi": True, "effectSize": True})
+    rows = {r["test"]: r for r in table(res, "ttest")["data"]}
+    st = rows["Student"]
+    close(st["Statistic"], ref["t"]); assert st["df"] == ref["df"]; close(st["p"], ref["p"]); close(st["md"], ref["mean_diff"])
+    close(st["lowerCIlocationParameter"], ref["lo"]); close(st["upperCIlocationParameter"], ref["hi"]); close(st["d"], ref["d"])
+    close(rows["Wilcoxon"]["p"], ref["wilcoxon_p"])  # p exato, como o R sem empates e n < 50
+    assert st["v1"] == "altura" and st["v2"] == "diametro"
+    d = {r["v"]: r for r in table(res, "ttestDescriptives_table")["data"]}
+    assert d["altura"]["N"] == d["diametro"]["N"] == ref["n"]
+
+
+def test_paired_t_test_one_sided_matches_R(data):
+    res = run("TTestPairedSamples", data["dbc"], {"pairs": [["altura", "diametro"]], "student": True, "alternative": "greater"})
+    close(table(res, "ttest")["data"][0]["p"], REF["paired"]["p_greater"])
+
+
+def test_one_sample_t_test_matches_R(data):
+    ref = REF["onesample"]
+    opts = {"dependent": ["produtividade"], "testValue": 200, "student": True, "wilcoxon": True, "descriptives": True,
+            "meanDifference": True, "meanDifferenceCi": True, "effectSize": True}
+    res = run("TTestOneSample", data["dbc"], opts)
+    rows = {r["test"]: r for r in table(res, "ttest")["data"]}
+    st = rows["Student"]
+    close(st["Statistic"], ref["t"]); assert st["df"] == ref["df"]; close(st["p"], ref["p"])
+    # o JASP reporta a DIFERENÇA em relação ao valor de referência (e o IC dela); o R, a média e o IC da média
+    close(st["lowerCIlocationParameter"], ref["lo"] - 200); close(st["upperCIlocationParameter"], ref["hi"] - 200); close(st["d"], ref["d"])
+    close(st["m"], ref["mean"] - 200)
+    close(rows["Wilcoxon"]["p"], ref["wilcoxon_p"])
+    close(table(run("TTestOneSample", data["dbc"], {**opts, "alternative": "greater", "wilcoxon": False}), "ttest")["data"][0]["p"], ref["p_greater"])
+
+
+def test_descriptives_match_R(data):
+    ref = REF["desc"]
+    res = run("Descriptives", data["dbc"], {"variables": ["produtividade"], "splitBy": [], "valid": True, "missing": True, "meanArithmetic": True, "median": True,
+                                            "sd": True, "variance": True, "seMean": True, "minimum": True, "maximum": True, "range": True, "sum": True})
+    row = table(res, "stats")["data"][0]
+    assert row["Valid"] == ref["n"] and row["Missing"] == 0
+    close(row["MeanArithmetic"], ref["mean"]); close(row["Std. Deviation"], ref["sd"]); close(row["Variance"], ref["variance"])
+    close(row["Std. Error of Mean"], ref["se"]); close(row["Sum"], ref["sum"]); close(row["Range"], ref["range"])
+    close(cell(row["Median"]), ref["median"]); close(cell(row["Minimum"]), ref["min"]); close(cell(row["Maximum"]), ref["max"])
+
+
+def test_descriptives_split_by_a_factor(data):
+    res = run("Descriptives", data["dbc"], {"variables": ["produtividade"], "splitBy": ["bloco"], "valid": True, "meanArithmetic": True, "sd": True})
+    rows = table(res, "stats")["data"]
+    assert [r["Level"] for r in rows] == ["1", "2", "3", "4"] and all(r["Valid"] == 8 for r in rows)  # 32 linhas / 4 blocos
+
+
 def test_endurance_many_distinct_concurrent_analyses_never_hang(data):
     """Guarda contra o travamento intermitente do motor (análise > 60 s -> 504 -> reinício de ~50 s).
     48 análises distintas, 6 em paralelo (os dois workers + fila), de tipos variados: nenhuma pode falhar nem passar de 30 s."""

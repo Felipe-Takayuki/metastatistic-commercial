@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANOVA_DEF, CONTINGENCY_DEF, CORRELATION_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANOVA_DEF, CONTINGENCY_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -17,7 +17,7 @@ const resolve = (def: Parameters<typeof resolveState>[0], d: Dataset, s: FormSta
 describe("catálogo", () => {
   it("ids únicos e conhecidos pelo worker", () => {
     expect(new Set(ANALYSES.map((a) => a.id)).size).toBe(ANALYSES.length);
-    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "Anova", "Correlation", "RegressionLinear", "ContingencyTables"]);
+    expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Correlation", "RegressionLinear", "ContingencyTables", "Descriptives"]);
     expect(getDef("Anova")).toBe(ANOVA_DEF);
     expect(getDef("Inexistente")).toBeUndefined();
   });
@@ -181,5 +181,69 @@ describe("isComplete (bloco de relatório sem precisar do dataset)", () => {
     expect(isComplete(CORRELATION_DEF, { variables: ["a", "b"] })).toBe(true);
     expect(isComplete(TTEST_DEF, { dependent: [], group: "g" })).toBe(false);
     expect(isComplete(REGRESSION_DEF, { dependent: "y" })).toBe(true); // covariáveis/fatores são conferidos na execução
+  });
+});
+
+describe("teste t pareado", () => {
+  it("preenche as duas medidas com colunas escalares DIFERENTES e monta `pairs` (sem vazar os campos locais ao JASP)", () => {
+    const r = resolve(PAIRED_TTEST_DEF, DBC, defaultState(PAIRED_TTEST_DEF));
+    expect(r.vars.first).toEqual(["prod"]);
+    expect(r.vars.second).toEqual(["altura"]);
+    const o = toOptions(PAIRED_TTEST_DEF, r);
+    expect(o.pairs).toEqual([["prod", "altura"]]);
+    expect(o).not.toHaveProperty("first");
+    expect(o).not.toHaveProperty("second");
+  });
+  it("ida e volta: `pairs` salvo volta aos dois campos e o bloco conta como completo", () => {
+    const o = { pairs: [["prod", "altura"]], student: true };
+    const s = fromOptions(PAIRED_TTEST_DEF, o);
+    expect(s.vars).toEqual({ first: ["prod"], second: ["altura"] });
+    expect(isComplete(PAIRED_TTEST_DEF, o)).toBe(true);
+    expect(isComplete(PAIRED_TTEST_DEF, { pairs: [] })).toBe(false);
+    expect(isComplete(PAIRED_TTEST_DEF, {})).toBe(false);
+  });
+  it("com uma só coluna escalar não há como formar o par: problema claro", () => {
+    const one = ds([col("prod", "scale"), col("g", "nominal", 2)]);
+    const r = resolve(PAIRED_TTEST_DEF, one, defaultState(PAIRED_TTEST_DEF));
+    expect(problems(PAIRED_TTEST_DEF, one, r).join(" ")).toMatch(/2ª medida/i);
+    expect(toOptions(PAIRED_TTEST_DEF, r).pairs).toEqual([]);
+  });
+  it("a mesma coluna nas duas medidas é recusada", () => {
+    const r = state({ first: ["prod"], second: ["prod"] }, {}, defaultState(PAIRED_TTEST_DEF));
+    expect(problems(PAIRED_TTEST_DEF, DBC, resolve(PAIRED_TTEST_DEF, DBC, r))).toEqual(["“prod” está em mais de um campo."]);
+  });
+});
+
+describe("teste t de uma amostra", () => {
+  it("manda o valor de referência como número e a variável como lista", () => {
+    const r = resolve(ONESAMPLE_TTEST_DEF, DBC, state({ dependent: ["prod"] }, { testValue: 200 }, defaultState(ONESAMPLE_TTEST_DEF)));
+    expect(toOptions(ONESAMPLE_TTEST_DEF, r)).toMatchObject({ dependent: ["prod"], testValue: 200, student: true, alternative: "twoSided" });
+  });
+  it("exige uma variável escalar e ao menos um teste", () => {
+    const empty = resolve(ONESAMPLE_TTEST_DEF, DBC, defaultState(ONESAMPLE_TTEST_DEF));
+    expect(problems(ONESAMPLE_TTEST_DEF, DBC, empty).join(" ")).toMatch(/Escolha/);
+    const none = resolve(ONESAMPLE_TTEST_DEF, DBC, state({ dependent: ["prod"] }, { student: false, wilcoxon: false }, defaultState(ONESAMPLE_TTEST_DEF)));
+    expect(problems(ONESAMPLE_TTEST_DEF, DBC, none)).toContain("Selecione ao menos um teste.");
+  });
+});
+
+describe("estatísticas descritivas", () => {
+  it("aceita escalares e categóricas; `splitBy` é opcional e vai como lista", () => {
+    const r = resolve(DESCRIPTIVES_DEF, DBC, state({ variables: ["prod", "altura", "grupo"] }, {}, defaultState(DESCRIPTIVES_DEF)));
+    expect(r.vars.variables).toEqual(["prod", "altura", "grupo"]);
+    const o = toOptions(DESCRIPTIVES_DEF, r);
+    expect(o.splitBy).toEqual([]);
+    expect(o).toMatchObject({ valid: true, meanArithmetic: true, sd: true, minimum: true, maximum: true, median: true, mode: false });
+    const split = resolve(DESCRIPTIVES_DEF, DBC, state({ variables: ["prod"], splitBy: ["grupo"] }, {}, defaultState(DESCRIPTIVES_DEF)));
+    expect(toOptions(DESCRIPTIVES_DEF, split).splitBy).toEqual(["grupo"]);
+  });
+  it("nível de confiança só aparece com o intervalo ligado", () => {
+    const item = DESCRIPTIVES_DEF.sections.flatMap((s) => s.items).find((i) => i.key === "meanCiLevel")!;
+    expect(item.showIf?.({ meanCi: false })).toBe(false);
+    expect(item.showIf?.({ meanCi: true })).toBe(true);
+  });
+  it("não deixa separar por uma variável que também está sendo analisada", () => {
+    const r = resolve(DESCRIPTIVES_DEF, DBC, state({ variables: ["grupo", "prod"], splitBy: ["grupo"] }, {}, defaultState(DESCRIPTIVES_DEF)));
+    expect(problems(DESCRIPTIVES_DEF, DBC, r).join(" ")).toMatch(/grupo/);
   });
 });

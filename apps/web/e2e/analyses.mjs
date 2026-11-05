@@ -103,6 +103,38 @@ try {
   check("Regressão: F(2, 29) igual ao R", has(t, f3(R.F)), t.slice(0, 500));
   await shot("a4-regressao");
 
+  // --- Teste t pareado (altura × diametro) ---
+  await pickAnalysis("Teste t pareado");
+  await page.getByLabel("1ª medida (escalar)").selectOption("altura");
+  await page.getByLabel("2ª medida (escalar)").selectOption("diametro");
+  await page.getByLabel("Wilcoxon (postos sinalizados)").check();
+  await run();
+  t = await resultText();
+  const P = REF.paired;
+  check("t pareado: t, gl e diferença média iguais ao R", has(t, f3(P.t), " 31 ", f3(P.mean_diff)), t.slice(0, 500));
+  check("t pareado: nomes das duas medidas na tabela", has(t, "altura", "diametro"), t.slice(0, 300));
+  await shot("a3b-t-pareado");
+
+  // --- Teste t de uma amostra (produtividade vs 200) ---
+  await pickAnalysis("Teste t de uma amostra");
+  await page.getByLabel(/^produtividade/).check();
+  await page.getByLabel("Valor de referência").fill("200");
+  await run();
+  t = await resultText();
+  const O = REF.onesample;
+  check("t de uma amostra: t, gl e p iguais ao R", has(t, f3(O.t), " 31 ", p3(O.p)), t.slice(0, 500));
+  await shot("a3c-t-uma-amostra");
+
+  // --- Estatísticas descritivas ---
+  await pickAnalysis("Estatísticas descritivas");
+  await page.getByLabel(/^produtividade/).check();
+  await run();
+  t = await resultText();
+  const D = REF.desc;
+  check("descritivas: média, desvio padrão, mediana, mínimo e máximo iguais ao R", has(t, f3(D.mean), f3(D.sd), f3(D.median), f3(D.min), f3(D.max)), t.slice(0, 600));
+  check("descritivas: nenhuma célula vira [object Object]", !t.includes("[object Object]") && !t.includes('{"'), t.slice(0, 400));
+  await shot("a3d-descritivas");
+
   // --- Qui-quadrado: dataset derivado com CASE (faixa) ---
   await upload("e2e-faixa-src.csv", readFileSync(join(FIX, "ttest.csv"), "utf8"));
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
