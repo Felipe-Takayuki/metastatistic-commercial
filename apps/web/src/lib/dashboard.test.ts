@@ -19,6 +19,23 @@ describe("nextLayout / newTile", () => {
   });
 });
 
+describe("tile de análise", () => {
+  const ds = [{ id: "d1", name: "n", table_name: "t", n_rows: 10, created_at: "", columns: [{ name: "score", dtype: "DOUBLE", measurement: "scale" as const, n_distinct: null }, { name: "g", dtype: "VARCHAR", measurement: "nominal" as const, n_distinct: 2 }] }];
+  it("nasce com a análise padrão, o 1º dataset, id próprio e posição abaixo dos demais", () => {
+    const t = newTile("analysis", [text("a", 0, 0, 4, 2)], ds);
+    expect(t.type).toBe("analysis");
+    if (t.type !== "analysis") return;
+    expect(t.id).not.toBe("a");
+    expect(t.dataset_id).toBe("d1");
+    expect(t.options).toMatchObject({ dependent: ["score"], group: "g" });
+    expect(t.layout).toEqual({ x: 0, y: 2, w: 6, h: 8 });
+  });
+  it("sem datasets: tile vazio (dataset_id vazio), que a tela mostra como incompleto", () => {
+    const t = newTile("analysis", [], []);
+    expect(t.type === "analysis" && t.dataset_id).toBe("");
+  });
+});
+
 describe("applyLayout", () => {
   const tiles = [text("a", 0, 0), text("b", 4, 0)];
   it("sem mudança devolve a mesma referência (nada de salvar à toa)", () => {

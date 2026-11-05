@@ -50,7 +50,11 @@ export function AnalysisRun({ analysis, datasetId, options }: Props) {
   const slow = useAfter(loading && !data, 8000);
   const engine = useEngineStatus(slow);
 
-  if (error) return <div className="alert" role="alert">{error}</div>;
+  if (error) {
+    // o dataset foi excluído depois que a análise foi salva (relatório/dashboard): mensagem útil em vez do erro cru da API
+    const gone = /dataset not found/i.test(error);
+    return <div className="alert" role="alert">{gone ? "O dataset desta análise foi excluído. Abra o modo de edição e escolha outro." : error}</div>;
+  }
   if (!data)
     return (
       <div className="empty" role="status">

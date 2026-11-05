@@ -42,7 +42,7 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
   // SQL do tile em edição NO MOMENTO em que o editor abriu. O tile de fundo usa este valor até o editor fechar: sem isso
   // cada tecla digitada reexecutaria a consulta (com SQL pela metade, falhando e sobrecarregando o banco).
   const frozenSql = useRef<{ id: string; sql: string } | null>(null);
-  const openEditor = (t: Tile) => { frozenSql.current = t.type === "text" ? null : { id: t.id, sql: t.sql }; setEditingId(t.id); };
+  const openEditor = (t: Tile) => { frozenSql.current = t.type === "chart" || t.type === "kpi" ? { id: t.id, sql: t.sql } : null; setEditingId(t.id); };
   const closeEditor = () => { frozenSql.current = null; setEditingId(null); };
   const [status, setStatus] = useState<{ s: SaveStatus; msg?: string }>({ s: "saved" });
   const titleRef = useRef(initial.title);
@@ -130,7 +130,7 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
           </>
         )}
       </header>
-      <div className="tile-body"><TileBody tile={frozenSql.current?.id === t.id && t.type !== "text" ? { ...t, sql: frozenSql.current.sql } : t} /></div>
+      <div className="tile-body"><TileBody tile={frozenSql.current?.id === t.id && (t.type === "chart" || t.type === "kpi") ? { ...t, sql: frozenSql.current.sql } : t} /></div>
     </>
   );
 
@@ -168,6 +168,7 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
           <button className="btn sm" onClick={() => add("kpi")}>+ KPI</button>
           <button className="btn sm" onClick={() => add("chart")}>+ Gráfico</button>
           <button className="btn sm" onClick={() => add("text")}>+ Texto</button>
+          <button className="btn sm" onClick={() => add("analysis")}>+ Análise</button>
           {stacked && <span className="muted small">Tela estreita: os tiles aparecem empilhados; para mudar posições, use uma tela mais larga.</span>}
         </div>
       )}
@@ -202,13 +203,13 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
 
       {editingTile && (
         <div className="modal-backdrop no-print" onMouseDown={(e) => e.target === e.currentTarget && closeEditor()}>
-          <div className="modal card" role="dialog" aria-modal="true" aria-label={`Editar tile ${TILE_LABEL[editingTile.type]}`}>
+          <div className={`modal card${editingTile.type === "analysis" ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={`Editar tile ${TILE_LABEL[editingTile.type]}`}>
             <header className="modal-head">
               <strong>Editar tile: {TILE_LABEL[editingTile.type]}</strong>
               <span className="spacer" />
               <button className="btn primary sm" onClick={closeEditor}>Concluir</button>
             </header>
-            <div className="modal-body"><TileEditor tile={editingTile} onChange={update} /></div>
+            <div className="modal-body"><TileEditor tile={editingTile} onChange={update} datasets={datasets} /></div>
           </div>
         </div>
       )}

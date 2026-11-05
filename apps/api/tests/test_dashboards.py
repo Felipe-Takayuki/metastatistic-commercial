@@ -133,3 +133,20 @@ async def test_old_database_without_filters_column_is_migrated(client, data_dir)
     assert [r["title"] for r in rows] == ["Antigo"]
     got = (await client.get(f"/dashboards/{rows[0]['id']}")).json()
     assert got["filters"] == []
+
+
+ANALYSIS_TILE = {"type": "analysis", "id": "an1", "analysis": "ANOVA", "dataset_id": "0" * 32,
+                 "options": {"dependent": "y", "fixedFactors": ["A", "B"], "descriptives": True}, "layout": L(0, 6, 6, 8)}
+
+
+async def test_analysis_tile_roundtrip(client):
+    d = await create(client, tiles=[*TILES, ANALYSIS_TILE])
+    got = (await client.get(f"/dashboards/{d['id']}")).json()
+    assert got["tiles"][-1] == ANALYSIS_TILE
+
+
+async def test_analysis_tile_needs_layout_and_fields(client):
+    no_layout = {k: v for k, v in ANALYSIS_TILE.items() if k != "layout"}
+    assert (await client.post("/dashboards", json={"title": "x", "tiles": [no_layout]})).status_code == 422
+    no_ds = {k: v for k, v in ANALYSIS_TILE.items() if k != "dataset_id"}
+    assert (await client.post("/dashboards", json={"title": "x", "tiles": [no_ds]})).status_code == 422

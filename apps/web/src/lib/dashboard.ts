@@ -1,5 +1,5 @@
-import type { Dataset, KpiTile, QueryResult, Tile, TileLayout } from "../api";
-import { newId } from "./blocks";
+import type { AnalysisBlock, Dataset, KpiTile, QueryResult, Tile, TileLayout } from "../api";
+import { newBlock, newId } from "./blocks";
 
 export const GRID_COLS = 12;
 export const ROW_HEIGHT = 56;
@@ -7,7 +7,7 @@ export const GRID_GAP = 12;
 export const STACK_BELOW = 720; // abaixo desta largura (px) os tiles empilham em coluna única
 
 export type TileType = Tile["type"];
-const SIZE: Record<TileType, { w: number; h: number }> = { kpi: { w: 3, h: 2 }, chart: { w: 6, h: 6 }, text: { w: 6, h: 3 } };
+const SIZE: Record<TileType, { w: number; h: number }> = { kpi: { w: 3, h: 2 }, chart: { w: 6, h: 6 }, text: { w: 6, h: 3 }, analysis: { w: 6, h: 8 } };
 
 /** Primeira posição livre: nova linha abaixo de tudo, na coluna 0 (a compactação vertical sobe o tile se houver espaço). */
 export function nextLayout(tiles: Tile[], type: TileType): TileLayout {
@@ -20,6 +20,7 @@ export function newTile(type: TileType, tiles: Tile[], datasets: Dataset[]): Til
   const layout = nextLayout(tiles, type);
   const table = datasets[0]?.table_name;
   if (type === "text") return { type, id, markdown: "", layout };
+  if (type === "analysis") return { ...(newBlock("analysis", [], datasets) as AnalysisBlock), id, layout };
   if (type === "kpi") return { type, id, title: "", sql: table ? `SELECT count(*) FROM "${table.replace(/"/g, '""')}"` : "", decimals: 0, prefix: "", suffix: "", layout };
   return { type, id, title: "", sql: table ? `SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT 20` : "", chart: null, layout };
 }

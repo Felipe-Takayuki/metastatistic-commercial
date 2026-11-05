@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type ChartTile, type KpiTile, type TextTile, type Tile } from "../../api";
+import { type AnalysisTile, type ChartTile, type Dataset, type KpiTile, type TextTile, type Tile } from "../../api";
+import { getDef } from "../../lib/analyses";
 import { reconcile } from "../../lib/chartSpec";
 import { formatKpi } from "../../lib/dashboard";
 import { renderMarkdown } from "../../lib/markdown";
 import { ChartView } from "../ChartView";
 import { DataTable } from "../DataTable";
 import { useParams, useTileQuery } from "./params";
+import { AnalysisBlockEditor, AnalysisBlockView } from "../report/AnalysisBlock";
 import { ChartBlockEditor } from "../report/ChartBlock";
 import { SqlEditor } from "../SqlEditor";
 import { TextBlockEditor } from "../report/TextBlock";
@@ -54,13 +56,14 @@ function KpiTileBody({ tile }: { tile: KpiTile }) {
 export function TileBody({ tile }: { tile: Tile }) {
   if (tile.type === "text") return <div className="markdown tile-text">{renderMarkdown(tile.markdown)}</div>;
   if (tile.type === "chart") return <ChartTileBody tile={tile} />;
+  if (tile.type === "analysis") return <AnalysisBlockView block={tile} />;
   return <KpiTileBody tile={tile} />;
 }
 
-export const TILE_LABEL: Record<Tile["type"], string> = { text: "Texto", chart: "Gráfico", kpi: "KPI" };
+export const TILE_LABEL: Record<Tile["type"], string> = { text: "Texto", chart: "Gráfico", kpi: "KPI", analysis: "Análise" };
 
 export function tileHeading(t: Tile): string {
-  return t.type === "text" ? "" : t.title;
+  return t.type === "text" ? "" : t.type === "analysis" ? (getDef(t.analysis)?.title ?? "Análise") : t.title;
 }
 
 function KpiEditor({ tile, onChange }: { tile: KpiTile; onChange: (t: KpiTile) => void }) {
@@ -94,7 +97,15 @@ function KpiEditor({ tile, onChange }: { tile: KpiTile; onChange: (t: KpiTile) =
 }
 
 /** Editor do conteúdo de um tile (a posição é editada arrastando na grade). */
-export function TileEditor({ tile, onChange }: { tile: Tile; onChange: (t: Tile) => void }) {
+export function TileEditor({ tile, onChange, datasets }: { tile: Tile; onChange: (t: Tile) => void; datasets: Dataset[] }) {
+  if (tile.type === "analysis") {
+    return (
+      <>
+        <AnalysisBlockEditor block={tile} datasets={datasets} onChange={(b) => onChange({ ...tile, ...b } as AnalysisTile)} />
+        <p className="muted small" style={{ margin: 0 }}>Os filtros do dashboard não se aplicam às análises: elas usam o dataset inteiro.</p>
+      </>
+    );
+  }
   if (tile.type === "text") return <TextBlockEditor block={tile} onChange={(b) => onChange({ ...tile, ...b } as TextTile)} />;
   if (tile.type === "chart") return <ChartTileEditor tile={tile} onChange={onChange} />;
   return <KpiEditor tile={tile} onChange={onChange} />;

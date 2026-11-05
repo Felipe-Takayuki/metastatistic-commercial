@@ -322,3 +322,6 @@ input[type="number"] { padding: 6px 10px; border: 1px solid var(--border); borde
 .filter-row { display: grid; grid-template-columns: 1.1fr 1.3fr .8fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 10px; }
 .chart-box.clickable canvas, .chart-box.clickable svg { cursor: pointer; }
 @media (max-width: 700px) { .filter-row { grid-template-columns: 1fr 1fr; } }
+
+.modal.wide { max-width: 1040px; }
+.tile-body .report-block { margin: 0; }

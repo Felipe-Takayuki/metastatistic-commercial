@@ -14,7 +14,8 @@
     "e2e:analyses": "node e2e/analyses.mjs",
     "e2e:dashboards": "node e2e/dashboards.mjs",
     "e2e:filters": "node e2e/dashboard-filters.mjs",
-    "e2e:all": "node e2e/walkthrough.mjs && node e2e/reports.mjs && node e2e/analyses.mjs && node e2e/dashboards.mjs && node e2e/dashboard-filters.mjs"
+    "e2e:dash-analysis": "node e2e/dashboard-analysis.mjs",
+    "e2e:all": "node e2e/walkthrough.mjs && node e2e/reports.mjs && node e2e/analyses.mjs && node e2e/dashboards.mjs && node e2e/dashboard-filters.mjs && node e2e/dashboard-analysis.mjs"
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",

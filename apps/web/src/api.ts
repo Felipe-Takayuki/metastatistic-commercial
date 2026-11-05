@@ -44,7 +44,8 @@ export interface TileLayout { x: number; y: number; w: number; h: number }
 export type TextTile = TextBlock & { layout: TileLayout };
 export type ChartTile = ChartBlock & { layout: TileLayout; click_param?: string | null };
 export interface KpiTile { type: "kpi"; id: string; title: string; sql: string; decimals: number; prefix: string; suffix: string; layout: TileLayout }
-export type Tile = TextTile | ChartTile | KpiTile;
+export type AnalysisTile = AnalysisBlock & { layout: TileLayout };
+export type Tile = TextTile | ChartTile | KpiTile | AnalysisTile;
 export interface DashFilter { name: string; label: string; type: "text" | "number" | "date"; default: string }
 export interface Dashboard { id: string; title: string; tiles: Tile[]; filters: DashFilter[]; version: number; created_at: string; updated_at: string }
 export interface DashboardSummary { id: string; title: string; n_tiles: number; version: number; updated_at: string }

@@ -1,4 +1,4 @@
-# Fase 5 (projeto) — Dashboards: fatias 5.1 e 5.2 ✅ (2026-11-05)
+# Fase 5 (projeto) — Dashboards: fatias 5.1, 5.2 e 5.3 ✅ (2026-11-05)
 
 Corresponde à **"Fase 4: Dashboards e colaboração" do PLAN.md** (a numeração do projeto andou à frente: a Fase 4 daqui foi "mais análises").
 A **5.1** entrega a grade arrastável; a **5.2** (seção final) entrega filtros globais e cross-filter. Drill-down, coleções, RBAC e segurança por linha continuam pendentes.
@@ -32,7 +32,7 @@ API: `POST/GET /dashboards`, `GET/PUT/DELETE /dashboards/{id}` (a lista devolve 
 
 ## Pendências
 - **Drill-down** (clicar numa barra abre o detalhe).
-- Tile de **análise estatística** (hoje só KPI, gráfico e texto); tile de tabela.
+- Tile de **tabela** (resultado de SQL).
 - Exportar PDF do dashboard; coleções/pastas; RBAC e segurança por linha (exigem autenticação, que não existe).
 - Em tela estreita não se reposicionam tiles. Sem desfazer/refazer. Sem tiles duplicados ("duplicar").
 - Mesmo problema de largura em **Explorar** (`#/`) a 420 px (a barra lateral/tabelas estouram); não tratado aqui.
@@ -68,3 +68,27 @@ API: `POST/GET /dashboards`, `GET/PUT/DELETE /dashboards/{id}` (a lista devolve 
 - Os valores dos filtros não vão na URL (não dá para compartilhar um dashboard já filtrado).
 - Cross-filter só em gráficos de **barras/linhas/pontos pela categoria do eixo X** (não por série). Sem destaque visual da barra selecionada.
 - Placeholders dentro de literais/comentários do SQL também são substituídos (comportamento simples e previsível, mas atenção ao escrever).
+
+---
+
+# Fatia 5.3 — tile de análise estatística ✅
+
+Liga o BI ao motor JASP: um dashboard pode misturar KPIs, gráficos SQL, textos e **análises** (as 5 do catálogo: teste t, ANOVA, correlação, regressão linear, qui-quadrado).
+
+## O que existe
+- Botão **+ Análise**; o diálogo reaproveita o `AnalysisBlockEditor` dos relatórios (dataset, análise, variáveis, opções, "Executar análise") e fica mais largo para caber formulário + resultado.
+- O tile mostra o resultado do JASP (tabelas APA/gráficos) com rolagem interna; o cabeçalho traz o nome da análise. Em modo leitura, sem botões.
+- Guarda a **definição** (`analysis`, `dataset_id`, `options`), nunca o resultado: ao abrir, reexecuta (com o cache da API: abrir de novo é instantâneo).
+- Análise incompleta/desconhecida mostra o aviso dos relatórios. **Dataset excluído** agora mostra "O dataset desta análise foi excluído. Abra o modo de edição e escolha outro." (antes aparecia `dataset not found: <id>`; a correção vale também para relatórios).
+
+## Decisões
+- `AnalysisTile` herda `AnalysisBlock` (mesmo contrato dos relatórios) + `layout`: nenhuma lógica nova de análise.
+- **Filtros do dashboard NÃO se aplicam às análises** (elas leem o dataset inteiro, sem SQL). O diálogo avisa. Para analisar um recorte, a saída é "Salvar consulta como dataset" (Fase 4) e analisar o dataset derivado.
+
+## Verificado
+- `pytest` 169 (2 novos), `vitest` 120 (2 novos), e2e `dashboard-analysis.mjs` (10 checks com o motor R real); `e2e:all` = 6 suítes verdes.
+- O e2e cobre: diálogo com padrões do teste t, resultado igual ao R (t=-2.628, gl=78, p=.010) no diálogo e no tile, servidor guarda só a definição, convivência com KPI sem sobreposição, recarregar reexecuta, leitura sem botões, dataset excluído → erro legível.
+
+## Pendências desta fatia
+- Filtros que recortem a análise (exigiria materializar o recorte como dataset temporário).
+- Cada análise ocupa um motor por vez; um dashboard com muitas análises serializa no pool (a fila e o aviso "ainda calculando" existem, mas só no bloco de relatório; no tile a espera é só o spinner).

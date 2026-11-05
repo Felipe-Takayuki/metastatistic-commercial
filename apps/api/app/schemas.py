@@ -186,7 +186,12 @@ class KpiTile(BaseModel):
     layout: TileLayout
 
 
-Tile = Annotated[Union[TextTile, ChartTile, KpiTile], Field(discriminator="type")]
+class AnalysisTile(AnalysisBlock):
+    """Análise estatística (motor JASP) sobre um dataset. Os filtros do dashboard não se aplicam a ela (a análise lê o dataset inteiro)."""
+    layout: TileLayout
+
+
+Tile = Annotated[Union[TextTile, ChartTile, KpiTile, AnalysisTile], Field(discriminator="type")]
 
 
 class DashboardIn(BaseModel):
