@@ -1,0 +1,77 @@
+version: "3.8"
+
+x-r-worker: &r-worker
+  build: ./engines/r-worker
+  image: metastatistic-r-worker:spike
+  init: true
+  restart: unless-stopped
+  mem_limit: 1536m
+  cpus: 2
+  environment:
+    ANALYSIS_TIMEOUT_S: "60"
+  volumes:
+    - datasets:/data:ro
+
+services:
+  gateway:
+    build: ./services/gateway
+    image: metastatistic-gateway:latest
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
+      DATA_API_URL: "http://api:8000"
+      WEB_URL: "http://web:80"
+      DEFAULT_TENANT_ID: "default"
+    depends_on:
+      - auth-tenant-service
+      - api
+    restart: unless-stopped
+
+  auth-tenant-service:
+    build: ./services/auth-tenant-service
+    image: metastatistic-auth-tenant-service:latest
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: "8002"
+      DATABASE_URL: "sqlite:///./data/auth_tenant.db"
+    volumes:
+      - auth_data:/service/data
+    restart: unless-stopped
+
+  api:
+    build: ./apps/api
+    image: metastatistic-api:latest
+    ports:
+      - "8000:8000"
+    environment:
+      R_WORKER_URLS: "http://r-worker-1:8000"
+      ANALYSIS_TIMEOUT_S: "60"
+      DATA_DIR: "/data"
+      AUTH_ENABLED: "${AUTH_ENABLED:-false}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+    volumes:
+      - datasets:/data
+    depends_on:
+      - r-worker-1
+    restart: unless-stopped
+
+  r-worker-1:
+    <<: *r-worker
+    ports:
+      - "8001:8000"
+
+  web:
+    build: ./apps/web
+    image: metastatistic-web:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  datasets:
+  auth_data:
