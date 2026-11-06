@@ -429,7 +429,25 @@ const bfType = (): Item => ({
   options: [{ value: "BF10", label: "BF₁₀ (evidência para H₁ contra H₀)" }, { value: "BF01", label: "BF₀₁ (evidência para H₀ contra H₁)" }, { value: "LogBF10", label: "log(BF₁₀)" }],
 });
 const cauchyWidth = (key: string, label: string, def: number): Item => ({ type: "number", key, label, default: def, min: 0.05, max: 2, step: 0.01 });
-const BAYES_T_PRIOR = { title: "Prior (Cauchy sobre o tamanho do efeito)", items: [cauchyWidth("priorWidth", "Largura do prior (0,707 = “médio”)", 0.707)] };
+const isInformative = (v: Values) => v.effectSizeStandardized === "informative";
+const inform = (dist: string) => (v: Values) => isInformative(v) && v.informativeStandardizedEffectSize === dist;
+const bounded = (key: string, label: string, def: number, min: number, max: number, step: number, showIf: (v: Values) => boolean): Item => ({ type: "number", key, label, default: def, min, max, step, showIf });
+// Prior sobre o tamanho do efeito padronizado δ (= (μ₁ − μ₂)/σ nos grupos; média − referência/σ em uma amostra). Padrão: Cauchy centrada em 0.
+// Informativo: Cauchy, Normal ou t com a posição/escala que o usuário escolher (limites do JASP: posição −3…3, escala 0…2). Conferido por integração numérica em R.
+const BAYES_T_PRIOR = {
+  title: "Prior sobre o tamanho do efeito (δ)",
+  items: [
+    { type: "choice", key: "effectSizeStandardized", label: "Prior", default: "default", options: [{ value: "default", label: "Padrão: Cauchy centrada em 0" }, { value: "informative", label: "Informativo (escolho a distribuição)" }] } as Item,
+    { ...cauchyWidth("priorWidth", "Largura do prior padrão (0,707 = “médio”)", 0.707), showIf: (v: Values) => !isInformative(v) } as Item,
+    { type: "choice", key: "informativeStandardizedEffectSize", label: "Distribuição informativa", default: "cauchy", showIf: isInformative, options: [{ value: "cauchy", label: "Cauchy" }, { value: "normal", label: "Normal" }, { value: "t", label: "t de Student" }] } as Item,
+    bounded("informativeCauchyLocation", "Posição (centro)", 0, -3, 3, 0.1, inform("cauchy")), bounded("informativeCauchyScale", "Escala", 0.707, 0.01, 2, 0.01, inform("cauchy")),
+    bounded("informativeNormalMean", "Média", 0, -3, 3, 0.1, inform("normal")), bounded("informativeNormalStd", "Desvio padrão", 0.707, 0.01, 2, 0.01, inform("normal")),
+    bounded("informativeTLocation", "Posição (centro)", 0, -3, 3, 0.1, inform("t")), bounded("informativeTScale", "Escala", 0.707, 0.01, 2, 0.01, inform("t")), bounded("informativeTDf", "Graus de liberdade do prior", 1, 1, 100, 1, inform("t")),
+  ],
+};
+/** O prior informativo só foi conferido (contra a integração numérica em R) para a hipótese bilateral. */
+const informativeCheck = ({ state }: { state: FormState }): string[] =>
+  isInformative(state.values) && state.values.alternative !== "twoSided" ? ["O prior informativo só está disponível com a hipótese bilateral (o JASP trunca o prior nas unilaterais, sem verificação aqui)."] : [];
 const BAYES_T_PLOTS = { title: "Gráficos", items: [toggle("priorAndPosteriorPlot", "Prior e posterior"), toggle("bfRobustnessPlot", "Robustez do fator de Bayes à largura do prior")] };
 
 export const BAYES_TTEST_DEF: AnalysisDef = {
@@ -446,7 +464,7 @@ export const BAYES_TTEST_DEF: AnalysisDef = {
   check: ({ dataset, state }) => {
     const g = state.vars.group[0];
     const n = g ? colOf(dataset, g)?.n_distinct ?? null : null;
-    return n !== null && n !== 2 ? [`${g} tem ${levelsLabel(n)}, e o teste t compara exatamente 2 grupos. Escolha outra variável ou filtre os dados (aba Consulta SQL).`] : [];
+    return [...(n !== null && n !== 2 ? [`${g} tem ${levelsLabel(n)}, e o teste t compara exatamente 2 grupos. Escolha outra variável ou filtre os dados (aba Consulta SQL).`] : []), ...informativeCheck({ state })];
   },
 };
 
@@ -464,7 +482,7 @@ export const BAYES_PAIRED_TTEST_DEF: AnalysisDef = {
   derive: PAIRED_TTEST_DEF.derive,
   parseVars: PAIRED_TTEST_DEF.parseVars,
   hint: PAIRED_TTEST_DEF.hint,
-  check: pairsCheck,
+  check: (ctx) => [...pairsCheck(ctx), ...informativeCheck(ctx)],
 };
 
 export const BAYES_ONESAMPLE_TTEST_DEF: AnalysisDef = {
@@ -479,6 +497,7 @@ export const BAYES_ONESAMPLE_TTEST_DEF: AnalysisDef = {
     { title: "Resultado", items: [bfType(), toggle("descriptives", "Estatísticas descritivas", true), toggle("descriptivesPlot", "Gráfico descritivo")] },
     BAYES_T_PLOTS,
   ],
+  check: informativeCheck,
 };
 
 export const BAYES_ANOVA_DEF: AnalysisDef = {

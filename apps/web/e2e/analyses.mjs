@@ -453,6 +453,23 @@ try {
   check("t bayesiano: com BF₀₁ na tabela a interpretação continua em BF₁₀", has((await bnotes().innerText()).replace(/\s+/g, " "), "BF₁₀ = 4,36", "a favor de H₁"));
   await shot("a3g-t-bayesiano");
 
+  // prior informativo (Normal, média 0,3, dp 0,5): BF₁₀ igual à integração numérica em R (t não central); o campo do prior padrão some
+  await page.getByLabel(/^Fator de Bayes/).selectOption("BF10");
+  check("t bayesiano: com o prior padrão, os campos do prior informativo não aparecem", (await page.getByLabel("Distribuição informativa").count()) === 0 && (await page.getByLabel(/^Largura do prior padrão/).count()) === 1);
+  const priorSelect = () => page.locator("label.field").filter({ hasText: /^Prior(Padrão|Informativo)/ }).locator("select");   // o texto do rótulo inclui as opções
+  await priorSelect().selectOption("informative");
+  await page.getByLabel("Distribuição informativa").selectOption("normal");
+  await page.getByLabel("Média", { exact: true }).fill("0.3");
+  await page.getByLabel("Desvio padrão", { exact: true }).fill("0.5");
+  check("t bayesiano: com o prior informativo, o campo do prior padrão some", (await page.getByLabel(/^Largura do prior padrão/).count()) === 0);
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText(REF.bayes_inf.indep.normal.toFixed(3)).first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  check("t bayesiano com prior Normal(0,3; 0,5): BF₁₀ igual à integração numérica do R", has(await resultText(), REF.bayes_inf.indep.normal.toFixed(3)));
+  await page.getByLabel("Hipótese alternativa (grupo 1 vs grupo 2)").selectOption("greater");
+  check("t bayesiano: prior informativo + hipótese unilateral bloqueia a execução com mensagem", await page.getByRole("button", { name: "Executar análise" }).isDisabled() && (await page.getByText(/só está disponível com a hipótese bilateral/).count()) === 1);
+  await page.getByLabel("Hipótese alternativa (grupo 1 vs grupo 2)").selectOption("twoSided");
+  await priorSelect().selectOption("default");
+
   // --- teste z de duas médias (σ conhecidos): análise do motor da plataforma, não do JASP ---
   await pickAnalysis("Teste z de duas amostras (σ conhecidos)");
   await page.getByLabel(/^σ do 1º grupo/).fill("1.5");

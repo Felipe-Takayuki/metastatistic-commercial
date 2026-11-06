@@ -848,3 +848,20 @@ def test_repeated_measures_two_factors_posthoc_is_paired_t_on_marginal_means(dat
     desc = run("AnovaRepeatedMeasures", data["rm2"], {**RM2_BASE, "descriptives": True})
     rows = table(desc, "tableDescriptives")["data"]
     assert [(r["A."], r["B."]) for r in rows] == [("pre", "b1"), ("pre", "b2"), ("pre", "b3"), ("pos", "b1"), ("pos", "b2"), ("pos", "b3")]   # ordem das células
+
+
+INF = {"normal": {"informativeStandardizedEffectSize": "normal", "informativeNormalMean": 0.3, "informativeNormalStd": 0.5},
+       "cauchy": {"informativeStandardizedEffectSize": "cauchy", "informativeCauchyLocation": 0.3, "informativeCauchyScale": 0.5},
+       "t": {"informativeStandardizedEffectSize": "t", "informativeTLocation": 0.3, "informativeTScale": 0.5, "informativeTDf": 4}}
+
+
+def test_informative_priors_in_bayesian_t_tests_match_numerical_integration(data):
+    """BF10 com prior informativo = ∫ f(t|δ) π(δ) dδ / f(t|0) (t não central) integrado em R. Convenção: δ = (μ1 − μ2)/σ, grupo 1 = 1º nível."""
+    ref = REF["bayes_inf"]
+    for kind, extra in INF.items():
+        one = run("TTestBayesianOneSample", data["dbc"], {"dependent": ["produtividade"], "testValue": 200, "effectSizeStandardized": "informative", **extra})
+        close(table(one, "ttestTable")["data"][0]["BF"], ref["one"][kind], rel=1e-5)
+        ind = run("TTestBayesianIndependentSamples", data["tt"], {"dependent": ["score"], "group": "group", "effectSizeStandardized": "informative", **extra})
+        close(table(ind, "ttestTable")["data"][0]["BF"], ref["indep"][kind], rel=1e-5)
+    default = table(run("TTestBayesianOneSample", data["dbc"], {"dependent": ["produtividade"], "testValue": 200}), "ttestTable")["data"][0]["BF"]
+    assert default != ref["one"]["normal"]   # o prior informativo muda o resultado em relação ao Cauchy padrão

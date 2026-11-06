@@ -205,6 +205,18 @@ bp <- combn(c("b1", "b2", "b3"), 2, simplify = FALSE); btt <- lapply(bp, functio
 out$rm2 <- list(n = n2, A = st2("Error: id:A", "A"), B = st2("Error: id:B", "B"), AB = st2("Error: id:A:B", "A:B"),
   posthoc_B = lapply(seq_along(bp), function(i) list(a = bp[[i]][1], b = bp[[i]][2], est = unname(btt[[i]]$estimate), t = unname(btt[[i]]$statistic), df = unname(btt[[i]]$parameter),
     holm = p.adjust(braw, "holm")[i], bonferroni = p.adjust(braw, "bonferroni")[i])))
+# --- catálogo 6.18: priors informativos nos testes t bayesianos. BF10 = ∫ f(t | δ) π(δ) dδ / f(t | 0), com f = densidade t NÃO central (ncp = δ·√n_eff) ---
+inf_bf <- function(tstat, df, neff, prior) {
+  num <- integrate(function(del) vapply(del, function(q) dt(tstat, df, ncp = q * sqrt(neff)) * prior(q), numeric(1)), -Inf, Inf, rel.tol = 1e-10)$value
+  num / dt(tstat, df)
+}
+pri <- list(normal = function(q) dnorm(q, 0.3, 0.5), cauchy = function(q) dcauchy(q, 0.3, 0.5), t = function(q) dt((q - 0.3) / 0.5, 4) / 0.5)
+x1 <- d$produtividade - 200; t1_ <- unname(t.test(x1)$statistic); n1_ <- length(x1)
+ti <- t.test(tt$score ~ tt$group, var.equal = TRUE); ni1 <- sum(tt$group == "a"); ni2 <- sum(tt$group == "b"); neff <- ni1 * ni2 / (ni1 + ni2)
+out$bayes_inf <- list(
+  one = lapply(pri, function(f) inf_bf(t1_, n1_ - 1, n1_, f)),
+  indep = lapply(pri, function(f) inf_bf(unname(ti$statistic), ni1 + ni2 - 2, neff, f)),
+  indep_flipped = lapply(pri, function(f) inf_bf(-unname(ti$statistic), ni1 + ni2 - 2, neff, f)))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

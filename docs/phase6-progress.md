@@ -1,15 +1,18 @@
-# BACKLOG do catálogo (atualizado na 6.8; as seções por fatia abaixo trazem o detalhe)
+# Estado do catálogo estatístico (Fase 6 do projeto) — fechamento na 6.18
 
-Pedidos do usuário: **teste z de duas amostras e de proporções — FEITOS na 6.12** (análises próprias da plataforma, ver abaixo; o z de UMA média continua sendo do JASP, 6.7).
+**21 análises + 2 análises próprias (testes z), todas conferidas contra o R puro ou contra uma referência independente.** As seções por fatia abaixo trazem o detalhe e as armadilhas de cada uma. Suítes no fechamento: `vitest` 201, `pytest` 216 (integração com o motor real), `e2e:all` 6 suítes.
 
-Resolvido na 6.17: ANOVA de medidas repetidas com dois fatores intra-sujeito.
-Resolvido na 6.16: ANCOVA com post hoc e médias marginais ajustadas; regressão logística com seleção de preditores por AIC.
-Resolvido na 6.15: correlação, regressão linear, ANCOVA e qui-quadrado bayesianos.
-Resolvido na 6.14: t pareado (e bayesiano) com vários pares.
-Resolvido na 6.13: pressupostos para correlação, regressão e qui-quadrado; notas automáticas em relatório/dashboard (opt-in por bloco); aviso de Likert na aba Dados.
-Resolvido na 6.11: dados ordinais numéricos (Likert) em papéis escalares, e regressão com um único preditor (bug do motor).
+**Pedidos do usuário atendidos**: teste z de uma média (opção do JASP, 6.7), de duas médias com σ conhecidos e de proporções (uma e duas amostras; **análises próprias do worker, não do JASP**, sinalizadas na saída, 6.12), ordinais numéricos/Likert (6.11), todas as versões bayesianas planejadas (6.6, 6.15, 6.18), medidas repetidas com até dois fatores intra e Friedman (6.9, 6.10, 6.17).
 
-Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9 e Friedman na 6.10; vários fatores intra-sujeito: dois feitos na 6.17); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
+## Fora do catálogo de propósito (com o motivo)
+- **Wilcoxon bayesiano** e **correlação bayesiana de Spearman/Kendall**: existem no JASP, mas dependem de amostragem MCMC e **não há referência independente** (o pacote BayesFactor não os tem) para conferir os números; expor sem conferir contraria o critério das demais análises.
+- **Friedman estratificado por grupo**: o JASP devolve `NaN` no Conover quando há fator de agrupamento (verificado na 6.10).
+- **Prior informativo com hipótese unilateral**: bloqueado no formulário (só foi conferido o caso bilateral, 6.18).
+- **Mais de dois fatores intra-sujeito**, contrastes personalizados, efeitos simples e gráficos de perfil: o JASP oferece; ficaram para uso real indicar a necessidade.
+- **Estimativa a posteriori do efeito nos testes t bayesianos**: o JASP só a entrega no gráfico de prior e posterior (mediana e IC credível, opção "Prior e posterior"), que já está no formulário; não há tabela.
+
+## Itens ainda abertos (pequenos, por ordem de utilidade)
+Gráficos de prior/posterior e de robustez para correlação, regressão, ANCOVA e qui-quadrado bayesianos; fatores na regressão bayesiana; interpretação textual da tabela de modelos da regressão/ANCOVA bayesianas; interações e pesos na regressão logística; teste de homogeneidade de inclinações na ANCOVA; z de uma proporção com IC de Wald/Clopper-Pearson e correção de continuidade.
 
 ---
 
@@ -421,4 +424,17 @@ Armadilha de teste: a tabela intra do JASP só traz a coluna `correction` quando
 ## Pendências
 - Máximo de dois fatores intra-sujeito no formulário (o JASP aceita mais); post hoc apenas das médias marginais de cada fator (sem comparações das células da interação nem efeitos simples).
 - Sem teste de esfericidade verificado contra o R para A × B (o do fator único está conferido na 6.9).
+
+---
+
+# Fatia 6.18 — priors informativos nos testes t bayesianos ✅ (sem mudança no motor)
+
+O seletor **"Prior sobre o tamanho do efeito (δ)"** dos três testes t bayesianos (independente, pareado e uma amostra) ganhou o modo **Informativo**: o usuário escolhe a distribuição de δ entre **Cauchy**, **Normal** e **t de Student**, com posição/média (−3 a 3) e escala/desvio (0 a 2) (e graus de liberdade para a t), os limites do JASP. Só os campos da distribuição escolhida aparecem; com o prior padrão aparece só a largura (0,707). Convenção do efeito: **δ = (μ₁ − μ₂)/σ**, com o grupo 1 sendo o 1º nível em ordem alfabética (e média − valor de referência, em σ, numa amostra).
+
+- **Só com hipótese bilateral**: com unilateral o JASP trunca o prior e essa combinação não foi conferida; o formulário bloqueia com mensagem.
+- **Conferido por integração numérica em R**, independente do JASP: `BF₁₀ = ∫ f(t | δ) π(δ) dδ / f(t | 0)` com `f` = densidade **t não central** (`ncp = δ·√n_eff`, `n_eff = n₁n₂/(n₁+n₂)` nas duas amostras). Bate com o JASP até 8 casas em uma amostra (Normal 0,291802; Cauchy 0,205148; t 0,264618) e nas duas amostras independentes (3,13301; 2,70632; 3,19022), e reproduz o prior padrão (0,214875).
+
+## Verificado
+`vitest` 201 (1 novo), `pytest` 216 (1 novo), `e2e:all` 6 suítes verdes (campos que aparecem/somem, BF₁₀ do prior Normal igual ao do R, bloqueio da unilateral).
+Armadilha de e2e: o texto do rótulo de um `<select>` inclui o texto das opções, então `getByLabel("Prior", { exact: true })` não acha; filtrar `label.field` por `hasText` e usar o `select` dentro.
 

@@ -364,6 +364,25 @@ describe("toOptions — o contrato com o motor JASP", () => {
     }
     expect(LOGISTIC_DEF.hint!(resolve(LOGISTIC_DEF, d, st()))).toBeNull();
   });
+  it("t bayesiano: prior padrão por padrão; informativo mostra só os campos da distribuição escolhida; só com hipótese bilateral", () => {
+    const d = ds([col("y", "scale")]);
+    const st = (values = {}) => state({ dependent: ["y"] }, values, defaultState(BAYES_ONESAMPLE_TTEST_DEF));
+    const visible = (values: Record<string, string | number | boolean>) => {
+      const v = resolve(BAYES_ONESAMPLE_TTEST_DEF, d, st(values)).values;
+      return BAYES_ONESAMPLE_TTEST_DEF.sections.find((x) => x.title.startsWith("Prior sobre"))!.items.filter((i) => !i.showIf || i.showIf(v)).map((i) => i.key);
+    };
+    expect(visible({})).toEqual(["effectSizeStandardized", "priorWidth"]);
+    expect(visible({ effectSizeStandardized: "informative" })).toEqual(["effectSizeStandardized", "informativeStandardizedEffectSize", "informativeCauchyLocation", "informativeCauchyScale"]);
+    expect(visible({ effectSizeStandardized: "informative", informativeStandardizedEffectSize: "normal" })).toEqual(["effectSizeStandardized", "informativeStandardizedEffectSize", "informativeNormalMean", "informativeNormalStd"]);
+    expect(visible({ effectSizeStandardized: "informative", informativeStandardizedEffectSize: "t" })).toEqual(["effectSizeStandardized", "informativeStandardizedEffectSize", "informativeTLocation", "informativeTScale", "informativeTDf"]);
+    const o = toOptions(BAYES_ONESAMPLE_TTEST_DEF, resolve(BAYES_ONESAMPLE_TTEST_DEF, d, st({ effectSizeStandardized: "informative", informativeStandardizedEffectSize: "normal", informativeNormalMean: 0.3, informativeNormalStd: 0.5 })));
+    expect(o).toMatchObject({ effectSizeStandardized: "informative", informativeStandardizedEffectSize: "normal", informativeNormalMean: 0.3, informativeNormalStd: 0.5 });
+    expect(toOptions(BAYES_ONESAMPLE_TTEST_DEF, resolve(BAYES_ONESAMPLE_TTEST_DEF, d, st())).effectSizeStandardized).toBe("default");
+    const pr = (def: typeof BAYES_ONESAMPLE_TTEST_DEF, s: FormState) => problems(def, d, resolveState(def, d, s));
+    expect(pr(BAYES_ONESAMPLE_TTEST_DEF, st({ effectSizeStandardized: "informative" }))).toEqual([]);
+    expect(pr(BAYES_ONESAMPLE_TTEST_DEF, st({ effectSizeStandardized: "informative", alternative: "greater" }))[0]).toMatch(/só está disponível com a hipótese bilateral/);
+    expect(pr(BAYES_ONESAMPLE_TTEST_DEF, st({ alternative: "greater" }))).toEqual([]);   // unilateral com o prior padrão: normal
+  });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);
   });
