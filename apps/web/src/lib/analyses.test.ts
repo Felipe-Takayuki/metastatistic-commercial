@@ -368,7 +368,7 @@ describe("teste t pareado", () => {
   it("ida e volta: `pairs` salvo volta aos dois campos e o bloco conta como completo", () => {
     const o = { pairs: [["prod", "altura"]], student: true };
     const s = fromOptions(PAIRED_TTEST_DEF, o);
-    expect(s.vars).toEqual({ first: ["prod"], second: ["altura"] });
+    expect(s.vars).toEqual({ first: ["prod"], second: ["altura"], moreFirst: [], moreSecond: [] });
     expect(isComplete(PAIRED_TTEST_DEF, o)).toBe(true);
     expect(isComplete(PAIRED_TTEST_DEF, { pairs: [] })).toBe(false);
     expect(isComplete(PAIRED_TTEST_DEF, {})).toBe(false);
@@ -382,6 +382,40 @@ describe("teste t pareado", () => {
   it("a mesma coluna nas duas medidas é recusada", () => {
     const r = state({ first: ["prod"], second: ["prod"] }, {}, defaultState(PAIRED_TTEST_DEF));
     expect(problems(PAIRED_TTEST_DEF, DBC, resolve(PAIRED_TTEST_DEF, DBC, r))).toEqual(["“prod” está em mais de um campo."]);
+  });
+});
+
+describe("teste t pareado com vários pares", () => {
+  const D4 = ds([col("a", "scale"), col("b", "scale"), col("c", "scale"), col("d", "scale"), col("g", "nominal", 2)]);
+  const st = (v: Record<string, string[]>, values = {}) => state(v, values, defaultState(PAIRED_TTEST_DEF));
+  it("monta `pairs` com o par principal + os adicionais, na ordem das listas", () => {
+    const r = resolve(PAIRED_TTEST_DEF, D4, st({ first: ["a"], second: ["b"], moreFirst: ["c"], moreSecond: ["d"] }));
+    expect(toOptions(PAIRED_TTEST_DEF, r).pairs).toEqual([["a", "b"], ["c", "d"]]);
+    expect(PAIRED_TTEST_DEF.hint!(r)).toBe("Pares formados: a − b; c − d.");
+    expect(problems(PAIRED_TTEST_DEF, D4, r)).toEqual([]);
+    expect(PAIRED_TTEST_DEF.hint!(resolve(PAIRED_TTEST_DEF, D4, st({ first: ["a"], second: ["b"] })))).toBeNull();   // um par só: sem resumo
+    for (const k of ["first", "second", "moreFirst", "moreSecond"]) expect(toOptions(PAIRED_TTEST_DEF, r)).not.toHaveProperty(k);
+  });
+  it("a mesma linha de base pode entrar em dois pares (campos compartilhados), mas não comparada com ela mesma nem repetida", () => {
+    const base = resolve(PAIRED_TTEST_DEF, D4, st({ first: ["a"], second: ["b"], moreFirst: ["a"], moreSecond: ["c"] }));
+    expect(problems(PAIRED_TTEST_DEF, D4, base)).toEqual([]);
+    expect(toOptions(PAIRED_TTEST_DEF, base).pairs).toEqual([["a", "b"], ["a", "c"]]);
+    expect(problems(PAIRED_TTEST_DEF, D4, resolve(PAIRED_TTEST_DEF, D4, st({ first: ["a"], second: ["b"], moreFirst: ["c"], moreSecond: ["c"] })))[0]).toMatch(/“c” não pode ser comparada com ela mesma/);
+    expect(problems(PAIRED_TTEST_DEF, D4, resolve(PAIRED_TTEST_DEF, D4, st({ first: ["a"], second: ["b"], moreFirst: ["a"], moreSecond: ["b"] })))[0]).toMatch(/O par a − b aparece mais de uma vez/);
+  });
+  it("listas de pares adicionais de tamanhos diferentes são recusadas com mensagem clara", () => {
+    const r = resolve(PAIRED_TTEST_DEF, D4, st({ first: ["a"], second: ["b"], moreFirst: ["c", "d"], moreSecond: ["c"] }));
+    expect(problems(PAIRED_TTEST_DEF, D4, r)[0]).toMatch(/mesmo número de medidas nas duas listas.*2 e 1/);
+  });
+  it("ida e volta de vários pares (e o bloco salvo com 1 par continua igual); o t pareado bayesiano herda tudo", () => {
+    const o = { pairs: [["a", "b"], ["a", "c"], ["d", "c"]], student: true };
+    const s = fromOptions(PAIRED_TTEST_DEF, o);
+    expect(s.vars).toEqual({ first: ["a"], second: ["b"], moreFirst: ["a", "d"], moreSecond: ["c", "c"] });
+    expect(toOptions(PAIRED_TTEST_DEF, s).pairs).toEqual(o.pairs);
+    expect(isComplete(PAIRED_TTEST_DEF, o)).toBe(true);
+    const bayes = toOptions(BAYES_PAIRED_TTEST_DEF, resolve(BAYES_PAIRED_TTEST_DEF, D4, state({ first: ["a"], second: ["b"], moreFirst: ["c"], moreSecond: ["d"] }, {}, defaultState(BAYES_PAIRED_TTEST_DEF))));
+    expect(bayes.pairs).toEqual([["a", "b"], ["c", "d"]]);
+    expect(BAYES_PAIRED_TTEST_DEF.hint!(resolve(BAYES_PAIRED_TTEST_DEF, D4, state({ first: ["a"], second: ["b"], moreFirst: ["c"], moreSecond: ["d"] }, {}, defaultState(BAYES_PAIRED_TTEST_DEF))))).toMatch(/a − b; c − d/);
   });
 });
 

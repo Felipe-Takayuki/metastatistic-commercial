@@ -20,6 +20,7 @@ export interface VarSlot {
   autofill?: boolean;     // único e obrigatório: pré-seleciona o primeiro candidato livre
   preferLevels?: number;  // candidatos com exatamente N níveis vêm primeiro (agrupamento do teste t = 2)
   local?: boolean;        // só da interface: NÃO vai ao JASP (use `derive` para montar a opção real, ex.: `pairs`)
+  shared?: boolean;       // a coluna pode repetir em outros campos (ex.: a mesma linha de base em dois pares); a conferência fica com `check`
   ordered?: boolean;      // multi: a ORDEM da escolha importa (ex.: níveis de um fator intra-sujeito) e é mostrada na tela
 }
 
@@ -43,6 +44,8 @@ export interface AnalysisDef {
   parse?: (options: Record<string, unknown>) => Values;
   /** Recupera campos de variável `local` a partir de opções salvas (ex.: `pairs` -> primeira/segunda variável). */
   parseVars?: (options: Record<string, unknown>) => Record<string, string[]>;
+  /** Texto de apoio (não bloqueia) mostrado abaixo dos campos de variável, ex.: os pares formados. */
+  hint?: (s: FormState) => string | null;
   /** Problemas que impedem a execução (além dos campos obrigatórios). */
   check?: (ctx: { dataset: Dataset; state: FormState }) => string[];
 }
@@ -216,13 +219,39 @@ const alternative = (label: string): Item => ({
   options: [{ value: "twoSided", label: "Diferente (bilateral)" }, { value: "greater", label: "Maior" }, { value: "less", label: "Menor" }],
 });
 
+/** Pares: o 1º vem dos campos "1ª/2ª medida"; os adicionais, das duas listas ordenadas (o i-ésimo de cada lista forma o par). */
+export function pairsOf(s: FormState): string[][] {
+  const out: string[][] = [];
+  if (s.vars.first?.length && s.vars.second?.length) out.push([s.vars.first[0], s.vars.second[0]]);
+  const f = s.vars.moreFirst ?? [], g = s.vars.moreSecond ?? [];
+  for (let i = 0; i < Math.min(f.length, g.length); i++) out.push([f[i], g[i]]);
+  return out;
+}
+const pairLabel = (p: string[]) => `${p[0]} − ${p[1]}`;
+const pairsCheck = ({ state }: { state: FormState }): string[] => {
+  const out: string[] = [];
+  const f = state.vars.moreFirst ?? [], g = state.vars.moreSecond ?? [];
+  if (f.length !== g.length) out.push(`Marque o mesmo número de medidas nas duas listas de pares adicionais (hoje: ${f.length} e ${g.length}); o i-ésimo de cada lista forma um par.`);
+  const pairs = pairsOf(state);
+  const same = pairs.find((p) => p[0] === p[1]);
+  if (same) out.push(`“${same[0]}” não pode ser comparada com ela mesma (par ${pairLabel(same)}).`);
+  const seen = new Set<string>();
+  for (const p of pairs) {
+    if (seen.has(pairLabel(p))) { out.push(`O par ${pairLabel(p)} aparece mais de uma vez.`); break; }
+    seen.add(pairLabel(p));
+  }
+  return out;
+};
+
 export const PAIRED_TTEST_DEF: AnalysisDef = {
   id: "TTestPairedSamples",
   title: "Teste t pareado",
-  description: "Compara duas medidas escalares da mesma unidade (antes/depois, duas variáveis nas mesmas linhas) pela diferença entre elas.",
+  description: "Compara duas medidas escalares da mesma unidade (antes/depois, duas variáveis nas mesmas linhas) pela diferença entre elas. Para vários pares de uma vez, use os campos de pares adicionais.",
   slots: [
     { key: "first", label: "1ª medida (escalar)", levels: ["scale"], multi: false, required: true, autofill: true, local: true },
     { key: "second", label: "2ª medida (escalar)", levels: ["scale"], multi: false, required: true, autofill: true, local: true },
+    { key: "moreFirst", label: "Pares adicionais: 1ª medida de cada par (na ordem)", levels: ["scale"], multi: true, local: true, ordered: true, shared: true },
+    { key: "moreSecond", label: "Pares adicionais: 2ª medida de cada par (na ordem)", levels: ["scale"], multi: true, local: true, ordered: true, shared: true },
   ],
   sections: [
     { title: "Testes", items: [toggle("student", "Student", true), toggle("wilcoxon", "Wilcoxon (postos sinalizados)")] },
@@ -230,12 +259,16 @@ export const PAIRED_TTEST_DEF: AnalysisDef = {
     { title: "Hipótese alternativa", items: [alternative("Hipótese alternativa (1ª − 2ª)")] },
     { title: "Pressupostos e gráficos", items: [toggle("normalityTest", "Normalidade das diferenças (Shapiro-Wilk)"), toggle("qqPlot", "Gráfico Q-Q das diferenças"), toggle("descriptivesPlot", "Gráfico descritivo")] },
   ],
-  derive: (s) => ({ pairs: s.vars.first.length && s.vars.second.length ? [[s.vars.first[0], s.vars.second[0]]] : [] }),
+  derive: (s) => ({ pairs: pairsOf(s) }),
   parseVars: (o) => {
-    const p = Array.isArray(o.pairs) && Array.isArray(o.pairs[0]) ? (o.pairs[0] as unknown[]).filter((x): x is string => typeof x === "string") : [];
-    return { first: p[0] ? [p[0]] : [], second: p[1] ? [p[1]] : [] };
+    const ps = Array.isArray(o.pairs) ? (o.pairs as unknown[]).filter(Array.isArray).map((p) => (p as unknown[]).filter((x): x is string => typeof x === "string")) : [];
+    return {
+      first: ps[0]?.[0] ? [ps[0][0]] : [], second: ps[0]?.[1] ? [ps[0][1]] : [],
+      moreFirst: ps.slice(1).map((p) => p[0]).filter(Boolean), moreSecond: ps.slice(1).map((p) => p[1]).filter(Boolean),
+    };
   },
-  check: ({ state }) => (!state.values.student && !state.values.wilcoxon ? ["Selecione ao menos um teste."] : []),
+  hint: (s) => { const ps = pairsOf(s); return ps.length > 1 ? `Pares formados: ${ps.map(pairLabel).join("; ")}.` : null; },
+  check: (ctx) => (!ctx.state.values.student && !ctx.state.values.wilcoxon ? ["Selecione ao menos um teste."] : pairsCheck(ctx)),
 };
 
 export const ONESAMPLE_TTEST_DEF: AnalysisDef = {
@@ -400,6 +433,8 @@ export const BAYES_PAIRED_TTEST_DEF: AnalysisDef = {
   ],
   derive: PAIRED_TTEST_DEF.derive,
   parseVars: PAIRED_TTEST_DEF.parseVars,
+  hint: PAIRED_TTEST_DEF.hint,
+  check: pairsCheck,
 };
 
 export const BAYES_ONESAMPLE_TTEST_DEF: AnalysisDef = {
@@ -659,6 +694,7 @@ export function problems(def: AnalysisDef, dataset: Dataset | undefined, state: 
   }
   const seen = new Map<string, string>();
   for (const slot of def.slots) {
+    if (slot.shared) continue;
     for (const name of state.vars[slot.key] ?? []) {
       if (seen.has(name) && seen.get(name) !== slot.key) out.push(`“${name}” está em mais de um campo.`);
       seen.set(name, slot.key);

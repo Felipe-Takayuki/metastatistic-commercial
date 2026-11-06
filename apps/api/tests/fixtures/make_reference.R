@@ -153,6 +153,10 @@ d$altura2 <- 2 * d$altura + floor(d$produtividade) %% 3
 fitc <- lm(produtividade ~ altura + altura2, data = d); ec <- resid(fitc); r2c <- cor(d$altura, d$altura2)^2
 fit0 <- lm(produtividade ~ altura + diametro, data = d); e0 <- resid(fit0)
 out$diag <- list(vif_collinear = 1 / (1 - r2c), dw_collinear = sum(diff(ec)^2) / sum(ec^2), vif_ok = 1 / (1 - cor(d$altura, d$diametro)^2), dw_ok = sum(diff(e0)^2) / sum(e0^2))
+# --- catálogo 6.14: t pareado com vários pares (inclui uma linha de base repetida em dois pares) ---
+pp <- list(c("altura", "diametro"), c("produtividade", "altura2"), c("altura", "altura2"), c("produtividade", "altura"))
+out$paired_multi <- lapply(pp, function(v) { tt_ <- t.test(d[[v[1]]], d[[v[2]]], paired = TRUE)
+  list(a = v[1], b = v[2], t = unname(tt_$statistic), df = unname(tt_$parameter), p = tt_$p.value, diff = unname(tt_$estimate)) })
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

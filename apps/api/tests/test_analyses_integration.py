@@ -697,3 +697,19 @@ def test_correlation_pairwise_shapiro_table_exists(data):
     rows = table(res, "pairwiseShapiro")["data"]
     assert len(rows) == 3 and {(r["var1"], r["var2"]) for r in rows} == {("produtividade", "altura"), ("produtividade", "diametro"), ("altura", "diametro")}
     assert all(0 < r["W"] <= 1 and 0 <= r["p"] <= 1 for r in rows)
+
+
+def test_paired_t_with_several_pairs_matches_R(data):
+    """`pairs` com vários pares (inclusive a mesma coluna em dois pares): uma linha por par, na ordem pedida."""
+    ref = REF["paired_multi"]
+    pairs = [[r["a"], r["b"]] for r in ref]
+    res = run("TTestPairedSamples", data["colin"], {"pairs": pairs, "student": True, "meanDifference": True})
+    rows = table(res, "ttest")["data"]
+    assert [(r["v1"], r["v2"]) for r in rows] == [tuple(p) for p in pairs]
+    for got, want in zip(rows, ref):
+        assert got["df"] == want["df"]
+        close(got["t"], want["t"]); close(got["p"], want["p"]); close(got["md"], want["diff"])
+    bf = table(run("TTestBayesianPairedSamples", data["colin"], {"pairs": pairs}), "ttestTable")["data"]
+    assert [(r["variable1"], r["variable2"]) for r in bf] == [tuple(p) for p in pairs]   # o bayesiano também devolve uma linha por par
+    nt = table(run("TTestPairedSamples", data["colin"], {"pairs": pairs, "student": True, "normalityTest": True}), "ttestNormalTable")["data"]
+    assert len(nt) == len(pairs)   # as notas de normalidade das diferenças (6.5) cobrem cada par

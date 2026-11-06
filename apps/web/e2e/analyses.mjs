@@ -226,6 +226,19 @@ try {
   check("t pareado: nomes das duas medidas na tabela", has(t, "altura", "diametro"), t.slice(0, 300));
   await shot("a3b-t-pareado");
 
+  // vários pares: o par principal (altura − diametro) + um adicional (produtividade − altura); "altura" repete porque os campos de pares adicionais são compartilhados
+  await page.getByRole("group", { name: /^Pares adicionais: 1ª medida/ }).getByLabel(/^produtividade/).check();
+  await page.getByRole("group", { name: /^Pares adicionais: 2ª medida/ }).getByLabel(/^altura/).check();
+  check("t pareado com vários pares: o resumo mostra os pares formados", (await page.getByLabel("Resumo dos campos").innerText()).includes("altura − diametro; produtividade − altura"));
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText("produtividade").first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  t = await resultText();
+  const PM = REF.paired_multi[3];
+  check("t pareado com vários pares: o t de cada par igual ao R", has(t, f3(P.t), f3(PM.t), " 31 "), t.slice(0, 800));
+  await page.getByRole("group", { name: /^Pares adicionais: 2ª medida/ }).getByLabel(/^altura/).uncheck();
+  check("t pareado: listas de pares adicionais de tamanhos diferentes bloqueiam a execução com mensagem", await page.getByRole("button", { name: "Executar análise" }).isDisabled() && (await page.getByText(/mesmo número de medidas nas duas listas/).count()) === 1);
+  await page.getByRole("group", { name: /^Pares adicionais: 1ª medida/ }).getByLabel(/^produtividade/).uncheck();
+
   // --- Teste t de uma amostra (produtividade vs 200) ---
   await pickAnalysis("Teste t de uma amostra");
   await page.getByLabel(/^produtividade/).check();

@@ -2,6 +2,7 @@
 
 Pedidos do usuário: **teste z de duas amostras e de proporções — FEITOS na 6.12** (análises próprias da plataforma, ver abaixo; o z de UMA média continua sendo do JASP, 6.7).
 
+Resolvido na 6.14: t pareado (e bayesiano) com vários pares.
 Resolvido na 6.13: pressupostos para correlação, regressão e qui-quadrado; notas automáticas em relatório/dashboard (opt-in por bloco); aviso de Likert na aba Dados.
 Resolvido na 6.11: dados ordinais numéricos (Likert) em papéis escalares, e regressão com um único preditor (bug do motor).
 
@@ -325,4 +326,24 @@ Colunas ordinais de tipo numérico ganham, no cartão da coluna, o aviso "Ordina
 - Regressão logística e ANCOVA sem notas próprias (linearidade do logit, homogeneidade das inclinações).
 - Shapiro-Wilk continua sensível com n grande; o limite VIF > 10 é fixo.
 - Tiles de dashboard têm a opção, mas a grade pequena pode cortar as notas (ajustar o tamanho do tile).
+
+---
+
+# Fatia 6.14 — t pareado com vários pares ✅ (sem mudança no motor)
+
+O JASP já aceita `pairs` com vários pares (uma linha por par, também no t pareado bayesiano); só o formulário limitava a um.
+
+- **Formulário**: o par principal continua em "1ª/2ª medida" (preenchido sozinho, como antes) e há duas listas ordenadas, **"Pares adicionais: 1ª medida de cada par" e "2ª medida de cada par"**: o i-ésimo de cada lista forma um par. Um resumo ("Pares formados: a − b; c − d.") aparece abaixo dos campos (novo `AnalysisDef.hint`, texto de apoio que não bloqueia).
+- **A mesma coluna pode entrar em dois pares** (ex.: linha de base × 1º e × 2º acompanhamento): os campos adicionais são `shared` (não escondem as colunas já usadas em outros campos nem entram na checagem de "coluna em mais de um campo"); a conferência é por par: listas de tamanhos diferentes, uma coluna comparada com ela mesma e pares repetidos são recusados com mensagem clara.
+- Blocos salvos com um par continuam idênticos (ida e volta testada, também com vários pares); o t pareado **bayesiano herda** os campos, o resumo e a checagem; as notas de normalidade (6.5) e de interpretação do BF (6.8) já percorriam uma linha por par.
+
+## Conferido contra o R puro
+`t.test(paired = TRUE)` de 4 pares sobre um dataset de 4 colunas escalares (inclui altura repetida em dois pares): t, gl, p e diferença média.
+
+## Verificado
+`vitest` 191 (4 novos), `pytest` 206 (1 novo), `e2e:all` 6 suítes verdes (resumo dos pares, t de cada par igual ao R, bloqueio por listas de tamanhos diferentes).
+
+## Pendências
+- Sem comparação de uma linha de base com TODAS as demais de uma vez (é preciso marcar cada par; a ANOVA de medidas repetidas cobre esse caso com correção para comparações múltiplas).
+- Sem correção para comparações múltiplas entre os pares do t pareado (cada par é um teste independente).
 

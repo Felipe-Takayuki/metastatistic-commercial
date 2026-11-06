@@ -94,9 +94,10 @@ export function AnalysisForm({ def, dataset, state, onChange }: Props) {
   return (
     <>
       {def.slots.map((slot) => {
-        const taken = new Set(def.slots.filter((o) => o.key !== slot.key).flatMap((o) => resolved.vars[o.key] ?? []));
+        const taken = slot.shared ? new Set<string>() : new Set(def.slots.filter((o) => o.key !== slot.key && !o.shared).flatMap((o) => resolved.vars[o.key] ?? []));
         return <SlotField key={slot.key} slot={slot} dataset={dataset} chosen={resolved.vars[slot.key]} taken={taken} onPick={(n) => setVar(slot.key, n)} />;
       })}
+      {def.hint?.(resolved) && <div className="muted small" aria-label="Resumo dos campos">{def.hint(resolved)}</div>}
       {issues.map((msg) => <div key={msg} className="alert info small" role="status">{msg}</div>)}
       {def.sections.map((section) => {
         const items = section.items.filter((i) => !i.showIf || i.showIf(resolved.values));
