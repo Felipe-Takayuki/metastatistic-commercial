@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # Ligada, tudo exige sessão; o primeiro acesso cria o administrador em POST /auth/setup.
     auth_enabled: bool = False
     session_ttl_hours: int = 24 * 7
+    session_idle_hours: float = 12.0      # sem nenhuma requisição por tanto tempo a sessão cai (0 = desligado)
     cookie_secure: bool = False           # true atrás de HTTPS
     login_max_failures: int = 5           # falhas seguidas (por usuário) antes do bloqueio temporário
     login_lock_s: float = 60.0

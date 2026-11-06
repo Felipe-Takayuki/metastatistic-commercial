@@ -15,6 +15,8 @@ export interface Dataset {
   created_at: string;
   owner_name?: string | null;
   can_edit?: boolean; // ausente = pode (o servidor sempre manda)
+  restricted?: boolean;     // só dono, administradores e a lista de acesso leem
+  row_filtered?: boolean;   // uma regra de linhas filtra este dataset para o usuário atual
 }
 export interface QueryResult {
   columns: { name: string; dtype: string }[];
@@ -60,7 +62,10 @@ export interface AnalysisStatus {
 }
 
 export type Role = "viewer" | "editor" | "admin";
-export interface User { id: string; username: string; display_name: string; role: Role; active: boolean }
+export interface User { id: string; username: string; display_name: string; role: Role; active: boolean; attributes?: Record<string, string> }
+export interface DirectoryUser { id: string; username: string; display_name: string }
+export interface AccessConfig { restricted: boolean; user_ids: string[]; rls: { column: string; attribute: string } | null }
+export interface AuditEvent { id: number; ts: string; user_id: string | null; username: string | null; action: string; kind: string | null; target: string | null; detail: string | null }
 export interface AuthStatus { auth_enabled: boolean; needs_setup: boolean; user: User | null }
 
 /** Disparado quando a API responde 401 fora das telas de login: a sessão acabou e o AuthGate volta ao login. */
@@ -108,7 +113,11 @@ export const api = {
   changePassword: (current: string, next: string) => request<void>("/auth/password", json("POST", { current, new: next })),
   listUsers: () => request<User[]>("/users"),
   createUser: (u: { username: string; password: string; display_name: string; role: Role }) => request<User>("/users", json("POST", u)),
-  patchUser: (id: string, patch: Partial<Pick<User, "display_name" | "role" | "active">> & { password?: string }) => request<User>(`/users/${id}`, json("PATCH", patch)),
+  patchUser: (id: string, patch: Partial<Pick<User, "display_name" | "role" | "active" | "attributes">> & { password?: string }) => request<User>(`/users/${id}`, json("PATCH", patch)),
+  directory: () => request<DirectoryUser[]>("/auth/directory"),
+  getAccess: (id: string) => request<AccessConfig>(`/datasets/${id}/access`),
+  putAccess: (id: string, cfg: AccessConfig) => request<AccessConfig>(`/datasets/${id}/access`, json("PUT", cfg)),
+  audit: (beforeId?: number, action?: string) => request<AuditEvent[]>(`/audit?limit=50${beforeId ? `&before_id=${beforeId}` : ""}${action ? `&action=${encodeURIComponent(action)}` : ""}`),
   deleteUser: (id: string) => request<void>(`/users/${id}`, { method: "DELETE" }),
   listDatasets: () => request<Dataset[]>("/datasets"),
   uploadDataset: (file: File) => {

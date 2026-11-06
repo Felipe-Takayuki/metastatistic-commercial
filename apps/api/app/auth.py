@@ -183,6 +183,8 @@ def delete_user(user_id: str) -> None:
         if current.role == "admin" and current.active and _active_admins(con, excluding=user_id) == 0:
             raise AuthError("cannot remove the last active administrator")
         # o que a pessoa criou passa a "sem dono" (qualquer editor mantém), em vez de ficar só com administradores
+        con.execute("DELETE FROM user_attributes WHERE user_id = ?", [user_id])
+        con.execute("DELETE FROM dataset_grants WHERE user_id = ?", [user_id])
         con.execute("UPDATE resources SET owner_id = NULL WHERE owner_id = ?", [user_id])
         con.execute("UPDATE collections SET owner_id = NULL WHERE owner_id = ?", [user_id])
         con.execute("DELETE FROM users WHERE id = ?", [user_id])
@@ -229,7 +231,8 @@ def create_session(user: User) -> tuple[str, datetime]:
     expires = _now() + timedelta(hours=settings.session_ttl_hours)
     with closing(db.connect()) as con, con:
         con.execute("DELETE FROM sessions WHERE expires_at < ?", [_now().isoformat()])  # faxina oportunista
-        con.execute("INSERT INTO sessions VALUES (?,?,?,?)", [_hash_token(token), user.id, _now().isoformat(), expires.isoformat()])
+        con.execute("INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen) VALUES (?,?,?,?,?)",
+                    [_hash_token(token), user.id, _now().isoformat(), expires.isoformat(), _now().isoformat()])
     return token, expires
 
 
@@ -238,11 +241,20 @@ def user_for_token(token: str | None) -> User | None:
         return None
     with closing(db.connect()) as con:
         row = con.execute(
-            "SELECT u.*, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
+            "SELECT u.*, s.expires_at, s.last_seen FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
             [_hash_token(token)],
         ).fetchone()
-    if row is None or not row["active"] or row["expires_at"] < _now().isoformat():
-        return None
+        if row is None or not row["active"] or row["expires_at"] < _now().isoformat():
+            return None
+        now = _now()
+        last = datetime.fromisoformat(row["last_seen"]) if row["last_seen"] else None
+        if settings.session_idle_hours > 0 and last and now - last > timedelta(hours=settings.session_idle_hours):
+            with con:
+                con.execute("DELETE FROM sessions WHERE token_hash = ?", [_hash_token(token)])  # parada por tempo demais: cai
+            return None
+        if last is None or now - last > timedelta(seconds=60):  # renova a "última atividade" no máximo 1x por minuto
+            with con:
+                con.execute("UPDATE sessions SET last_seen = ? WHERE token_hash = ?", [now.isoformat(), _hash_token(token)])
     return _row_user(row)
 
 

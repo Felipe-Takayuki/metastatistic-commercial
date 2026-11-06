@@ -20,3 +20,19 @@ export function credentialProblem(username: string, password: string): string | 
   if (password.length < MIN_PASSWORD) return `A senha deve ter pelo menos ${MIN_PASSWORD} caracteres.`;
   return null;
 }
+
+/** "regiao=Sul,Norte; setor=A" -> {regiao: "Sul,Norte", setor: "A"}. Valores podem ter vírgulas; `;` separa atributos. */
+export function parseAttributes(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of text.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    const name = part.slice(0, i).trim().toLowerCase();
+    const value = part.slice(i + 1).split(",").map((v) => v.trim()).filter(Boolean).join(",");
+    if (name && value) out[name] = value;
+  }
+  return out;
+}
+
+export const formatAttributes = (attrs: Record<string, string> | undefined): string =>
+  Object.entries(attrs ?? {}).map(([k, v]) => `${k}=${v}`).join("; ");

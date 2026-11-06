@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Role, type User } from "../api";
-import { credentialProblem, ROLE_HELP, ROLE_LABEL } from "../lib/auth";
+import { credentialProblem, formatAttributes, parseAttributes, ROLE_HELP, ROLE_LABEL } from "../lib/auth";
+import { AuditLog } from "./AuditLog";
 import { useCan, useSession } from "./AuthGate";
 
 const ROLES: Role[] = ["viewer", "editor", "admin"];
@@ -10,6 +11,7 @@ export function UsersPage() {
   const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isAdmin = useCan("admin");
+  const [tab, setTab] = useState<"users" | "audit">("users");
 
   const load = () => api.listUsers().then(setUsers).catch((e) => setError(e.message));
   useEffect(() => { if (isAdmin) void load(); }, [isAdmin]);
@@ -22,6 +24,13 @@ export function UsersPage() {
   const resetPassword = (u: User) => {
     const pw = window.prompt(`Nova senha para "${u.username}" (mínimo 8 caracteres). As sessões abertas dele serão encerradas.`);
     if (pw) void act(() => api.patchUser(u.id, { password: pw }));
+  };
+  const editAttributes = (u: User) => {
+    const text = window.prompt(
+      `Atributos de "${u.username}" para a segurança por linha, no formato nome=valor1,valor2; outro=valor (vazio apaga todos):`,
+      formatAttributes(u.attributes),
+    );
+    if (text !== null) void act(() => api.patchUser(u.id, { attributes: parseAttributes(text) }));
   };
   const remove = (u: User) => {
     if (window.confirm(`Excluir o usuário "${u.username}"? Isso não pode ser desfeito.`)) void act(() => api.deleteUser(u.id));
@@ -43,12 +52,17 @@ export function UsersPage() {
   return (
     <>
       <div className="page-head"><h1>Usuários</h1></div>
+      <div className="tabs" role="tablist">
+        <button className="tab" role="tab" aria-selected={tab === "users"} onClick={() => setTab("users")}>Usuários</button>
+        <button className="tab" role="tab" aria-selected={tab === "audit"} onClick={() => setTab("audit")}>Auditoria</button>
+      </div>
+      {tab === "audit" ? <AuditLog /> : <>
       {error && <div className="alert" role="alert">{error}</div>}
       {users === null && !error && <div className="empty"><span className="spinner" aria-label="Carregando" /></div>}
       {users && (
         <div className="card" style={{ overflowX: "auto" }}>
           <table className="users-table">
-            <thead><tr><th>Usuário</th><th>Nome</th><th>Papel</th><th>Situação</th><th /></tr></thead>
+            <thead><tr><th>Usuário</th><th>Nome</th><th>Papel</th><th>Atributos</th><th>Situação</th><th /></tr></thead>
             <tbody>
               {users.map((u) => (
                 <tr key={u.id} data-user={u.username}>
@@ -59,9 +73,11 @@ export function UsersPage() {
                       {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                     </select>
                   </td>
+                  <td className="small">{formatAttributes(u.attributes) || <span className="muted">—</span>}</td>
                   <td>{u.active ? "Ativo" : <span className="muted">Desativado</span>}</td>
                   <td className="users-actions">
                     <button className="btn ghost sm" onClick={() => void act(() => api.patchUser(u.id, { active: !u.active }))}>{u.active ? "Desativar" : "Reativar"}</button>
+                    <button className="btn ghost sm" onClick={() => editAttributes(u)} aria-label={`Atributos de ${u.username}`}>Atributos</button>
                     <button className="btn ghost sm" onClick={() => resetPassword(u)}>Nova senha</button>
                     <button className="btn ghost sm" onClick={() => remove(u)} aria-label={`Excluir ${u.username}`}>Excluir</button>
                   </td>
@@ -75,6 +91,7 @@ export function UsersPage() {
       <p className="muted small">
         {ROLES.map((r) => <span key={r} style={{ display: "block" }}><strong>{ROLE_LABEL[r]}</strong>: {ROLE_HELP[r]}.</span>)}
       </p>
+      </>}
     </>
   );
 }

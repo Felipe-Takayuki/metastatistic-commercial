@@ -1,6 +1,6 @@
 import pytest
 
-from app import datasets, queries
+from app import auth, datasets, queries
 from app.config import settings
 from conftest import SALES_CSV, upload
 
@@ -104,6 +104,6 @@ async def test_timeout_interrupts_runaway_query(client):
     await upload(client, "x\n" + "\n".join(str(i) for i in range(2000)), "n.csv")
     heavy = "SELECT count(*) FROM n a, n b, n c, n d, n e, n f"  # 2000^6 linhas
     with pytest.raises(queries.QueryError, match="time limit"):
-        queries.run_query(heavy, timeout_s=0.5)
+        queries.run_query(heavy, timeout_s=0.5, user=auth.ANONYMOUS_ADMIN)
     r = await q(client, "SELECT count(*) FROM n")  # serviço continua saudável
     assert r.status_code == 200 and r.json()["rows"] == [[2000]]

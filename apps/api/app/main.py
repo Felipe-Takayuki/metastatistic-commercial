@@ -6,6 +6,7 @@ from .routers import auth as auth_router
 app = FastAPI(title="Metastatistic API", version="0.1.0")
 app.include_router(auth_router.router)
 app.include_router(auth_router.users_router)
+app.include_router(auth_router.audit_router)
 app.include_router(collections.router)
 app.include_router(datasets.router)
 app.include_router(queries.router)

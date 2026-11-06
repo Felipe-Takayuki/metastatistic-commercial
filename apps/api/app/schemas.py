@@ -23,6 +23,8 @@ class Dataset(BaseModel):
     owner_name: str | None = Field(default=None, description="quem criou (None = criado antes dos usuários ou sem autenticação)")
     collection_id: str | None = None
     can_edit: bool = Field(default=True, description="o usuário atual pode alterar/excluir este item")
+    restricted: bool = Field(default=False, description="só lido pelo dono, administradores e a lista de acesso")
+    row_filtered: bool = Field(default=False, description="uma regra de linhas filtra este dataset para o usuário atual")
 
 
 class DatasetFromQuery(BaseModel):
@@ -259,6 +261,17 @@ class CollectionIn(BaseModel):
         if not v:
             raise ValueError("name must not be blank")
         return v
+
+
+class RowRule(BaseModel):
+    column: str = Field(min_length=1, max_length=200, description="coluna do dataset")
+    attribute: str = Field(min_length=1, max_length=40, description="atributo do usuário comparado com a coluna")
+
+
+class AccessConfig(BaseModel):
+    restricted: bool = Field(default=False, description="true: só o dono, administradores e `user_ids` leem")
+    user_ids: list[str] = Field(default_factory=list, max_length=500)
+    rls: RowRule | None = Field(default=None, description="segurança por linha (None = sem filtro)")
 
 
 class MoveIn(BaseModel):

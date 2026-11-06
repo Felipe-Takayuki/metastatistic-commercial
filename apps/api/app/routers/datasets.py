@@ -3,9 +3,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from .. import access, auth, datasets, derive, queries
+from .. import access, audit, auth, datasets, derive, permissions, queries
 from ..config import settings
-from ..schemas import Dataset, DatasetFromQuery, DatasetPatch, QueryResult
+from ..schemas import AccessConfig, Dataset, DatasetFromQuery, DatasetPatch, QueryResult
 
 from ..security import can_modify, current_user, require_editor, require_viewer
 
@@ -14,6 +14,23 @@ router = APIRouter(prefix="/datasets", tags=["datasets"], dependencies=[Depends(
 
 def _http(exc: datasets.DatasetError) -> HTTPException:
     return HTTPException(404 if isinstance(exc, datasets.DatasetNotFound) else 422, str(exc))
+
+
+def _present(items: list[Dataset], user: auth.User) -> list[Dataset]:
+    """Só o que o usuário lê, com dono, `can_edit` e as marcas de acesso/linhas."""
+    return permissions.decorate(access.annotate("dataset", permissions.readable(user, items), user), user)
+
+
+def _readable(dataset_id: str, user: auth.User) -> Dataset:
+    """404 (não 403) para o que o usuário não pode ler: nem confirma que o dataset existe."""
+    try:
+        ds = datasets.get_dataset(dataset_id)
+    except datasets.DatasetError as exc:
+        raise _http(exc) from exc
+    if not permissions.can_read(user, dataset_id):
+        audit.log(user, "denied", "dataset", dataset_id, "read")
+        raise HTTPException(404, f"dataset not found: {dataset_id}")
+    return ds
 
 
 @router.post("", response_model=Dataset, status_code=201, dependencies=[Depends(require_editor)])
@@ -37,7 +54,8 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
     try:
         created = datasets.ingest_csv(tmp_path, display)
         access.claim("dataset", created.id, user)
-        return access.annotate_one("dataset", created, user)
+        audit.log(user, "create", "dataset", created.id, created.name)
+        return _present([created], user)[0]
     except datasets.DatasetError as exc:
         raise _http(exc) from exc
     finally:
@@ -48,9 +66,10 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
 def create_from_query(body: DatasetFromQuery, user: auth.User = Depends(current_user)) -> Dataset:
     """Salva o resultado de uma consulta SQL (somente leitura) como um novo dataset analisável."""
     try:
-        created = derive.create_dataset_from_query(body.name, body.sql)
+        created = derive.create_dataset_from_query(body.name, body.sql, user=user)
         access.claim("dataset", created.id, user)
-        return access.annotate_one("dataset", created, user)
+        audit.log(user, "create", "dataset", created.id, f"{created.name} (derivado)")
+        return _present([created], user)[0]
     except datasets.DatasetError as exc:
         raise _http(exc) from exc
     except queries.QueryError as exc:
@@ -59,39 +78,62 @@ def create_from_query(body: DatasetFromQuery, user: auth.User = Depends(current_
 
 @router.get("", response_model=list[Dataset])
 def list_datasets(user: auth.User = Depends(current_user)) -> list[Dataset]:
-    return access.annotate("dataset", datasets.list_datasets(), user)
+    return _present(datasets.list_datasets(), user)
 
 
 @router.get("/{dataset_id}", response_model=Dataset)
 def get_dataset(dataset_id: str, user: auth.User = Depends(current_user)) -> Dataset:
-    try:
-        return access.annotate_one("dataset", datasets.get_dataset(dataset_id), user)
-    except datasets.DatasetError as exc:
-        raise _http(exc) from exc
+    return _present([_readable(dataset_id, user)], user)[0]
 
 
 @router.patch("/{dataset_id}", response_model=Dataset, dependencies=[Depends(can_modify("dataset", "dataset_id"))])
 def patch_dataset(dataset_id: str, patch: DatasetPatch, user: auth.User = Depends(current_user)) -> Dataset:
     """Corrige o nível de medida das colunas (define se o R trata como fator ou número)."""
     try:
-        return access.annotate_one("dataset", datasets.update_measurements(dataset_id, patch.measurement), user)
+        return _present([datasets.update_measurements(dataset_id, patch.measurement)], user)[0]
     except datasets.DatasetError as exc:
         raise _http(exc) from exc
 
 
 @router.get("/{dataset_id}/preview", response_model=QueryResult)
-def preview_dataset(dataset_id: str, limit: int = 50) -> QueryResult:
+def preview_dataset(dataset_id: str, limit: int = 50, user: auth.User = Depends(current_user)) -> QueryResult:
+    ds = _readable(dataset_id, user)
     try:
-        ds = datasets.get_dataset(dataset_id)
-        return queries.run_query(f'SELECT * FROM "{ds.table_name}"', limit=min(max(limit, 1), 1000))
-    except (datasets.DatasetError, queries.QueryError) as exc:
-        raise (_http(exc) if isinstance(exc, datasets.DatasetError) else HTTPException(422, str(exc))) from exc
+        return queries.run_query(f'SELECT * FROM "{ds.table_name}"', limit=min(max(limit, 1), 1000), user=user)
+    except queries.QueryError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.delete("/{dataset_id}", status_code=204, dependencies=[Depends(can_modify("dataset", "dataset_id"))])
-def delete_dataset(dataset_id: str) -> None:
+def delete_dataset(dataset_id: str, user: auth.User = Depends(current_user)) -> None:
     try:
+        name = datasets.get_dataset(dataset_id).name
         datasets.delete_dataset(dataset_id)
         access.forget("dataset", dataset_id)
+        permissions.forget_dataset(dataset_id)
+        audit.log(user, "delete", "dataset", dataset_id, name)
     except datasets.DatasetError as exc:
         raise _http(exc) from exc
+
+
+@router.get("/{dataset_id}/access", response_model=AccessConfig, dependencies=[Depends(can_modify("dataset", "dataset_id"))])
+def get_access(dataset_id: str) -> AccessConfig:
+    """Configuração de acesso (quem lê) e de linhas. Só o dono e administradores."""
+    try:
+        datasets.get_dataset(dataset_id)
+    except datasets.DatasetError as exc:
+        raise _http(exc) from exc
+    return AccessConfig(**permissions.get_config(dataset_id))
+
+
+@router.put("/{dataset_id}/access", response_model=AccessConfig, dependencies=[Depends(can_modify("dataset", "dataset_id"))])
+def put_access(dataset_id: str, body: AccessConfig, user: auth.User = Depends(current_user)) -> AccessConfig:
+    try:
+        cfg = permissions.set_config(dataset_id, body.restricted, body.user_ids, body.rls.model_dump() if body.rls else None)
+    except datasets.DatasetError as exc:
+        raise _http(exc) from exc
+    except permissions.AccessConfigError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    audit.log(user, "set_access", "dataset", dataset_id,
+              f"restrito={cfg['restricted']} leitores={len(cfg['user_ids'])} linhas={'sim' if cfg['rls'] else 'não'}")
+    return AccessConfig(**cfg)

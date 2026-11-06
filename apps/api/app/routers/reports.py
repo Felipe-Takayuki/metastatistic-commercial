@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import access, auth, reports
+from .. import access, audit, auth, reports
 from ..schemas import MoveIn, Report, ReportIn, ReportUpdate
 
 from ..security import can_modify, current_user, require_editor, require_viewer
@@ -17,6 +17,7 @@ def _http(exc: reports.ReportError) -> HTTPException:
 def create_report(rep: ReportIn, user: auth.User = Depends(current_user)) -> Report:
     created = reports.create_report(rep)
     access.claim("report", created.id, user)
+    audit.log(user, "create", "report", created.id, created.title)
     return access.annotate_one("report", created, user)
 
 
@@ -43,11 +44,12 @@ def update_report(report_id: str, rep: ReportUpdate, user: auth.User = Depends(c
 
 
 @router.put("/{report_id}/collection", status_code=204, dependencies=[Depends(can_modify("report", "report_id"))])
-def move_report(report_id: str, body: MoveIn) -> None:
+def move_report(report_id: str, body: MoveIn, user: auth.User = Depends(current_user)) -> None:
     """Move para uma coleção (ou para a raiz). Não muda a versão: não conflita com quem está editando."""
     try:
         reports.get_report(report_id)
         access.set_collection("report", report_id, body.collection_id)
+        audit.log(user, "move", "report", report_id, body.collection_id or "raiz")
     except reports.ReportError as exc:
         raise _http(exc) from exc
     except access.CollectionNotFound as exc:
@@ -55,9 +57,11 @@ def move_report(report_id: str, body: MoveIn) -> None:
 
 
 @router.delete("/{report_id}", status_code=204, dependencies=[Depends(can_modify("report", "report_id"))])
-def delete_report(report_id: str) -> None:
+def delete_report(report_id: str, user: auth.User = Depends(current_user)) -> None:
     try:
+        title = reports.get_report(report_id).title
         reports.delete_report(report_id)
         access.forget("report", report_id)
+        audit.log(user, "delete", "report", report_id, title)
     except reports.ReportError as exc:
         raise _http(exc) from exc

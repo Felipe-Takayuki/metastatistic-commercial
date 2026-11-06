@@ -7,7 +7,7 @@
  */
 import { BASE, session } from "./lib.mjs";
 
-const s = await session({ allowConsole: { "status of 401": 10, "status of 403": 3, "status of 422": 1 } });
+const s = await session({ allowConsole: { "status of 401": 10, "status of 403": 3, "status of 422": 1, "status of 404": 2 } });
 const { page, check, shot } = s;
 const PASS = "senha-forte-1";
 
@@ -109,6 +109,62 @@ try {
   await page.locator(".coll-chip", { hasText: "E2E Coleção" }).click();
   check("filtro da coleção mostra o relatório", (await page.locator(".report-row").count()) === 1);
   await shot("auth-collections");
+
+  // --- dataset: acesso restrito + filtro de linhas por atributo ---
+  const admin = await (await s.browser.newContext()).newPage();
+  let adminPrompt = "";
+  admin.on("dialog", (d) => (d.type() === "prompt" ? d.accept(adminPrompt) : d.accept())); // a página do administrador não passa pelo monitor de diálogos
+  await admin.goto(BASE);
+  await fillLogin(admin, "e2eadmin", PASS);
+  await admin.getByRole("link", { name: "Usuários" }).waitFor();
+
+  await page.goto(`${BASE}/#/`);
+  await page.locator(".sidebar").waitFor();
+  const csv = "id,regiao,valor\n1,Sul,10\n2,Sul,20\n3,Norte,30\n4,Leste,40\n5,Norte,50\n";
+  const uploaded = page.waitForResponse((r) => r.url().endsWith("/api/datasets") && r.request().method() === "POST");
+  await page.locator(".dropzone input[type=file]").setInputFiles({ name: "e2e_regioes.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  const dsId = (await (await uploaded).json()).id;
+  await page.getByRole("heading", { name: "e2e_regioes.csv" }).waitFor();
+  await page.getByRole("button", { name: "Acesso…" }).click();
+  const dlg = page.getByRole("dialog", { name: /^Acesso a/ });
+  await dlg.getByLabel("Restringir a leitura").check();
+  await dlg.getByRole("group", { name: "Quem pode ler" }).getByLabel(/e2eeditor2/).check();
+  await dlg.getByLabel("Filtrar linhas por atributo do usuário").check();
+  await dlg.locator("select").selectOption("regiao");
+  await dlg.getByPlaceholder("ex.: regiao").fill("regiao");
+  await dlg.getByRole("button", { name: "Salvar" }).click();
+  await dlg.waitFor({ state: "detached" });
+  check("dono vê o chip 'acesso restrito' e todas as linhas dele", (await has(page.getByText("acesso restrito"))) && !(await has(page.getByText("linhas filtradas para você"))));
+  await shot("auth-access");
+
+  // o administrador dá ao outro editor o atributo regiao=Sul
+  await admin.getByRole("link", { name: "Usuários" }).click();
+  await admin.locator('tr[data-user="e2eeditor2"]').waitFor();
+  adminPrompt = "regiao=Sul";
+  await admin.getByRole("button", { name: "Atributos de e2eeditor2" }).click();
+  await admin.locator('tr[data-user="e2eeditor2"]', { hasText: "regiao=Sul" }).waitFor();
+  check("administrador define o atributo regiao=Sul do usuário", true);
+  await logout();
+
+  // quem está na lista e tem o atributo: só as linhas do Sul
+  await loginAs("e2eeditor2");
+  await page.goto(`${BASE}/#/`);
+  await page.locator(".ds-item", { hasText: "e2e_regioes.csv" }).click();
+  await page.getByText("linhas filtradas para você").waitFor();
+  const seen = (await page.locator("table").first().innerText());
+  check("usuário com atributo vê só as linhas do Sul na tabela", seen.includes("Sul") && !seen.includes("Norte") && !seen.includes("Leste"), seen);
+  const cnt = await page.evaluate(async () => (await (await fetch("/api/queries/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql: 'SELECT COUNT(*) FROM "e2e_regioes"' }) })).json()).rows[0][0]);
+  check("e o SQL dele também conta só 2 linhas (de 5)", cnt === 2, String(cnt));
+  check("quem só lê com acesso não vê o botão 'Acesso…' (não é dono)", !(await has(page.getByRole("button", { name: "Acesso…" }))));
+  await logout();
+
+  // quem NÃO está na lista: o dataset some (lista, API e SQL)
+  await loginAs("e2eleitor");
+  await page.goto(`${BASE}/#/`);
+  await page.locator(".sidebar").waitFor();
+  check("leitor fora da lista não vê o dataset restrito na barra lateral", !(await has(page.locator(".ds-item", { hasText: "e2e_regioes.csv" }))));
+  const status = await page.evaluate(async (id) => (await fetch(`/api/datasets/${id}`)).status, dsId);
+  check("e a API responde 404 para ele (nem confirma que existe)", status === 404, String(status));
   await logout();
 
   // --- outro editor: vê, mas não altera o que é do primeiro ---
@@ -129,10 +185,6 @@ try {
   await loginAs("e2eeditor");
 
   // --- sessão derrubada pelo administrador enquanto o editor está com a página aberta ---
-  const admin = await (await s.browser.newContext()).newPage();
-  admin.on("dialog", (d) => d.accept()); // confirmações do administrador (a página dele não passa pelo monitor de diálogos)
-  await admin.goto(BASE);
-  await fillLogin(admin, "e2eadmin", PASS);
   await admin.getByRole("link", { name: "Usuários" }).click();
   await admin.locator('tr[data-user="e2eeditor"]').getByRole("button", { name: "Desativar" }).click();
   await admin.locator('tr[data-user="e2eeditor"]', { hasText: "Desativado" }).waitFor();
@@ -143,7 +195,23 @@ try {
   await page.getByRole("alert").waitFor();
   check("usuário desativado não consegue entrar", (await page.getByRole("alert").innerText()).includes("invalid username or password"));
 
-  // --- limpeza: o relatório criado pelo editor e os usuários ---
+  // --- auditoria: o administrador vê o que aconteceu ---
+  await admin.goto(`${BASE}/#/users`);
+  await admin.getByRole("tab", { name: "Auditoria" }).click();
+  await admin.locator('tr[data-action="set_access"]').first().waitFor();
+  const alerts = await admin.locator("tr.audit-alert").count();
+  check("auditoria registra a mudança de acesso, o login falho e o acesso negado (estes destacados)",
+    (await has(admin.locator('tr[data-action="set_access"]'))) && (await has(admin.locator('tr[data-action="login_failed"]'))) && (await has(admin.locator('tr[data-action="denied"]'))) && alerts >= 2);
+  const auditText = await admin.locator(".audit-table").innerText();
+  check("auditoria nunca mostra senhas", !auditText.includes(PASS) && !auditText.includes("senha-errada"));
+  await admin.getByLabel("Filtrar por ação").selectOption("denied");
+  await admin.waitForFunction(() => [...document.querySelectorAll(".audit-table tbody tr")].every((r) => r.getAttribute("data-action") === "denied"));
+  check("filtro por ação mostra só 'Acesso negado'", (await admin.locator(".audit-table tbody tr").count()) > 0);
+  await shot("auth-audit", admin);
+
+  // --- limpeza: o dataset e o relatório criados pelos editores ---
+  const delDs = await admin.evaluate(async (id) => (await fetch(`/api/datasets/${id}`, { method: "DELETE" })).status, dsId);
+  check("limpeza do dataset de teste", delDs === 204, String(delDs));
   await admin.goto(`${BASE}/#/reports`);
   const arow = admin.locator(".report-row").first();
   await arow.waitFor();
@@ -155,6 +223,9 @@ try {
   check("excluir a coleção devolve o relatório à raiz (não o apaga)", (await admin.locator(".report-row").count()) === 1);
   const del = await admin.evaluate(async (id) => (await fetch(`/api/reports/${id}`, { method: "DELETE" })).status, reportId);
   check("limpeza do relatório de teste", del === 204, String(del));
+} catch (e) {
+  s.check(`exceção no teste: ${String(e?.message ?? e).split("\n")[0]}`, false); // sem isto o finish() sairia com sucesso e esconderia o erro
+  console.error(e);
 } finally {
   await s.finish();
 }

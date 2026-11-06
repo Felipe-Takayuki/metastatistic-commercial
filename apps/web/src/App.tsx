@@ -3,6 +3,7 @@ import { api, type Dataset } from "./api";
 import { DataTab } from "./components/DataTab";
 import { useCan } from "./components/AuthGate";
 import { Sidebar } from "./components/Sidebar";
+import { DatasetAccess } from "./components/DatasetAccess";
 import { UserMenu, UsersLink } from "./components/UserMenu";
 import { UsersPage } from "./components/UsersPage";
 import { DashboardsPage } from "./components/DashboardsPage";
@@ -44,6 +45,7 @@ export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(loadThemeMode);
   const route = useRoute();
   const canEdit = useCan("editor");
+  const [accessOpen, setAccessOpen] = useState(false);
 
   useEffect(() => applyThemeMode(theme), [theme]);
 
@@ -157,7 +159,12 @@ export default function App() {
                 <div className="page-head">
                   <h1>{selected.name}</h1>
                   <span className="muted small">{selected.n_rows.toLocaleString("pt-BR")} linhas · {selected.columns.length} colunas · tabela SQL <span className="chip">{selected.table_name}</span></span>
+                  {selected.restricted && <span className="chip" title="Só o dono, administradores e a lista de acesso leem">acesso restrito</span>}
+                  {selected.row_filtered && <span className="chip" title="Você vê só as linhas permitidas para você">linhas filtradas para você</span>}
+                  <span className="spacer" />
+                  {canEdit && selected.can_edit !== false && <button className="btn sm" onClick={() => setAccessOpen(true)}>Acesso…</button>}
                 </div>
+                {accessOpen && <DatasetAccess dataset={selected} onClose={() => setAccessOpen(false)} onSaved={() => { void refresh(selected.id); }} />}
                 <div className="tabs" role="tablist">
                   {TABS.map((t) => (
                     <button key={t.id} className="tab" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</button>

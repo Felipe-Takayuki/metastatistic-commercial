@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import access, auth
+from .. import access, audit, auth
 from ..schemas import CollectionIn
 from ..security import current_user, require_editor, require_viewer
 
@@ -25,15 +25,19 @@ def list_collections(user: auth.User = Depends(current_user)) -> list[dict]:
 @router.post("", status_code=201)
 def create_collection(body: CollectionIn, user: auth.User = Depends(require_editor)) -> dict:
     created = access.create_collection(body.name, user)
+    audit.log(user, "create", "collection", created["id"], created["name"])
     return next(c for c in access.list_collections(user) if c["id"] == created["id"])
 
 
 @router.patch("/{cid}", dependencies=[Depends(_owned)])
 def rename_collection(cid: str, body: CollectionIn, user: auth.User = Depends(current_user)) -> dict:
     access.rename_collection(cid, body.name)
+    audit.log(user, "rename", "collection", cid, body.name)
     return next(c for c in access.list_collections(user) if c["id"] == cid)
 
 
 @router.delete("/{cid}", status_code=204, dependencies=[Depends(_owned)])
-def delete_collection(cid: str) -> None:
+def delete_collection(cid: str, user: auth.User = Depends(current_user)) -> None:
+    name = access.get_collection(cid)["name"]
     access.delete_collection(cid)
+    audit.log(user, "delete", "collection", cid, name)

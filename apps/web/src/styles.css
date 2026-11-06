@@ -355,3 +355,10 @@ input[type="number"], .field input[type="text"] { padding: 6px 10px; border: 1px
 .chip.btn-chip.coll-chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .chip.btn-chip.coll-chip[aria-pressed="true"] .muted { color: inherit; opacity: .85; }
 .move-select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); color: var(--text-primary); font: inherit; font-size: 13px; max-width: 160px; }
+
+/* Acesso e auditoria */
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+.check input { margin-top: 3px; }
+.access-people { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; margin: 0; }
+.audit-table td { font-size: 13px; }
+.audit-alert td { background: var(--danger-wash); }

@@ -8,12 +8,21 @@ import uuid
 
 import duckdb
 
-from . import datasets, queries
+from . import auth, datasets, permissions, queries
 from .config import settings
 from .schemas import Dataset
 
 
-def create_dataset_from_query(name: str, sql: str) -> Dataset:
+def source_ids(sql: str) -> list[str]:
+    """Datasets citados na consulta (pelo nome da tabela)."""
+    import sqlglot
+    from sqlglot import exp
+
+    names = {t.name for t in sqlglot.parse_one(sql, read="duckdb").find_all(exp.Table)}
+    return [d.id for d in datasets.list_datasets() if d.table_name in names]
+
+
+def create_dataset_from_query(name: str, sql: str, *, user: auth.User) -> Dataset:
     name = name.strip()
     if not name:
         raise datasets.DatasetError("dataset name must not be blank")
@@ -23,7 +32,7 @@ def create_dataset_from_query(name: str, sql: str) -> Dataset:
     out.parent.mkdir(parents=True, exist_ok=True)
     max_rows = settings.derived_dataset_max_rows
 
-    con = queries._sandbox(datasets.list_datasets(), writable=[out])
+    con = queries._sandbox(permissions.visible_views(user), writable=[out])
     timed_out = threading.Event()
     timer = threading.Timer(settings.derived_dataset_timeout_s, lambda: (timed_out.set(), con.interrupt()))
     timer.start()
@@ -50,7 +59,9 @@ def create_dataset_from_query(name: str, sql: str) -> Dataset:
             raise datasets.DatasetError("the query returned no rows, so there is nothing to save")
         if n_rows > max_rows:
             raise datasets.DatasetError(f"the result has more than {max_rows:,} rows; filter or aggregate it first")
-        return datasets.register(dataset_id, name, n_rows, columns)
+        created = datasets.register(dataset_id, name, n_rows, columns)
+        permissions.inherit_for_derived(created.id, source_ids(clean))
+        return created
     except Exception:
         out.unlink(missing_ok=True)  # nunca deixa um Parquet órfão sem registro
         raise

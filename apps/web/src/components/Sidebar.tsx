@@ -42,7 +42,7 @@ export function Sidebar({ datasets, selectedId, busy, onSelect, onUpload, onDele
             <li key={d.id} className="ds-item" data-active={d.id === selectedId}>
               <button className="ds-pick" onClick={() => onSelect(d.id)} aria-current={d.id === selectedId}>
                 <span className="ds-name" title={d.name}>{d.name}</span>
-                <span className="ds-meta">{d.n_rows.toLocaleString("pt-BR")} linhas · {d.columns.length} colunas</span>
+                <span className="ds-meta">{d.n_rows.toLocaleString("pt-BR")} linhas · {d.columns.length} colunas{d.restricted ? " · restrito" : ""}</span>
               </button>
               {canEdit && d.can_edit !== false && <button className="btn ghost sm ds-del" onClick={() => onDelete(d)} aria-label={`Excluir ${d.name}`} title="Excluir">✕</button>}
             </li>

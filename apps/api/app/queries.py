@@ -19,7 +19,7 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.tokens import TokenType
 
-from . import datasets
+from . import auth, datasets, permissions
 from .config import settings
 from .schemas import Dataset, QueryColumn, QueryResult
 
@@ -71,14 +71,15 @@ def _json_safe(v: Any) -> Any:
     return str(v)
 
 
-def _sandbox(all_datasets: list[Dataset], writable: list[Path] | None = None) -> duckdb.DuckDBPyConnection:
-    """`writable`: arquivos extras liberados (a materialização de consulta grava SÓ o seu Parquet de destino)."""
+def _sandbox(views: list[tuple[Dataset, Path]], writable: list[Path] | None = None) -> duckdb.DuckDBPyConnection:
+    """`views`: (dataset, Parquet a abrir) que o usuário pode ler; o resto não existe para ele.
+    `writable`: arquivos extras liberados (a materialização de consulta grava SÓ o seu Parquet de destino)."""
     con = duckdb.connect(":memory:")
     con.execute(f"SET memory_limit={datasets.sql_str(settings.query_memory_limit)}")
     con.execute(f"SET threads={int(settings.query_threads)}")
     paths = []
-    for ds in all_datasets:
-        p = str(datasets.parquet_path(ds.id).resolve())
+    for ds, parquet in views:
+        p = str(parquet.resolve())
         paths.append(p)
         con.execute(f'CREATE VIEW "{ds.table_name}" AS SELECT * FROM read_parquet({datasets.sql_str(p)})')
     paths += [str(w.resolve()) for w in (writable or [])]
@@ -88,12 +89,12 @@ def _sandbox(all_datasets: list[Dataset], writable: list[Path] | None = None) ->
     return con
 
 
-def run_query(sql: str, limit: int | None = None, timeout_s: float | None = None) -> QueryResult:
+def run_query(sql: str, limit: int | None = None, timeout_s: float | None = None, *, user: auth.User) -> QueryResult:
     clean = validate_sql(sql)
     row_limit = min(limit or settings.query_row_limit, settings.query_row_limit)
     timeout = timeout_s if timeout_s is not None else settings.query_timeout_s
 
-    con = _sandbox(datasets.list_datasets())
+    con = _sandbox(permissions.visible_views(user))
     timed_out = threading.Event()
 
     def _interrupt() -> None:

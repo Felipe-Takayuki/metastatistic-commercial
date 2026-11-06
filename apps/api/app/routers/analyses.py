@@ -1,12 +1,13 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from starlette.concurrency import run_in_threadpool
 
-from .. import datasets
+from .. import audit, auth, datasets, permissions
 from ..analysis_service import AnalysisService, cache_key, get_service
 from ..pool import PoolError
 from ..schemas import AnalysisRequest, AnalysisResponse
-from ..security import require_viewer
+from ..security import current_user, require_viewer
 
 router = APIRouter(prefix="/analyses", tags=["analyses"], dependencies=[Depends(require_viewer)])
 
@@ -37,21 +38,25 @@ async def analyses_status(service: AnalysisService = Depends(get_service)) -> di
 
 
 @router.post("/run", response_model=AnalysisResponse)
-async def run_analysis(req: AnalysisRequest, service: AnalysisService = Depends(get_service)) -> AnalysisResponse:
+async def run_analysis(req: AnalysisRequest, service: AnalysisService = Depends(get_service), user: auth.User = Depends(current_user)) -> AnalysisResponse:
     try:
         ds = datasets.get_dataset(req.dataset_id)
     except datasets.DatasetNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
+    if not permissions.can_read(user, ds.id):
+        audit.log(user, "denied", "dataset", ds.id, "analysis")
+        raise HTTPException(404, f"dataset not found: {req.dataset_id}")
+    source = await run_in_threadpool(permissions.analysis_source, user, ds)  # cópia filtrada por linha, se houver regra
     columns = referenced_columns(ds, req.options)
     measurement = {c.name: c.measurement for c in ds.columns if c.name in columns}
     payload = {
         "analysis": req.analysis,
-        "dataset_id": ds.id,
+        "dataset_id": source,
         "options": req.options,
         "columns": columns,
         "measurement": measurement,
     }
-    key = cache_key(req.analysis, ds.id, req.options, columns, measurement)
+    key = cache_key(req.analysis, source, req.options, columns, measurement)
     try:
         body = await service.run(key, payload)
     except PoolError as exc:  # fila cheia/espera longa (429/503), motor fora (503), timeout (504), erro da análise (422/502)

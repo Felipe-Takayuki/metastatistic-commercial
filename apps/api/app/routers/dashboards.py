@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import access, auth, dashboards
+from .. import access, audit, auth, dashboards
 from ..schemas import Dashboard, DashboardIn, DashboardUpdate, MoveIn
 from ..security import can_modify, current_user, require_editor, require_viewer
 
@@ -16,6 +16,7 @@ def _http(exc: dashboards.DashboardError) -> HTTPException:
 def create_dashboard(d: DashboardIn, user: auth.User = Depends(current_user)) -> Dashboard:
     created = dashboards.create_dashboard(d)
     access.claim("dashboard", created.id, user)
+    audit.log(user, "create", "dashboard", created.id, created.title)
     return access.annotate_one("dashboard", created, user)
 
 
@@ -42,10 +43,11 @@ def update_dashboard(dash_id: str, d: DashboardUpdate, user: auth.User = Depends
 
 
 @router.put("/{dash_id}/collection", status_code=204, dependencies=[Depends(can_modify("dashboard", "dash_id"))])
-def move_dashboard(dash_id: str, body: MoveIn) -> None:
+def move_dashboard(dash_id: str, body: MoveIn, user: auth.User = Depends(current_user)) -> None:
     try:
         dashboards.get_dashboard(dash_id)
         access.set_collection("dashboard", dash_id, body.collection_id)
+        audit.log(user, "move", "dashboard", dash_id, body.collection_id or "raiz")
     except dashboards.DashboardError as exc:
         raise _http(exc) from exc
     except access.CollectionNotFound as exc:
@@ -53,9 +55,11 @@ def move_dashboard(dash_id: str, body: MoveIn) -> None:
 
 
 @router.delete("/{dash_id}", status_code=204, dependencies=[Depends(can_modify("dashboard", "dash_id"))])
-def delete_dashboard(dash_id: str) -> None:
+def delete_dashboard(dash_id: str, user: auth.User = Depends(current_user)) -> None:
     try:
+        title = dashboards.get_dashboard(dash_id).title
         dashboards.delete_dashboard(dash_id)
         access.forget("dashboard", dash_id)
+        audit.log(user, "delete", "dashboard", dash_id, title)
     except dashboards.DashboardError as exc:
         raise _http(exc) from exc
