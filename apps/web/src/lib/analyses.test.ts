@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Column, Dataset, Measurement } from "../api";
 import {
-  ANALYSES, ANALYSIS_GROUPS, ZTEST_MEANS_DEF, ZTEST_PROPORTIONS_DEF, groupedAnalyses, isNumericDtype, ordinalAsScale, RM_ANOVA_DEF, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
+  ANALYSES, ANALYSIS_GROUPS, BAYES_ANCOVA_DEF, BAYES_CONTINGENCY_DEF, BAYES_CORRELATION_DEF, BAYES_REGRESSION_DEF, ZTEST_MEANS_DEF, ZTEST_PROPORTIONS_DEF, groupedAnalyses, isNumericDtype, ordinalAsScale, RM_ANOVA_DEF, ANCOVA_DEF, ANOVA_DEF, BAYES_ANOVA_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_TTEST_DEF, CONTINGENCY_DEF, LOGISTIC_DEF, CORRELATION_DEF, DESCRIPTIVES_DEF, ONESAMPLE_TTEST_DEF, PAIRED_TTEST_DEF, REGRESSION_DEF, TTEST_DEF,
   candidates, defaultState, fromOptions, getDef, isComplete, problems, resolveState, toOptions, type FormState,
 } from "./analyses";
 
@@ -20,7 +20,7 @@ describe("catálogo", () => {
   it("ids únicos e conhecidos pelo worker", () => {
     expect(new Set(ANALYSES.map((a) => a.id)).size).toBe(ANALYSES.length);
     expect(ANALYSES.map((a) => a.id)).toEqual(["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "AnovaRepeatedMeasures", "ZTestMeans", "ZTestProportions", "Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables", "Descriptives",
-      "TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"]);
+      "TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian", "AncovaBayesian", "CorrelationBayesian", "RegressionLinearBayesian", "ContingencyTablesBayesian"]);
     expect(getDef("Anova")).toBe(ANOVA_DEF);
     expect(getDef("Inexistente")).toBeUndefined();
   });
@@ -281,6 +281,28 @@ describe("toOptions — o contrato com o motor JASP", () => {
     expect(pr({ outcome: ["o3"], group: [] })[0]).toMatch(/o3 tem 3 níveis/);
     expect(pr({ outcome: ["resp"], group: ["o3"] })[0]).toMatch(/o3 tem 3 níveis/);
     expect(pr({ outcome: ["resp"], group: ["g"] })).toEqual([]);
+  });
+  it("regressão bayesiana: um termo por covariável (efeito principal), semente fixa, prior 0,354 e BF10 por padrão", () => {
+    const d = ds([col("y", "scale"), col("a", "scale"), col("b", "scale")]);
+    const o = full(BAYES_REGRESSION_DEF, d, state({ dependent: ["y"], covariates: ["a", "b"] }, {}, defaultState(BAYES_REGRESSION_DEF)));
+    expect(o.modelTerms).toEqual([{ components: ["a"], isNuisance: false }, { components: ["b"], isNuisance: false }]);
+    expect(o).toMatchObject({ dependent: "y", covariates: ["a", "b"], setSeed: true, seed: 1, jzsRScale: 0.354, bayesFactorType: "BF10", bayesFactorOrder: "bestModelTop" });
+    expect(problems(BAYES_REGRESSION_DEF, d, resolveState(BAYES_REGRESSION_DEF, d, state({ dependent: ["y"], covariates: [] }, {}, defaultState(BAYES_REGRESSION_DEF))))[0]).toMatch(/covariáveis/i);
+  });
+  it("ANCOVA bayesiana: fatores + covariáveis como efeitos principais, interações só entre fatores e só se pedidas", () => {
+    const d = ds([col("y", "scale"), col("A", "nominal", 2), col("B", "nominal", 3), col("x", "scale")]);
+    const st = (values = {}) => state({ dependent: ["y"], fixedFactors: ["A", "B"], covariates: ["x"] }, values, defaultState(BAYES_ANCOVA_DEF));
+    expect(full(BAYES_ANCOVA_DEF, d, st()).modelTerms).toEqual([{ components: ["A"] }, { components: ["B"] }, { components: ["x"] }]);
+    expect(full(BAYES_ANCOVA_DEF, d, st({ interactions: true })).modelTerms).toEqual([{ components: ["A"] }, { components: ["B"] }, { components: ["x"] }, { components: ["A", "B"] }]);
+    expect(full(BAYES_ANCOVA_DEF, d, st())).toMatchObject({ setSeed: true, seed: 1, cauchyPriorScaleFixedEffects: 0.5, cauchyPriorScaleCovariates: 0.354, effects: true });
+  });
+  it("correlação e qui-quadrado bayesianos: defaults do prior, modelo amostral e campos herdados", () => {
+    const d = ds([col("a", "scale"), col("b", "scale"), col("g", "nominal", 2), col("h", "nominal", 3)]);
+    expect(full(BAYES_CORRELATION_DEF, d, state({ variables: ["a", "b"] }, {}, defaultState(BAYES_CORRELATION_DEF)))).toMatchObject({ variables: ["a", "b"], priorWidth: 1, alternative: "twoSided", bayesFactorType: "BF10" });
+    expect(problems(BAYES_CORRELATION_DEF, d, resolveState(BAYES_CORRELATION_DEF, d, state({ variables: ["a"] }, {}, defaultState(BAYES_CORRELATION_DEF))))[0]).toMatch(/ao menos 2/);
+    const chi = full(BAYES_CONTINGENCY_DEF, d, state({ rows: ["g"], columns: ["h"] }, { samplingModel: "poisson" }, defaultState(BAYES_CONTINGENCY_DEF)));
+    expect(chi).toMatchObject({ rows: ["g"], columns: ["h"], samplingModel: "poisson", priorConcentration: 1, bayesFactorType: "BF10", countsObserved: true });
+    expect(full(BAYES_CONTINGENCY_DEF, d, defaultState(BAYES_CONTINGENCY_DEF)).samplingModel).toBe("independentMultinomialRowsFixed");
   });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);

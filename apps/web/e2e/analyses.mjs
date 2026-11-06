@@ -71,7 +71,7 @@ try {
   await page.locator(".analysis-group-title").first().waitFor();
   check("seletor agrupado: Descritivas, Comparação de médias, Associação e predição, Bayesianas",
     JSON.stringify(await page.locator(".analysis-group-title").evaluateAll((e) => e.map((x) => x.textContent))) === JSON.stringify(["Descritivas", "Comparação de médias", "Testes z (σ conhecido e proporções)", "Associação e predição", "Bayesianas"]));
-  check("seletor agrupado: as 17 análises continuam sendo abas", (await page.locator(".analysis-picker").getByRole("tab").count()) === 17);
+  check("seletor agrupado: as 21 análises continuam sendo abas", (await page.locator(".analysis-picker").getByRole("tab").count()) === 21);
   await pickAnalysis("ANOVA");
   await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
   await page.getByLabel(/^tratamento/).check();
@@ -188,6 +188,39 @@ try {
   await notes().waitFor({ timeout: 90000 });
   const cn = (await notes().innerText()).replace(/\s+/g, " ");
   check("qui-quadrado com poucas observações: avisa frequências esperadas abaixo de 5 (regra de Cochran)", has(cn, "Atenção", "32 de 32 células", "frequência esperada abaixo de 5", "mínima 1,00"), cn);
+
+  // --- bayesianas (dataset e2e-dbc): correlação, regressão e ANCOVA, contra o R ---
+  const BC = REF.bayes_corr;
+  await pickAnalysis("Correlação bayesiana");
+  for (const v of ["produtividade", "altura", "diametro"]) await page.getByLabel(new RegExp(`^${v}`)).check();
+  await run();
+  t = await resultText();
+  check("correlação bayesiana: BF₁₀ dos 3 pares iguais ao BF analítico de Ly et al. (R)", BC.every((x) => has(t, x.bf10.toFixed(3))), t.slice(0, 600));
+  await bnotes().waitFor({ timeout: 30000 });
+  check("correlação bayesiana: interpreta o BF (produtividade × altura: evidência anedótica a favor de H₀)", has((await bnotes().innerText()).replace(/\s+/g, " "), "produtividade × altura: BF₁₀ = 0,51", "anedótica a favor de H₀ (não há correlação"), await bnotes().innerText());
+  await shot("a3k-correlacao-bayesiana");
+
+  await pickAnalysis("Regressão linear bayesiana");
+  await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
+  await page.getByRole("group", { name: /^Covariáveis/ }).getByLabel(/^altura/).check();
+  await page.getByRole("group", { name: /^Covariáveis/ }).getByLabel(/^diametro/).check();
+  await run();
+  t = await resultText();
+  const RB = REF.bayes_reg;
+  check("regressão bayesiana: 4 modelos e BF de cada um contra o nulo (o nulo é o melhor) iguais ao lmBF do R", has(t, "Null model", "altura + diametro", RB.altura.toFixed(3), RB.diametro.toFixed(3), RB.both.toFixed(3)), t.slice(0, 700));
+  await shot("a4b-regressao-bayesiana");
+
+  await pickAnalysis("ANCOVA bayesiana");
+  await page.getByLabel("Variável dependente (escalar)").selectOption("produtividade");
+  await page.getByRole("group", { name: /^Fatores/ }).getByLabel(/^tratamento/).check();
+  await page.getByRole("group", { name: /^Covariáveis/ }).getByLabel(/^altura/).check();
+  await run();
+  t = await resultText();
+  const AB = REF.bayes_ancova;
+  check("ANCOVA bayesiana: BF do fator e da covariável contra o nulo iguais ao lmBF do R; sem interação", has(t, "Null model", AB.trat.toFixed(3), AB.altura.toFixed(3)) && !t.includes("✻"), t.slice(0, 700));
+  await bnotes().waitFor({ timeout: 30000 });
+  check("ANCOVA bayesiana: interpreta o BF de inclusão de cada efeito", has((await bnotes().innerText()).replace(/\s+/g, " "), "BF de inclusão"), await bnotes().innerText());
+  await shot("a2f-ancova-bayesiana");
 
   // --- Regressão logística sobre um dataset derivado por SQL (desfecho binário alto/baixo) ---
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
@@ -445,6 +478,22 @@ try {
   await shot("a5-qui-quadrado");
   await notes().waitFor({ timeout: 90000 });
   check("qui-quadrado com esperadas ≥ 5: nota de nenhum alerta", has((await notes().innerText()).replace(/\s+/g, " "), "nenhum alerta"), await notes().innerText());
+
+  // qui-quadrado bayesiano: BF₁₀ por modelo amostral, contra contingencyTableBF
+  await pickAnalysis("Qui-quadrado bayesiano (tabela de contingência)");
+  await page.getByLabel(/^Linhas/).selectOption("grupo");
+  await page.getByLabel(/^Colunas/).selectOption("faixa");
+  await run();
+  t = await resultText();
+  const CB = REF.bayes_chi;
+  check("qui-quadrado bayesiano (linhas fixas, padrão): BF₁₀ igual ao contingencyTableBF do R", has(t, CB.rows_fixed.toFixed(3)), t.slice(0, 500));
+  await bnotes().waitFor({ timeout: 30000 });
+  check("qui-quadrado bayesiano: interpreta o BF (3,16 = moderada a favor de H₁, associação)", has((await bnotes().innerText()).replace(/\s+/g, " "), "BF₁₀ = 3,16", "moderada a favor de H₁ (as variáveis estão associadas)"), await bnotes().innerText());
+  await page.getByLabel("Como os dados foram coletados").selectOption("poisson");
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText(CB.poisson.toFixed(3)).first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  check("qui-quadrado bayesiano (Poisson): BF₁₀ igual ao do R", has(await resultText(), CB.poisson.toFixed(3)));
+  await shot("a5b-qui-quadrado-bayesiano");
 
   // --- Bloco de ANOVA num relatório ---
   await page.getByRole("link", { name: "Relatórios" }).click();

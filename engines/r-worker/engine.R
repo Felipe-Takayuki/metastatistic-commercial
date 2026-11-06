@@ -8,9 +8,10 @@ MODULES_DIR <- Sys.getenv("JASP_MODULES_DIR")
 ANALYSIS_MODULE <- c(
   TTestIndependentSamples = "jaspTTests", TTestPairedSamples = "jaspTTests", TTestOneSample = "jaspTTests",
   TTestBayesianIndependentSamples = "jaspTTests", TTestBayesianPairedSamples = "jaspTTests", TTestBayesianOneSample = "jaspTTests",
-  Anova = "jaspAnova", Ancova = "jaspAnova", AnovaBayesian = "jaspAnova", AnovaRepeatedMeasures = "jaspAnova",
+  Anova = "jaspAnova", Ancova = "jaspAnova", AnovaBayesian = "jaspAnova", AnovaRepeatedMeasures = "jaspAnova", AncovaBayesian = "jaspAnova",
   Correlation = "jaspRegression", RegressionLinear = "jaspRegression", RegressionLogistic = "jaspRegression",
-  ContingencyTables = "jaspFrequencies",
+  CorrelationBayesian = "jaspRegression", RegressionLinearBayesian = "jaspRegression",
+  ContingencyTables = "jaspFrequencies", ContingencyTablesBayesian = "jaspFrequencies",
   Descriptives = "jaspDescriptives"
 )
 # Análises escritas para a plataforma (R base), fora dos módulos JASP: testes z (ver custom.R). Definem CUSTOM_ANALYSES.
@@ -38,7 +39,7 @@ WARM_SPECS <- list(
 REQ <- new.env()   # estado da requisição em curso: modelTerms pedido e nomes originais das variáveis
 NAME_OPTIONS <- c("dependent", "fixedFactors", "randomFactors", "covariates", "factors")
 # Só onde o problema existe (Anova e Ancova: controle de interação com fatores). No RegressionLinear/RegressionLogistic, `modelTerms` é uma lista de MODELOS (blocos) e o QML a respeita.
-PATCH_MODEL_TERMS <- c("Anova", "Ancova", "AnovaBayesian")
+PATCH_MODEL_TERMS <- c("Anova", "Ancova", "AnovaBayesian", "AncovaBayesian")
 
 restore_model_terms <- function(parsed) {
   want <- REQ$modelTerms

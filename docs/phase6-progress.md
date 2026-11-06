@@ -2,6 +2,7 @@
 
 Pedidos do usuário: **teste z de duas amostras e de proporções — FEITOS na 6.12** (análises próprias da plataforma, ver abaixo; o z de UMA média continua sendo do JASP, 6.7).
 
+Resolvido na 6.15: correlação, regressão linear, ANCOVA e qui-quadrado bayesianos.
 Resolvido na 6.14: t pareado (e bayesiano) com vários pares.
 Resolvido na 6.13: pressupostos para correlação, regressão e qui-quadrado; notas automáticas em relatório/dashboard (opt-in por bloco); aviso de Likert na aba Dados.
 Resolvido na 6.11: dados ordinais numéricos (Likert) em papéis escalares, e regressão com um único preditor (bug do motor).
@@ -346,4 +347,33 @@ O JASP já aceita `pairs` com vários pares (uma linha por par, também no t par
 ## Pendências
 - Sem comparação de uma linha de base com TODAS as demais de uma vez (é preciso marcar cada par; a ANOVA de medidas repetidas cobre esse caso com correção para comparações múltiplas).
 - Sem correção para comparações múltiplas entre os pares do t pareado (cada par é um teste independente).
+
+---
+
+# Fatia 6.15 — correlação, regressão linear, ANCOVA e qui-quadrado bayesianos ✅
+
+O catálogo passa a **21 análises** (grupo "Bayesianas": 8). As quatro funções do JASP (`CorrelationBayesian`, `RegressionLinearBayesian` em jaspRegression; `AncovaBayesian` em jaspAnova; `ContingencyTablesBayesian` em jaspFrequencies) entraram no registro de `engine.R`; `AncovaBayesian` entrou também em `PATCH_MODEL_TERMS` (sem o remendo o JASP repovoa as interações).
+
+| Análise | Formulário | Resultado |
+|---|---|---|
+| **Correlação bayesiana** | 2+ variáveis (escalares/ordinais), hipótese (bilateral/positiva/negativa), largura κ do prior beta esticado (1 = uniforme), BF₁₀/BF₀₁/log, IC credível, N | BF₁₀ de Pearson por par |
+| **Regressão linear bayesiana** | dependente + covariáveis; prior JZS r (0,354), comparar com o melhor modelo ou com o nulo, estimativas a posteriori, descritivas | todos os modelos possíveis (e o nulo) com BF; um termo por covariável; **semente fixa** |
+| **ANCOVA bayesiana** | fatores + covariáveis, interações opcionais entre fatores, prior dos fatores (0,5) e das covariáveis (0,354), BF de inclusão por efeito | modelos com BF; **semente fixa** |
+| **Qui-quadrado bayesiano** | linhas × colunas, **modelo amostral** (linhas fixas, colunas fixas, N fixo, Poisson), concentração do prior (1), BF₁₀/BF₀₁/log, tabela (observadas, esperadas, % linhas/colunas) | BF₁₀ da associação |
+
+- **Interpretação do BF** (6.8) também para correlação ("altura × peso: BF₁₀ = 45,00: evidência muito forte a favor de H₁ (há correlação)"), qui-quadrado ("… as variáveis estão associadas / são independentes") e ANCOVA (BF de inclusão por efeito).
+
+## Conferido contra referências independentes
+- **Correlação**: BF₁₀ analítico de Ly, Verhagen & Wagenmakers (2016), integrado numericamente em R (função hipergeométrica 2F1 por série): bate com o JASP até 5 casas (0,509132; 0,773652; 0,230564). O BayesFactor não tem BF de correlação; esta é uma verificação independente da implementação do JASP.
+- **Regressão**: `lmBF(..., rscaleCont = 0,354)` (BF de cada modelo contra o nulo; a tabela do JASP vem relativa ao melhor modelo).
+- **ANCOVA**: `lmBF` com `rscaleFixed = 0,5` e `rscaleCont = 0,354` (o modelo combinado envolve Monte Carlo: tolerância de 5%).
+- **Qui-quadrado**: `contingencyTableBF` para os quatro modelos amostrais (`poisson`, `jointMulti`, `indepMulti` com `fixedMargin = "rows"`/`"cols"`) com concentração 1.
+
+## Verificado
+`vitest` 196 (9 novos), `pytest` 210 (4 novos), `e2e:all` 6 suítes verdes (os quatro pelo formulário, com os números do R e a interpretação).
+
+## Pendências
+- Correlação bayesiana só de Pearson (Spearman/Kendall existem no JASP, sem referência independente aqui); sem gráficos de prior/posterior e robustez para essas quatro (há nos testes t).
+- Regressão e ANCOVA bayesianas sem interpretação textual da tabela de modelos (só o BF de inclusão da ANCOVA); sem fatores na regressão bayesiana; sem priors alternativos (hyper-g, etc.) nem seleção de modelos por MCMC.
+- Qui-quadrado bayesiano: sem razão de chances nem teste de hipótese hipergeométrico (2×2).
 

@@ -72,7 +72,25 @@ export function bayesNotes(analysis: string, options: Record<string, unknown>, r
         notes.push({ level: "info", text: sentence(toBF10(v, type), name ? `${name}: ` : "", h1, h0) });
       }
     }
-  } else if (analysis === "AnovaBayesian" && (type === undefined || type === "BF10")) {
+  } else if (analysis === "CorrelationBayesian") {
+    const dir = options.alternative === "greater" ? " (positiva)" : options.alternative === "less" ? " (negativa)" : "";
+    for (const rows of tablesEndingWith(results, "corBayesTable")) {
+      for (const r of rows) {
+        const v = num(r.pearsonbf);
+        if (v === null) continue;
+        const name = typeof r.variable1 === "string" && typeof r.variable2 === "string" ? `${r.variable1} × ${r.variable2}: ` : "";
+        notes.push({ level: "info", text: sentence(toBF10(v, type), name, `H₁ (há correlação${dir})`, "H₀ (não há correlação, ρ = 0)") });
+      }
+    }
+  } else if (analysis === "ContingencyTablesBayesian") {
+    for (const rows of tablesEndingWith(results, "contTabBasBF")) {
+      for (const r of rows) {
+        const v = num(r["value[BF]"]);
+        if (v === null) continue;
+        notes.push({ level: "info", text: sentence(toBF10(v, type), "", "H₁ (as variáveis estão associadas)", "H₀ (as variáveis são independentes)") });
+      }
+    }
+  } else if ((analysis === "AnovaBayesian" || analysis === "AncovaBayesian") && (type === undefined || type === "BF10")) {
     // BF de inclusão: quanto a presença do efeito nos modelos é favorecida pelos dados
     for (const rows of tablesEndingWith(results, "tableEffects")) {
       for (const r of rows) {

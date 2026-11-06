@@ -157,6 +157,28 @@ out$diag <- list(vif_collinear = 1 / (1 - r2c), dw_collinear = sum(diff(ec)^2) /
 pp <- list(c("altura", "diametro"), c("produtividade", "altura2"), c("altura", "altura2"), c("produtividade", "altura"))
 out$paired_multi <- lapply(pp, function(v) { tt_ <- t.test(d[[v[1]]], d[[v[2]]], paired = TRUE)
   list(a = v[1], b = v[2], t = unname(tt_$statistic), df = unname(tt_$parameter), p = tt_$p.value, diff = unname(tt_$estimate)) })
+# --- catálogo 6.15: correlação, regressão, ANCOVA e qui-quadrado bayesianos ---
+# Correlação (prior beta esticado, largura κ): BF10 analítico de Ly, Verhagen & Wagenmakers (2016) por integração numérica; o BayesFactor não tem BF de correlação.
+hyp2f1 <- function(a, b, cc, z) { sm <- 1; tm <- 1; for (k in 0:20000) { tm <- tm * (a + k) * (b + k) / ((cc + k) * (k + 1)) * z; sm <- sm + tm; if (abs(tm) < 1e-17 * abs(sm)) break }; sm }
+cor_bf10 <- function(x, y, kappa = 1) {
+  n <- length(x); r <- cor(x, y); a <- 1 / kappa
+  f <- function(rho) vapply(rho, function(q) (1 - q^2)^((n - 1) / 2) * (1 - q * r)^(-(n - 3 / 2)) * hyp2f1(1 / 2, 1 / 2, (2 * n - 1) / 2, (1 + q * r) / 2), numeric(1))
+  integrate(function(q) dbeta((q + 1) / 2, a, a) / 2 * f(q), -1, 1, rel.tol = 1e-10)$value / f(0)
+}
+cvars <- c("produtividade", "altura", "diametro")
+out$bayes_corr <- lapply(combn(3, 2, simplify = FALSE), function(ij) list(a = cvars[ij[1]], b = cvars[ij[2]], r = cor(d[[cvars[ij[1]]]], d[[cvars[ij[2]]]]), n = nrow(d),
+  bf10 = cor_bf10(d[[cvars[ij[1]]]], d[[cvars[ij[2]]]]), bf10_k2 = cor_bf10(d[[cvars[ij[1]]]], d[[cvars[ij[2]]]], kappa = 2)))
+# Regressão: BF de cada modelo contra o nulo (lmBF, JZS com r = 0,354)
+rb <- function(f) extractBF(lmBF(f, data = d, rscaleCont = 0.354))$bf
+out$bayes_reg <- list(altura = rb(produtividade ~ altura), diametro = rb(produtividade ~ diametro), both = rb(produtividade ~ altura + diametro))
+# ANCOVA: tratamento (fator, r = 0,5) + altura (covariável, r = 0,354) contra o nulo
+d$trat_f <- factor(d$tratamento)
+ab <- function(f) extractBF(lmBF(f, data = d, rscaleFixed = 0.5, rscaleCont = 0.354))$bf
+out$bayes_ancova <- list(trat = ab(produtividade ~ trat_f), altura = ab(produtividade ~ altura), both = ab(produtividade ~ trat_f + altura))
+# Qui-quadrado (ttest.csv: grupo × faixa): BF10 por modelo amostral, prior de concentração 1
+cbf <- function(...) extractBF(contingencyTableBF(tb, ...))$bf
+out$bayes_chi <- list(poisson = cbf(sampleType = "poisson"), joint = cbf(sampleType = "jointMulti"),
+  rows_fixed = cbf(sampleType = "indepMulti", fixedMargin = "rows"), cols_fixed = cbf(sampleType = "indepMulti", fixedMargin = "cols"))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

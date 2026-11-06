@@ -600,7 +600,104 @@ export const RM_ANOVA_DEF: AnalysisDef = {
   },
 };
 
-export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, RM_ANOVA_DEF, ZTEST_MEANS_DEF, ZTEST_PROPORTIONS_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF];
+// Bayesianas da 6.15: correlação (prior beta esticado), regressão linear (JZS), ANCOVA e qui-quadrado (Dirichlet/Poisson).
+export const BAYES_CORRELATION_DEF: AnalysisDef = {
+  id: "CorrelationBayesian",
+  title: "Correlação bayesiana",
+  description: "Fator de Bayes para a correlação de Pearson entre pares de variáveis: quanto os dados favorecem “há correlação” (H₁) contra “não há” (H₀, ρ = 0).",
+  slots: CORRELATION_DEF.slots,
+  sections: [
+    {
+      title: "Hipótese alternativa",
+      items: [{ type: "choice", key: "alternative", label: "Hipótese alternativa", default: "twoSided", options: [{ value: "twoSided", label: "Bilateral (ρ ≠ 0)" }, { value: "greater", label: "Positiva (ρ > 0)" }, { value: "less", label: "Negativa (ρ < 0)" }] }],
+    },
+    { title: "Prior (beta esticado sobre ρ)", items: [{ type: "number", key: "priorWidth", label: "Largura κ do prior (1 = uniforme em −1…1)", default: 1, min: 0.05, max: 3, step: 0.05 }] },
+    { title: "Resultado", items: [bfType(), toggle("ci", "Intervalo credível (95%) de ρ"), toggle("sampleSize", "N de cada par")] },
+  ],
+};
+
+export const BAYES_REGRESSION_DEF: AnalysisDef = {
+  id: "RegressionLinearBayesian",
+  title: "Regressão linear bayesiana",
+  description: "Compara todos os modelos possíveis com as covariáveis escolhidas (e o modelo nulo) pelo fator de Bayes, com o prior JZS sobre os coeficientes.",
+  slots: [
+    { key: "dependent", label: "Variável dependente (escalar)", levels: ["scale"], multi: false, required: true, autofill: true },
+    { key: "covariates", label: "Covariáveis (escalares)", levels: ["scale"], multi: true, required: true, min: 1 },
+  ],
+  sections: [
+    { title: "Prior (JZS sobre os coeficientes)", items: [{ type: "number", key: "jzsRScale", label: "Largura do prior (r; 0,354 = padrão)", default: 0.354, min: 0.05, max: 2, step: 0.01 }] },
+    {
+      title: "Resultado",
+      items: [
+        bfType(),
+        { type: "choice", key: "bayesFactorOrder", label: "Comparar com", default: "bestModelTop", options: [{ value: "bestModelTop", label: "o melhor modelo" }, { value: "nullModelTop", label: "o modelo nulo" }] },
+        toggle("posteriorSummaryTable", "Estimativas a posteriori (média e IC credível)"),
+        toggle("descriptives", "Estatísticas descritivas"),
+      ],
+    },
+  ],
+  // um termo por covariável (efeito principal); semente fixa: com muitos preditores o JASP amostra modelos (BAS) e sem semente o resultado mudaria a cada execução
+  derive: (s) => ({ modelTerms: s.vars.covariates.map((c) => ({ components: [c], isNuisance: false })), setSeed: true, seed: 1 }),
+};
+
+export const BAYES_ANCOVA_DEF: AnalysisDef = {
+  id: "AncovaBayesian",
+  title: "ANCOVA bayesiana",
+  description: "Compara modelos (nulo, fatores, covariáveis e combinações) pelo fator de Bayes, ajustando por covariáveis escalares. Em blocos casualizados, inclua o bloco como fator.",
+  slots: ANCOVA_DEF.slots,
+  sections: [
+    { title: "Modelo", items: [toggle("interactions", "Incluir interações entre os fatores", false, { local: true })] },
+    {
+      title: "Prior (Cauchy)",
+      items: [cauchyWidth("cauchyPriorScaleFixedEffects", "Largura para os fatores (r)", 0.5), cauchyWidth("cauchyPriorScaleCovariates", "Largura para as covariáveis (r)", 0.354)],
+    },
+    {
+      title: "Resultado",
+      items: [
+        bfType(),
+        { type: "choice", key: "bayesFactorOrder", label: "Comparar com", default: "bestModelTop", options: [{ value: "bestModelTop", label: "o melhor modelo" }, { value: "nullModelTop", label: "o modelo nulo" }] },
+        toggle("effects", "Evidência de cada efeito (BF de inclusão)", true),
+        { type: "choice", key: "effectsType", label: "Inclusão calculada sobre", default: "allModels", showIf: (v) => !!v.effects, options: [{ value: "allModels", label: "todos os modelos" }, { value: "matchedModels", label: "modelos equivalentes (matched)" }] },
+        toggle("descriptives", "Estatísticas descritivas"),
+      ],
+    },
+  ],
+  derive: (s) => {
+    const f = s.vars.fixedFactors;
+    const terms = [...f, ...s.vars.covariates].map((x) => ({ components: [x] }));
+    if (s.values.interactions) for (const combo of interactionTerms(f)) terms.push({ components: combo });
+    return { modelTerms: terms, setSeed: true, seed: 1 };
+  },
+  parse: (o) => ({ interactions: ANOVA_DEF.parse!(o).interactions }),
+  check: ANOVA_DEF.check,
+};
+
+export const BAYES_CONTINGENCY_DEF: AnalysisDef = {
+  id: "ContingencyTablesBayesian",
+  title: "Qui-quadrado bayesiano (tabela de contingência)",
+  description: "Fator de Bayes para a associação entre duas variáveis categóricas (H₁: dependentes; H₀: independentes). Escolha o modelo amostral que descreve como os dados foram coletados.",
+  slots: CONTINGENCY_DEF.slots,
+  sections: [
+    {
+      title: "Modelo amostral",
+      items: [{
+        type: "choice", key: "samplingModel", label: "Como os dados foram coletados", default: "independentMultinomialRowsFixed",
+        options: [
+          { value: "independentMultinomialRowsFixed", label: "Totais das linhas fixos (ex.: tamanhos dos grupos definidos)" },
+          { value: "independentMultinomialColumnsFixed", label: "Totais das colunas fixos" },
+          { value: "jointMultinomial", label: "Total geral fixo (N definido, nada mais)" },
+          { value: "poisson", label: "Nada fixo (contagens de Poisson)" },
+        ],
+      }],
+    },
+    { title: "Prior", items: [{ type: "number", key: "priorConcentration", label: "Concentração do prior (1 = uniforme)", default: 1, min: 0.01, max: 100, step: 0.1 }] },
+    { title: "Resultado", items: [bfType()] },
+    { title: "Tabela", items: [toggle("countsObserved", "Contagens observadas", true), toggle("countsExpected", "Contagens esperadas"), toggle("percentagesRow", "% nas linhas"), toggle("percentagesColumn", "% nas colunas")] },
+  ],
+  check: CONTINGENCY_DEF.check,
+};
+
+export const ANALYSES: AnalysisDef[] = [TTEST_DEF, PAIRED_TTEST_DEF, ONESAMPLE_TTEST_DEF, ANOVA_DEF, ANCOVA_DEF, RM_ANOVA_DEF, ZTEST_MEANS_DEF, ZTEST_PROPORTIONS_DEF, CORRELATION_DEF, REGRESSION_DEF, LOGISTIC_DEF, CONTINGENCY_DEF, DESCRIPTIVES_DEF, BAYES_TTEST_DEF, BAYES_PAIRED_TTEST_DEF, BAYES_ONESAMPLE_TTEST_DEF, BAYES_ANOVA_DEF, BAYES_ANCOVA_DEF, BAYES_CORRELATION_DEF, BAYES_REGRESSION_DEF, BAYES_CONTINGENCY_DEF];
 export const getDef = (id: string): AnalysisDef | undefined => ANALYSES.find((d) => d.id === id);
 
 /** Como o seletor agrupa as análises (aba Análise e bloco de relatório). Cada análise do catálogo está em exatamente um grupo. */
@@ -609,7 +706,7 @@ export const ANALYSIS_GROUPS: { title: string; ids: string[] }[] = [
   { title: "Comparação de médias", ids: ["TTestIndependentSamples", "TTestPairedSamples", "TTestOneSample", "Anova", "Ancova", "AnovaRepeatedMeasures"] },
   { title: "Testes z (σ conhecido e proporções)", ids: ["ZTestMeans", "ZTestProportions"] },
   { title: "Associação e predição", ids: ["Correlation", "RegressionLinear", "RegressionLogistic", "ContingencyTables"] },
-  { title: "Bayesianas", ids: ["TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian"] },
+  { title: "Bayesianas", ids: ["TTestBayesianIndependentSamples", "TTestBayesianPairedSamples", "TTestBayesianOneSample", "AnovaBayesian", "AncovaBayesian", "CorrelationBayesian", "RegressionLinearBayesian", "ContingencyTablesBayesian"] },
 ];
 export const groupedAnalyses = (): { title: string; defs: AnalysisDef[] }[] =>
   ANALYSIS_GROUPS.map((g) => ({ title: g.title, defs: g.ids.map((id) => getDef(id)).filter((d): d is AnalysisDef => !!d) }));

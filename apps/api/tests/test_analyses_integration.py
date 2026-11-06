@@ -713,3 +713,49 @@ def test_paired_t_with_several_pairs_matches_R(data):
     assert [(r["variable1"], r["variable2"]) for r in bf] == [tuple(p) for p in pairs]   # o bayesiano também devolve uma linha por par
     nt = table(run("TTestPairedSamples", data["colin"], {"pairs": pairs, "student": True, "normalityTest": True}), "ttestNormalTable")["data"]
     assert len(nt) == len(pairs)   # as notas de normalidade das diferenças (6.5) cobrem cada par
+
+
+def test_bayesian_correlation_matches_Ly_et_al(data):
+    """BF10 da correlação de Pearson (prior beta esticado, κ = 1) = BF analítico de Ly, Verhagen & Wagenmakers (2016) integrado em R."""
+    ref = REF["bayes_corr"]
+    res = run("CorrelationBayesian", data["dbc"], {"variables": ["produtividade", "altura", "diametro"], "pearson": True})
+    rows = {(r["variable1"], r["variable2"]): r for r in table(res, "corBayesTable")["data"]}
+    assert len(rows) == 3
+    for want in ref:
+        got = rows[(want["a"], want["b"])]
+        close(got["pearsonstat"], want["r"]); close(got["pearsonbf"], want["bf10"], rel=1e-5)
+    wide = run("CorrelationBayesian", data["dbc"], {"variables": ["produtividade", "altura"], "pearson": True, "priorWidth": 0.5})   # κ = 0,5: prior mais concentrado
+    close(table(wide, "corBayesTable")["data"][0]["pearsonbf"], next(x for x in ref if (x["a"], x["b"]) == ("produtividade", "altura"))["bf10"], rel=0.5)  # muda, mas é do mesmo porte
+    assert table(wide, "corBayesTable")["data"][0]["pearsonbf"] != rows[("produtividade", "altura")]["pearsonbf"]
+
+
+def test_bayesian_linear_regression_matches_lmBF(data):
+    """BF de cada modelo contra o nulo (lmBF, JZS r = 0,354). O JASP lista os modelos ordenados e com 'Null model' na tabela."""
+    ref = REF["bayes_reg"]
+    res = run("RegressionLinearBayesian", data["dbc"], {"dependent": "produtividade", "covariates": ["altura", "diametro"],
+                                                       "modelTerms": [{"components": "altura", "isNuisance": False}, {"components": "diametro", "isNuisance": False}]})
+    rows = {r["Models"]: r for r in table(res, "modelComparisonTable")["data"]}
+    assert set(rows) == {"Null model", "altura", "diametro", "altura + diametro"}, list(rows)
+    null = rows["Null model"]["BF"]
+    for name, key in (("altura", "altura"), ("diametro", "diametro"), ("altura + diametro", "both")):
+        close(rows[name]["BF"] / null, ref[key], rel=1e-4)
+
+
+def test_bayesian_ancova_matches_lmBF(data):
+    ref = REF["bayes_ancova"]
+    res = run("AncovaBayesian", data["dbc"], {"dependent": "produtividade", "fixedFactors": ["tratamento"], "covariates": ["altura"],
+                                             "modelTerms": [{"components": ["tratamento"]}, {"components": ["altura"]}], "setSeed": True, "seed": 1})
+    rows = {r["Models"]: r for r in table(res, "tableModelComparison")["data"]}
+    assert set(rows) == {"Null model", "tratamento", "altura", "tratamento + altura"}, list(rows)   # modelo aditivo: sem a interação (remendo do modelTerms)
+    null = rows["Null model"]["BF10"]
+    close(rows["tratamento"]["BF10"] / null, ref["trat"], rel=1e-4); close(rows["altura"]["BF10"] / null, ref["altura"], rel=1e-4)
+    close(rows["tratamento + altura"]["BF10"] / null, ref["both"], rel=0.05)   # envolve Monte Carlo (erro de ~1%)
+
+
+def test_bayesian_contingency_tables_match_contingencyTableBF(data):
+    ref = REF["bayes_chi"]
+    for model, key in (("poisson", "poisson"), ("jointMultinomial", "joint"), ("independentMultinomialRowsFixed", "rows_fixed"), ("independentMultinomialColumnsFixed", "cols_fixed")):
+        res = run("ContingencyTablesBayesian", data["faixas"], {"rows": ["grupo"], "columns": ["faixa"], "samplingModel": model, "priorConcentration": 1})
+        row = table(res, "contTabBasBF")["data"][0]
+        close(row["value[BF]"], ref[key], rel=1e-5)
+        assert row["value[N]"] == 80

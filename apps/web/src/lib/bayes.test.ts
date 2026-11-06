@@ -58,6 +58,21 @@ describe("bayesNotes", () => {
     expect(n[2].text).toMatch(/^A × B: .*muito forte a favor de excluir/);
     expect(bayesNotes("AnovaBayesian", { bayesFactorType: "BF01" }, res)).toEqual([]);
   });
+  it("correlação bayesiana: uma nota por par (a × b), com a direção quando unilateral", () => {
+    const res = tree({ "corBayesTable": [{ variable1: "altura", separator: "-", variable2: "peso", pearsonstat: 0.6, pearsonbf: 45 }, { variable1: "altura", separator: "-", variable2: "idade", pearsonstat: 0.1, pearsonbf: 0.4 }] });
+    const n = bayesNotes("CorrelationBayesian", {}, res);
+    expect(n[0].text).toMatch(/^altura × peso: BF₁₀ = 45,00: evidência muito forte a favor de H₁ \(há correlação\)/);
+    expect(n[1].text).toMatch(/^altura × idade: BF₁₀ = 0,40: evidência anedótica a favor de H₀ \(não há correlação, ρ = 0\)/);
+    expect(bayesNotes("CorrelationBayesian", { alternative: "greater" }, res)[0].text).toMatch(/H₁ \(há correlação \(positiva\)\)/);
+    expect(bayesNotes("CorrelationBayesian", { bayesFactorType: "BF01" }, tree({ "corBayesTable": [{ variable1: "a", variable2: "b", pearsonbf: 0.1 }] }))[0].text).toMatch(/BF₁₀ = 10,00: evidência forte a favor de H₁/);
+  });
+  it("qui-quadrado bayesiano: uma nota sobre a associação; ANCOVA bayesiana interpreta o BF de inclusão como a ANOVA", () => {
+    const chi = bayesNotes("ContingencyTablesBayesian", {}, tree({ "container_f_g_contTabBasBF": [{ "type[BF]": "BF₁₀ Poisson", "value[BF]": 10.0559, "type[N]": "N", "value[N]": 80 }] }));
+    expect(chi[0].text).toMatch(/^BF₁₀ = 10,06: evidência forte a favor de H₁ \(as variáveis estão associadas\)/);
+    expect(bayesNotes("ContingencyTablesBayesian", { bayesFactorType: "BF01" }, tree({ "x_contTabBasBF": [{ "value[BF]": 5 }] }))[0].text).toMatch(/BF₁₀ = 0,20: evidência moderada a favor de H₀ \(as variáveis são independentes\)/);
+    const anc = bayesNotes("AncovaBayesian", {}, tree({ "tableEffects": [{ Effects: "altura", BFInclusion: 0.5 }] }));
+    expect(anc[0].text).toMatch(/^altura: BF de inclusão = 0,50: evidência anedótica a favor de excluir/);
+  });
   it("análises não bayesianas, tabelas ausentes ou BF não numérico: nada", () => {
     expect(bayesNotes("Anova", {}, tree({ "x/ttestTable": [{ BF: 3 }] }))).toEqual([]);
     expect(bayesNotes("TTestBayesianOneSample", {}, tree({}))).toEqual([]);
