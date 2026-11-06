@@ -38,7 +38,7 @@ def _dump_blocks(rep: ReportIn) -> str:
 def create_report(rep: ReportIn) -> Report:
     report_id, now = uuid.uuid4().hex, _now()
     with closing(db.connect()) as con, con:
-        con.execute("INSERT INTO reports VALUES (?,?,?,?,?,?)", [report_id, rep.title, _dump_blocks(rep), 1, now, now])
+        con.execute("INSERT INTO reports (id, title, blocks_json, version, created_at, updated_at) VALUES (?,?,?,?,?,?)", [report_id, rep.title, _dump_blocks(rep), 1, now, now])
     return get_report(report_id)
 
 

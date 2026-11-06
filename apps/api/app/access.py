@@ -100,7 +100,7 @@ def _now() -> str:
 def create_collection(name: str, user: auth.User) -> dict:
     cid = uuid.uuid4().hex
     with closing(db.connect()) as con, con:
-        con.execute("INSERT INTO collections VALUES (?,?,?,?)", [cid, name, _owner_of(user), _now()])
+        con.execute("INSERT INTO collections (id, name, owner_id, created_at) VALUES (?,?,?,?)", [cid, name, _owner_of(user), _now()])
     return get_collection(cid)
 
 

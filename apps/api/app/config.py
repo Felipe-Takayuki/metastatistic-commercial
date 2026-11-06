@@ -7,6 +7,16 @@ class Settings(BaseSettings):
     r_worker_url: str = "http://localhost:8001"
     r_worker_urls: str = ""  # lista separada por vírgulas (o pool); vazio = usa só r_worker_url
 
+    # Armazenamento e Multi-tenancy
+    database_url: str = ""
+    storage_backend: str = "local"
+    s3_endpoint_url: str = ""
+    s3_bucket: str = "metastatistic"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    default_tenant_id: str = "default"
+
+
     # Análises: tempo limite imposto pelo worker (ele mata o motor se estourar), fila e cache
     analysis_timeout_s: float = 60.0
     analysis_queue_max: int = 20          # pessoas esperando além dos workers ocupados; acima disso => 429

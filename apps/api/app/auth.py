@@ -127,7 +127,7 @@ def create_user(username: str, password: str, display_name: str | None = None, r
     try:
         with closing(db.connect()) as con, con:
             con.execute(
-                "INSERT INTO users VALUES (?,?,?,?,?,1,?)",
+                "INSERT INTO users (id, username, display_name, password_hash, role, active, created_at) VALUES (?,?,?,?,?,1,?)",
                 [user_id, name, (display_name or name).strip()[:120] or name, hash_password(password), role, _now().isoformat()],
             )
     except Exception as exc:  # sqlite3.IntegrityError (nome repetido)

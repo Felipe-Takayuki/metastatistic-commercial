@@ -134,7 +134,7 @@ def register(dataset_id: str, name: str, n_rows: int, columns: list[Column]) -> 
     with closing(_db()) as db, db:
         table_name = _unique_table_name(db, slugify(name))
         db.execute(
-            "INSERT INTO datasets VALUES (?,?,?,?,?,?)",
+            "INSERT INTO datasets (id, name, table_name, n_rows, columns_json, created_at) VALUES (?,?,?,?,?,?)",
             [dataset_id, name, table_name, n_rows, json.dumps([c.model_dump() for c in columns]), datetime.now(timezone.utc).isoformat()],
         )
     return get_dataset(dataset_id)

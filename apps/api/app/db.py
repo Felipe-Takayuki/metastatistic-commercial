@@ -1,9 +1,13 @@
 """Conexão SQLite compartilhada (metadados de datasets, relatórios e dashboards). Uma conexão por operação."""
+from datetime import datetime, timezone
 import sqlite3
 
 from .config import settings
 
 _SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS tenants (
+         id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
+         tier TEXT NOT NULL, created_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS datasets (
          id TEXT PRIMARY KEY, name TEXT NOT NULL, table_name TEXT NOT NULL UNIQUE,
          n_rows INTEGER NOT NULL, columns_json TEXT NOT NULL, created_at TEXT NOT NULL)""",
@@ -50,9 +54,28 @@ def connect() -> sqlite3.Connection:
     con.execute("PRAGMA foreign_keys = ON")
     for ddl in _SCHEMA:
         con.execute(ddl)
+
+    # Inserção do tenant padrão caso não exista
+    cur = con.execute("SELECT id FROM tenants WHERE id = 'default'")
+    if not cur.fetchone():
+        now = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            "INSERT INTO tenants (id, name, slug, tier, created_at) VALUES (?, ?, ?, ?, ?)",
+            ("default", "Default Organization", "default", "enterprise", now),
+        )
+        con.commit()
+
+    # Migração multi-tenant: garante que coluna tenant_id existe nas tabelas principais
+    tables_to_migrate = ["datasets", "reports", "dashboards", "users", "collections"]
+    for tbl in tables_to_migrate:
+        cols = {r["name"] for r in con.execute(f"PRAGMA table_info({tbl})")}
+        if cols and "tenant_id" not in cols:
+            con.execute(f"ALTER TABLE {tbl} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+
     # migração: dashboards criados antes dos filtros não têm a coluna
     if "filters_json" not in {r["name"] for r in con.execute("PRAGMA table_info(dashboards)")}:
         con.execute("ALTER TABLE dashboards ADD COLUMN filters_json TEXT NOT NULL DEFAULT '[]'")
     if "last_seen" not in {r["name"] for r in con.execute("PRAGMA table_info(sessions)")}:
         con.execute("ALTER TABLE sessions ADD COLUMN last_seen TEXT")
     return con
+
