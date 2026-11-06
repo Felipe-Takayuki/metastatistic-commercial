@@ -10,11 +10,12 @@ describe("nextLayout / newTile", () => {
     expect(nextLayout([], "kpi")).toEqual({ x: 0, y: 0, w: 3, h: 2 });
     expect(nextLayout([text("a", 0, 0, 4, 2), text("b", 4, 3, 4, 4)], "chart")).toEqual({ x: 0, y: 7, w: 6, h: 6 });
   });
-  it("id novo e único, com SQL de partida a partir do 1º dataset (aspas escapadas)", () => {
+  it("id novo e único; KPI nasce no modo sem SQL contando as linhas do 1º dataset (aspas escapadas)", () => {
     const ds = [{ id: "d", name: "n", table_name: 'a"b', n_rows: 1, columns: [], created_at: "" }];
     const t = newTile("kpi", [text("a", 0, 0)], ds);
     expect(t.id).not.toBe("a");
-    expect(t.type === "kpi" && t.sql).toBe('SELECT count(*) FROM "a""b"');
+    expect(t.type === "kpi" && t.sql).toBe('SELECT count(*) AS "linhas" FROM "a""b"');
+    expect(t.type === "kpi" && t.builder).toEqual({ dataset_id: "d", kind: "summary", group_by: "", measures: [{ fn: "count", column: "" }] });
     expect(newTile("chart", [], []).type === "chart" && (newTile("chart", [], []) as { sql: string }).sql).toBe("");
   });
 });

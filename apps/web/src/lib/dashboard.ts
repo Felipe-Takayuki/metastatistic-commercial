@@ -1,5 +1,6 @@
 import type { AnalysisBlock, Dataset, KpiTile, QueryResult, Tile, TileLayout } from "../api";
-import { newBlock, newId } from "./blocks";
+import { buildSql, defaultBuilder } from "./builder";
+import { newBlock, newChartBlock, newId } from "./blocks";
 
 export const GRID_COLS = 12;
 export const ROW_HEIGHT = 56;
@@ -18,11 +19,14 @@ export function nextLayout(tiles: Tile[], type: TileType): TileLayout {
 export function newTile(type: TileType, tiles: Tile[], datasets: Dataset[]): Tile {
   const id = newId(tiles.map((t) => t.id));
   const layout = nextLayout(tiles, type);
-  const table = datasets[0]?.table_name;
+  const ds = datasets[0];
   if (type === "text") return { type, id, markdown: "", layout };
   if (type === "analysis") return { ...(newBlock("analysis", [], datasets) as AnalysisBlock), id, layout };
-  if (type === "kpi") return { type, id, title: "", sql: table ? `SELECT count(*) FROM "${table.replace(/"/g, '""')}"` : "", decimals: 0, prefix: "", suffix: "", layout };
-  return { type, id, title: "", sql: table ? `SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT 20` : "", chart: null, layout };
+  if (type === "kpi") {
+    const builder = ds ? defaultBuilder("kpi", ds) : null;
+    return { type, id, title: "", sql: ds && builder ? buildSql(builder, ds) : "", builder, decimals: 0, prefix: "", suffix: "", layout };
+  }
+  return { ...newChartBlock(id, ds), layout } as Tile;
 }
 
 export interface GridItem { i: string; x: number; y: number; w: number; h: number }

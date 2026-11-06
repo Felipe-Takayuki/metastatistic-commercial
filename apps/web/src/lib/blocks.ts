@@ -1,4 +1,5 @@
 import type { AnalysisBlock, Block, ChartBlock, Dataset, TextBlock } from "../api";
+import { buildSql, chartFor, defaultBuilder } from "./builder";
 import { defaultState, problems, resolveState, toOptions, TTEST_DEF } from "./analyses";
 
 /** Id curto e único dentro do relatório. `crypto.randomUUID` só existe em contexto seguro, então não dependemos dele. */
@@ -11,10 +12,17 @@ export function newId(taken: Iterable<string> = []): string {
 
 export type BlockType = Block["type"];
 
+/** Gráfico novo: já nasce no modo "sem SQL" (média da 1ª coluna numérica por categoria), pronto para ver e ajustar. */
+export function newChartBlock(id: string, ds: Dataset | undefined): ChartBlock {
+  if (!ds) return { type: "chart", id, title: "", sql: "", chart: null };
+  const builder = defaultBuilder("chart", ds);
+  return { type: "chart", id, title: "", sql: buildSql(builder, ds), chart: chartFor(builder, ds, null), builder };
+}
+
 export function newBlock(type: BlockType, blocks: Block[], datasets: Dataset[]): Block {
   const id = newId(blocks.map((b) => b.id));
   if (type === "text") return { type, id, markdown: "" } satisfies TextBlock;
-  if (type === "chart") return { type, id, title: "", sql: datasets[0] ? `SELECT * FROM "${datasets[0].table_name}" LIMIT 20` : "", chart: null } satisfies ChartBlock;
+  if (type === "chart") return newChartBlock(id, datasets[0]);
   const ds = datasets[0];
   return { type, id, analysis: TTEST_DEF.id, dataset_id: ds?.id ?? "", options: toOptions(TTEST_DEF, resolveState(TTEST_DEF, ds, defaultState(TTEST_DEF))) } satisfies AnalysisBlock;
 }

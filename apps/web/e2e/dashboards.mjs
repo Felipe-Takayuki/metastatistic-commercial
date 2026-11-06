@@ -21,6 +21,7 @@ const tileByName = (label) => page.getByRole("region", { name: new RegExp(`^Tile
 const server = async () => (await (await fetch(`${BASE}/api/dashboards/${dashId()}`)).json());
 const setSql = async (sql) => {
   const dlg = page.getByRole("dialog");
+  await dlg.getByRole("button", { name: "Escrever SQL" }).click(); // gráficos e KPIs novos nascem no modo "sem SQL"
   await dlg.locator(".cm-content").click();
   await page.keyboard.press("Control+A");
   await page.keyboard.type(sql);

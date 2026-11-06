@@ -68,7 +68,7 @@ export function buildChart(result: QueryResult, spec: ChartSpec, t: ChartTokens)
     return { option: {}, problem: "Dispersão exige uma coluna X numérica." };
   const nCats = result.rows.length;
   if (spec.type === "bar" && nCats > MAX_BAR_CATEGORIES)
-    return { option: {}, problem: `Barras com mais de ${MAX_BAR_CATEGORIES} categorias ficam ilegíveis (${nCats}). Agrupe no SQL ou use linha.` };
+    return { option: {}, problem: `Barras com mais de ${MAX_BAR_CATEGORIES} categorias ficam ilegíveis (${nCats}). Escolha uma coluna com menos categorias ou use linha.` };
 
   const color = (col: string) => t.series[spec.slots[col] ?? 0];
   const multi = spec.ys.length >= 2;

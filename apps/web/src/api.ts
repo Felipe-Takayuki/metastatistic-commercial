@@ -40,7 +40,11 @@ export interface ChartConfig {
   slots: Record<string, number>;
 }
 export interface TextBlock { type: "text"; id: string; markdown: string }
-export interface ChartBlock { type: "chart"; id: string; title: string; sql: string; chart: ChartConfig | null }
+export type MeasureFn = "count" | "mean" | "sum" | "min" | "max" | "median" | "value";
+export interface Measure { fn: MeasureFn; column: string }
+/** Escolhas do montador "sem SQL"; o `sql` do bloco é gerado a partir delas. Ausente/nulo = SQL escrito à mão. */
+export interface QueryBuilder { dataset_id: string; kind: "summary" | "points"; group_by: string; measures: Measure[] }
+export interface ChartBlock { type: "chart"; id: string; title: string; sql: string; chart: ChartConfig | null; builder?: QueryBuilder | null }
 export interface AnalysisBlock { type: "analysis"; id: string; analysis: string; dataset_id: string; options: Record<string, unknown>; show_notes?: boolean }
 export type Block = TextBlock | ChartBlock | AnalysisBlock;
 export interface Report { id: string; title: string; blocks: Block[]; version: number; created_at: string; updated_at: string; owner_name?: string | null; collection_id?: string | null; can_edit?: boolean }
@@ -49,7 +53,7 @@ export interface ReportSummary { id: string; title: string; n_blocks: number; ve
 export interface TileLayout { x: number; y: number; w: number; h: number }
 export type TextTile = TextBlock & { layout: TileLayout };
 export type ChartTile = ChartBlock & { layout: TileLayout; click_param?: string | null };
-export interface KpiTile { type: "kpi"; id: string; title: string; sql: string; decimals: number; prefix: string; suffix: string; layout: TileLayout }
+export interface KpiTile { type: "kpi"; id: string; title: string; sql: string; builder?: QueryBuilder | null; decimals: number; prefix: string; suffix: string; layout: TileLayout }
 export type AnalysisTile = AnalysisBlock & { layout: TileLayout };
 export type Tile = TextTile | ChartTile | KpiTile | AnalysisTile;
 export interface DashFilter { name: string; label: string; type: "text" | "number" | "date"; default: string }

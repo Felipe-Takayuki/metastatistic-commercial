@@ -87,12 +87,27 @@ class TextBlock(BaseModel):
     markdown: str = Field(default="", max_length=50_000)
 
 
+class Measure(BaseModel):
+    fn: Literal["count", "mean", "sum", "min", "max", "median", "value"]  # `value` = o valor da linha (gráfico de pontos)
+    column: str = Field(default="", max_length=200)
+
+
+class QueryBuilder(BaseModel):
+    """Escolhas do montador "sem SQL". O `sql` do bloco/tile é gerado a partir disto pela interface (e continua sendo o que
+    roda, passando pelo mesmo sandbox); guardar as escolhas só permite reabrir o montador. Editar o SQL à mão apaga isto."""
+    dataset_id: str = Field(max_length=64)
+    kind: Literal["summary", "points"] = "summary"
+    group_by: str = Field(default="", max_length=200)  # vazio = sem agrupar (KPI)
+    measures: list[Measure] = Field(min_length=1, max_length=3)
+
+
 class ChartBlock(BaseModel):
     type: Literal["chart"]
     id: BlockId
     title: str = Field(default="", max_length=200)
     sql: str = Field(default="", max_length=100_000)
     chart: ChartConfig | None = None
+    builder: QueryBuilder | None = None
 
 
 class AnalysisBlock(BaseModel):
@@ -191,6 +206,7 @@ class KpiTile(BaseModel):
     id: BlockId
     title: str = Field(default="", max_length=200)
     sql: str = Field(default="", max_length=100_000)
+    builder: QueryBuilder | None = None
     decimals: int = Field(default=0, ge=0, le=6)
     prefix: str = Field(default="", max_length=10)
     suffix: str = Field(default="", max_length=10)

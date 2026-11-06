@@ -35,9 +35,14 @@ describe("moveBlock", () => {
 });
 
 describe("newBlock", () => {
-  it("bloco de gráfico já vem com um SQL válido para o primeiro dataset", () => {
+  it("bloco de gráfico já nasce no modo sem SQL: média da 1ª numérica por categoria, com SQL gerado e gráfico de barras", () => {
     const b = newBlock("chart", [], [ds()]);
-    expect(b).toMatchObject({ type: "chart", sql: 'SELECT * FROM "vendas" LIMIT 20', chart: null });
+    expect(b).toMatchObject({
+      type: "chart",
+      builder: { dataset_id: "a".repeat(32), kind: "summary", group_by: "regiao", measures: [{ fn: "mean", column: "receita" }] },
+      sql: 'SELECT "regiao", round(avg("receita"), 2) AS "média de receita" FROM "vendas" WHERE "regiao" IS NOT NULL GROUP BY 1 ORDER BY 1',
+      chart: { type: "bar", x: "regiao", ys: ["média de receita"] },
+    });
   });
   it("bloco de análise já vem com as variáveis efetivas (agrupamento de 2 níveis primeiro)", () => {
     const b = newBlock("analysis", [], [ds()]);

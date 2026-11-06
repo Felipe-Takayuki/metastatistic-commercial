@@ -20,6 +20,7 @@ const kpi = () => page.getByRole("region", { name: /^Tile KPI/ }).locator(".kpi-
 const filterInput = () => page.getByRole("group", { name: "Filtros do dashboard" }).locator("input");
 const setSql = async (sql) => {
   const dlg = page.getByRole("dialog");
+  await dlg.getByRole("button", { name: "Escrever SQL" }).click(); // gráficos e KPIs novos nascem no modo "sem SQL"
   await dlg.locator(".cm-content").click();
   await page.keyboard.press("Control+A");
   await page.keyboard.type(sql);

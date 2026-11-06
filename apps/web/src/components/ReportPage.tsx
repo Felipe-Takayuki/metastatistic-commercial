@@ -135,7 +135,7 @@ function ReportEditor({ initial, datasets, onReload }: EditorProps) {
           editing ? (
             <BlockFrame key={b.id} label={LABEL[b.type]} index={i} count={blocks.length} onMove={(d) => move(i, d)} onDelete={() => remove(b)}>
               {b.type === "text" && <TextBlockEditor block={b} onChange={updateBlock} />}
-              {b.type === "chart" && <ChartBlockEditor block={b} onChange={updateBlock} />}
+              {b.type === "chart" && <ChartBlockEditor block={b} onChange={updateBlock} datasets={datasets} />}
               {b.type === "analysis" && <AnalysisBlockEditor block={b} datasets={datasets} onChange={updateBlock} />}
             </BlockFrame>
           ) : b.type === "text" ? <TextBlockView key={b.id} block={b} />

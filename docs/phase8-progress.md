@@ -96,4 +96,27 @@ Cinco passos novos, grupo **"Reformatar e combinar"** do menu. Ao contrário da 
 - Mesclar não oferece direita (`right`) nem anti da direita; para isso, inverta os datasets. Não casa colunas por "parecido" (só igualdade exata).
 - Acrescentar só casa por nome (sem mapear nomes diferentes: renomeie antes).
 - Pré-existente, visto no e2e: se um dataset é **apagado enquanto outra requisição monta o sandbox**, a consulta pode falhar com 500 (`queries._sandbox` cria uma view para cada dataset legível). Só aparece em corrida; não tratado aqui.
-- **Falta (ordem aprovada)**: 8.5 medidas salvas (sem materializar) → 8.6 construtor visual → tile/bloco. **Antes da 8.6**, simplificar a geração de gráficos: criar gráfico/KPI **sem precisar escrever SQL** (pedido do usuário).
+- **Falta (ordem aprovada)**: 8.5 medidas salvas (sem materializar) → 8.6 construtor visual de gráficos (já adiantado pelo montador sem SQL, abaixo).
+
+
+---
+
+# Montador "sem SQL" de gráficos e KPIs ✅ (pedido do usuário: simplificar a geração de gráficos)
+
+Criar gráfico ou KPI **não exige mais escrever SQL**, em relatórios e dashboards. O editor abre em **"Montar sem SQL"**; **"Escrever SQL"** continua disponível para quem quiser.
+
+## Como funciona
+- Escolhas: **dataset**, **o que mostrar** (um valor resumido por categoria → barras/linhas; ou cada linha como ponto → dispersão), **categorias** e até **3 valores** (número de linhas, média, soma, mínimo, máximo, mediana). KPI: um número só.
+- Gráfico e KPI novos **já nascem prontos**: média da 1ª coluna numérica pela 1ª categoria com poucos valores (ou contagem); KPI = número de linhas. A prévia atualiza a cada escolha (sem botão "Executar").
+- O **SQL é gerado no navegador** (`lib/builder.ts`), fica visível em "Ver o SQL gerado" e é o que roda, pelo mesmo sandbox de sempre. O servidor só guarda as escolhas (`builder`, modelo `QueryBuilder`) junto do SQL, para reabrir o montador; não há caminho novo de execução.
+- **Alternar**: "Escrever SQL" mantém o SQL gerado como ponto de partida e apaga as escolhas; voltar a "Montar sem SQL" **pede confirmação** (substitui o SQL) e recomeça do padrão.
+- Pontos viram **dispersão** automaticamente (X e Y numéricos, até 5000 linhas); resumo por data vira **linha**, senão barras; a escolha manual de Barras/Linhas é respeitada.
+- Nomes de colunas e tabelas vão entre aspas duplas com escape (testado com `x"; DROP`). Mensagem de "barras demais" não manda mais "agrupar no SQL".
+
+## Limites
+- **Filtros do dashboard (`{{nome}}`) e cross-filter só valem em tiles com SQL escrito à mão**: o montador não tem filtro próprio. Para recortar, prepare o dado na aba **Transformar** (filtrar, resumir, mesclar) e desenhe sobre o dataset salvo.
+- Sem filtro de linhas dentro do montador, sem agrupar datas por mês/ano, sem várias categorias (uma categoria por gráfico).
+
+## Verificado
+`pytest` 323 (+3: escolhas guardadas em dashboards e relatórios, montador inválido recusado com 422), `vitest` 259 (+16 em `lib/builder.test.ts`: SQL de cada cálculo, nomes duplicados, aspas, problemas por tipo de coluna, padrões, troca de dataset, tipo do gráfico), `tsc`/`vite build` limpos, **`npm run e2e:builder`** (nova suíte, 21 checagens em navegador real: gráfico e KPI sem escrever SQL, SQL gerado visível, trocar categoria/cálculo/tipo, dispersão, alternar SQL ↔ montador com confirmação, reabrir após recarregar, bloco de relatório) e `e2e:dashboards` / `e2e:filters` (ajustados para clicar em "Escrever SQL") verdes.
+**Não reexecutados** (precisam do motor R / pilha do Docker): `e2e:reports` (o passo do bloco de gráfico passou; as análises não rodaram), `walkthrough`, `analyses` e `dashboard-analysis`.

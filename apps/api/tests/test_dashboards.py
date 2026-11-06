@@ -2,9 +2,9 @@ import pytest
 
 L = lambda x, y, w=4, h=3: {"x": x, "y": y, "w": w, "h": h}  # noqa: E731
 TILES = [
-    {"type": "kpi", "id": "k1", "title": "Receita", "sql": "SELECT 1 AS a", "decimals": 2, "prefix": "R$ ", "suffix": "", "layout": L(0, 0, 3, 2)},
+    {"type": "kpi", "id": "k1", "title": "Receita", "sql": "SELECT 1 AS a", "builder": None, "decimals": 2, "prefix": "R$ ", "suffix": "", "layout": L(0, 0, 3, 2)},
     {"type": "chart", "id": "c1", "title": "Por região", "sql": "SELECT 1 AS a",
-     "chart": {"type": "bar", "x": "regiao", "ys": ["receita"], "slots": {"receita": 0}}, "click_param": None, "layout": L(3, 0, 9, 4)},
+     "chart": {"type": "bar", "x": "regiao", "ys": ["receita"], "slots": {"receita": 0}}, "builder": None, "click_param": None, "layout": L(3, 0, 9, 4)},
     {"type": "text", "id": "t1", "markdown": "## Notas\n\nTexto.", "layout": L(0, 4, 12, 2)},
 ]
 
@@ -155,3 +155,28 @@ async def test_analysis_tile_needs_layout_and_fields(client):
 async def test_analysis_tile_show_notes_roundtrips(client):
     d = await create(client, tiles=[{**ANALYSIS_TILE, "show_notes": True}])
     assert (await client.get(f"/dashboards/{d['id']}")).json()["tiles"][0]["show_notes"] is True
+
+
+# ---------- montador "sem SQL": as escolhas são guardadas junto do SQL gerado ----------
+BUILDER = {"dataset_id": "d" * 32, "kind": "summary", "group_by": "regiao", "measures": [{"fn": "mean", "column": "receita"}]}
+
+
+async def test_builder_choices_roundtrip_in_chart_and_kpi_tiles(client):
+    tiles = [
+        {**TILES[0], "builder": {**BUILDER, "group_by": "", "measures": [{"fn": "count", "column": ""}]}},
+        {**TILES[1], "builder": BUILDER},
+    ]
+    d = await create(client, tiles=tiles)
+    assert (await client.get(f"/dashboards/{d['id']}")).json()["tiles"][:2] == tiles
+
+
+async def test_invalid_builder_is_rejected(client):
+    bad = [
+        {**BUILDER, "kind": "pie"},                                   # tipo desconhecido
+        {**BUILDER, "measures": []},                                  # precisa de ao menos 1 cálculo
+        {**BUILDER, "measures": [{"fn": "mean", "column": "x"}] * 4},  # no máximo 3
+        {**BUILDER, "measures": [{"fn": "drop table", "column": "x"}]},  # cálculo fora da lista
+    ]
+    for b in bad:
+        r = await client.post("/dashboards", json={"title": "x", "tiles": [{**TILES[1], "builder": b}]})
+        assert r.status_code == 422, b

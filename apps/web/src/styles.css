@@ -391,3 +391,6 @@ input[type="number"], .field input[type="text"] { padding: 6px 10px; border: 1px
 .rename-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 .modal-body textarea { width: 100%; font-family: var(--mono); font-size: 13px; }
 @media (max-width: 900px) { .tf-layout { grid-template-columns: 1fr; } .tf-steps { position: static; max-height: none; } }
+
+/* montador "sem SQL" de gráficos e KPIs: campos empilhados com respiro */
+.builder { display: flex; flex-direction: column; gap: 10px; }

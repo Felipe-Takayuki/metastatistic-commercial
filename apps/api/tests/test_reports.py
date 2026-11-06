@@ -3,7 +3,7 @@ import pytest
 BLOCKS = [
     {"type": "text", "id": "t1", "markdown": "# Vendas\n\nResumo **executivo**."},
     {"type": "chart", "id": "c1", "title": "Receita por região", "sql": "SELECT 1 AS a",
-     "chart": {"type": "bar", "x": "regiao", "ys": ["receita"], "slots": {"receita": 0}}},
+     "chart": {"type": "bar", "x": "regiao", "ys": ["receita"], "slots": {"receita": 0}}, "builder": None},
     {"type": "analysis", "id": "a1", "analysis": "TTestIndependentSamples", "dataset_id": "0" * 32,
      "options": {"dependent": ["receita"], "group": "grupo", "student": True}, "show_notes": False},
 ]
@@ -117,3 +117,10 @@ async def test_analysis_block_show_notes_defaults_to_false_and_roundtrips_true(c
     assert got[1]["show_notes"] is True
     bad = await client.post("/reports", json={"title": "x", "blocks": [{**BLOCKS[2], "show_notes": "talvez"}]})
     assert bad.status_code == 422
+
+
+async def test_chart_block_keeps_builder_choices(client):
+    builder = {"dataset_id": "d" * 32, "kind": "points", "group_by": "qtd", "measures": [{"fn": "value", "column": "receita"}]}
+    blocks = [{**BLOCKS[1], "builder": builder}]
+    rep = await create(client, blocks=blocks)
+    assert (await client.get(f"/reports/{rep['id']}")).json()["blocks"] == blocks

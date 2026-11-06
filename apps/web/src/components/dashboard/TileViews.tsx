@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type AnalysisTile, type ChartTile, type Dataset, type KpiTile, type TextTile, type Tile } from "../../api";
+import { type AnalysisTile, type ChartTile, type Dataset, type KpiTile, type QueryBuilder, type TextTile, type Tile } from "../../api";
+import { buildSql, builderProblem, defaultBuilder } from "../../lib/builder";
 import { getDef } from "../../lib/analyses";
 import { reconcile } from "../../lib/chartSpec";
 import { formatKpi } from "../../lib/dashboard";
@@ -9,6 +10,7 @@ import { DataTable } from "../DataTable";
 import { useParams, useTileQuery } from "./params";
 import { AnalysisBlockEditor, AnalysisBlockView } from "../report/AnalysisBlock";
 import { ChartBlockEditor } from "../report/ChartBlock";
+import { QueryBuilderForm, SourceMode } from "../QueryBuilderForm";
 import { SqlEditor } from "../SqlEditor";
 import { TextBlockEditor } from "../report/TextBlock";
 
@@ -66,19 +68,36 @@ export function tileHeading(t: Tile): string {
   return t.type === "text" ? "" : t.type === "analysis" ? (getDef(t.analysis)?.title ?? "Análise") : t.title;
 }
 
-function KpiEditor({ tile, onChange }: { tile: KpiTile; onChange: (t: KpiTile) => void }) {
+function KpiEditor({ tile, onChange, datasets }: { tile: KpiTile; onChange: (t: KpiTile) => void; datasets: Dataset[] }) {
   const [ran, setRan] = useState(tile.sql);
-  const { data, error } = useTileQuery(ran);
+  const builder = tile.builder ?? null;
+  const { data, error } = useTileQuery(builder ? tile.sql : ran); // com o montador, cada escolha já consulta
+  const setBuilder = (b: QueryBuilder) => {
+    const ds = datasets.find((d) => d.id === b.dataset_id);
+    onChange({ ...tile, builder: b, ...(ds && !builderProblem(b, ds, "kpi") ? { sql: buildSql(b, ds) } : {}) });
+  };
+  const startBuilder = () => {
+    if (!datasets[0]) return;
+    if (!builder && tile.sql.trim() && !window.confirm("Montar sem SQL substitui o SQL atual deste KPI. Continuar?")) return;
+    setBuilder(defaultBuilder("kpi", datasets[0]));
+  };
   return (
     <>
       <label className="field">Título
         <input type="text" value={tile.title} maxLength={200} onChange={(e) => onChange({ ...tile, title: e.target.value })} placeholder="Ex.: Receita total" />
       </label>
-      <SqlEditor value={tile.sql} onChange={(sql) => onChange({ ...tile, sql })} onRun={() => setRan(tile.sql)} height="90px" />
-      <div className="toolbar">
-        <button className="btn primary sm" onClick={() => setRan(tile.sql)} disabled={!tile.sql.trim()}>▶ Executar</button>
-        <span className="muted small">O KPI mostra a 1ª coluna da 1ª linha do resultado.</span>
-      </div>
+      <SourceMode builderOn={!!builder} canBuild={datasets.length > 0} sql={tile.sql} onBuilder={startBuilder} onSql={() => builder && onChange({ ...tile, builder: null })} />
+      {builder ? (
+        <QueryBuilderForm kind="kpi" builder={builder} datasets={datasets} onChange={setBuilder} />
+      ) : (
+        <>
+          <SqlEditor value={tile.sql} onChange={(sql) => onChange({ ...tile, sql })} onRun={() => setRan(tile.sql)} height="90px" />
+          <div className="toolbar">
+            <button className="btn primary sm" onClick={() => setRan(tile.sql)} disabled={!tile.sql.trim()}>▶ Executar</button>
+            <span className="muted small">O KPI mostra a 1ª coluna da 1ª linha do resultado.</span>
+          </div>
+        </>
+      )}
       {error && <div className="alert" role="alert">{error}</div>}
       <div className="kpi-fields">
         <label className="field">Casas decimais
@@ -107,15 +126,15 @@ export function TileEditor({ tile, onChange, datasets }: { tile: Tile; onChange:
     );
   }
   if (tile.type === "text") return <TextBlockEditor block={tile} onChange={(b) => onChange({ ...tile, ...b } as TextTile)} />;
-  if (tile.type === "chart") return <ChartTileEditor tile={tile} onChange={onChange} />;
-  return <KpiEditor tile={tile} onChange={onChange} />;
+  if (tile.type === "chart") return <ChartTileEditor tile={tile} onChange={onChange} datasets={datasets} />;
+  return <KpiEditor tile={tile} onChange={onChange} datasets={datasets} />;
 }
 
-function ChartTileEditor({ tile, onChange }: { tile: ChartTile; onChange: (t: Tile) => void }) {
+function ChartTileEditor({ tile, onChange, datasets }: { tile: ChartTile; onChange: (t: Tile) => void; datasets: Dataset[] }) {
   const { filters, resolve } = useParams();
   return (
     <>
-      <ChartBlockEditor block={tile} resolve={resolve} onChange={(b) => onChange({ ...tile, ...b } as ChartTile)} />
+      <ChartBlockEditor block={tile} resolve={resolve} datasets={datasets} onChange={(b) => onChange({ ...tile, ...b } as ChartTile)} />
       <label className="field">Ao clicar numa barra ou ponto, definir o filtro
         <select value={tile.click_param ?? ""} onChange={(e) => onChange({ ...tile, click_param: e.target.value || null })} disabled={filters.length === 0}>
           <option value="">— nenhum (gráfico sem cross-filter)</option>

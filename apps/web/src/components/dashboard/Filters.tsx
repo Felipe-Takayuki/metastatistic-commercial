@@ -7,8 +7,8 @@ export function FilterBar({ filters, values, onChange }: { filters: DashFilter[]
   const active = filters.filter((f) => (values[f.name] ?? "") !== "");
   return (
     <div className="filter-bar no-print" role="group" aria-label="Filtros do dashboard">
-      {filters.map((f) => (
-        <label key={f.name} className="field">{f.label || f.name}
+      {filters.map((f, i) => (
+        <label key={`${i}:${f.name}`} className="field">{f.label || f.name}
           <input type={f.type === "date" ? "date" : "text"} inputMode={f.type === "number" ? "decimal" : undefined} value={values[f.name] ?? ""}
             onChange={(e) => onChange(f.name, e.target.value)} placeholder={f.type === "number" ? "número" : f.type === "date" ? "" : "todos"} />
         </label>

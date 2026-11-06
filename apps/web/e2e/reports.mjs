@@ -62,6 +62,7 @@ try {
   // --- bloco de gráfico ---
   await page.getByRole("button", { name: "+ Gráfico" }).click();
   await frame(1).getByPlaceholder("Ex.: Receita média por região").fill("Média por grupo");
+  await frame(1).getByRole("button", { name: "Escrever SQL" }).click(); // gráfico novo nasce no modo "sem SQL"
   await frame(1).locator(".cm-content").click();
   await page.keyboard.press("Control+A");
   await page.keyboard.type('SELECT "group", round(avg(score), 2) AS media FROM e2e_ttest GROUP BY 1 ORDER BY 1');
