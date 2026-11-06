@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from .. import dashboards
 from ..schemas import Dashboard, DashboardIn, DashboardUpdate
 
-router = APIRouter(prefix="/dashboards", tags=["dashboards"])
+from ..security import require_editor, require_viewer
+
+router = APIRouter(prefix="/dashboards", tags=["dashboards"], dependencies=[Depends(require_viewer)])
 
 
 def _http(exc: dashboards.DashboardError) -> HTTPException:
@@ -11,7 +13,7 @@ def _http(exc: dashboards.DashboardError) -> HTTPException:
     return HTTPException(code, str(exc))
 
 
-@router.post("", response_model=Dashboard, status_code=201)
+@router.post("", response_model=Dashboard, status_code=201, dependencies=[Depends(require_editor)])
 def create_dashboard(d: DashboardIn) -> Dashboard:
     return dashboards.create_dashboard(d)
 
@@ -29,7 +31,7 @@ def get_dashboard(dash_id: str) -> Dashboard:
         raise _http(exc) from exc
 
 
-@router.put("/{dash_id}", response_model=Dashboard)
+@router.put("/{dash_id}", response_model=Dashboard, dependencies=[Depends(require_editor)])
 def update_dashboard(dash_id: str, d: DashboardUpdate) -> Dashboard:
     """Salva o dashboard inteiro. 409 se `version` não for a atual (alterado em outra aba)."""
     try:
@@ -38,7 +40,7 @@ def update_dashboard(dash_id: str, d: DashboardUpdate) -> Dashboard:
         raise _http(exc) from exc
 
 
-@router.delete("/{dash_id}", status_code=204)
+@router.delete("/{dash_id}", status_code=204, dependencies=[Depends(require_editor)])
 def delete_dashboard(dash_id: str) -> None:
     try:
         dashboards.delete_dashboard(dash_id)

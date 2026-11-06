@@ -1,7 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { api, type Dataset } from "./api";
 import { DataTab } from "./components/DataTab";
+import { useCan } from "./components/AuthGate";
 import { Sidebar } from "./components/Sidebar";
+import { UserMenu, UsersLink } from "./components/UserMenu";
+import { UsersPage } from "./components/UsersPage";
 import { DashboardsPage } from "./components/DashboardsPage";
 import { ReportsPage } from "./components/ReportsPage";
 import { newSession, type AnalysisSession } from "./lib/analyses";
@@ -40,6 +43,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemeMode>(loadThemeMode);
   const route = useRoute();
+  const canEdit = useCan("editor");
 
   useEffect(() => applyThemeMode(theme), [theme]);
 
@@ -104,12 +108,14 @@ export default function App() {
           <a href={routeHref({ name: "explore" })} aria-current={route.name === "explore" ? "page" : undefined}>Explorar</a>
           <a href={routeHref({ name: "reports" })} aria-current={route.name === "reports" || route.name === "report" ? "page" : undefined}>Relatórios</a>
           <a href={routeHref({ name: "dashboards" })} aria-current={route.name === "dashboards" || route.name === "dashboard" ? "page" : undefined}>Dashboards</a>
+          <UsersLink current={route.name === "users"} />
         </nav>
         <span className="spacer" />
         <button className="btn ghost sm" onClick={() => setTheme(NEXT_THEME[theme])} title="Alternar tema">{THEME_LABEL[theme]}</button>
+        <UserMenu />
       </header>
 
-      {route.name === "explore" && <Sidebar datasets={datasets} selectedId={selectedId} busy={busy} onSelect={(id) => { setSelectedId(id); remember("dataset", id); }} onUpload={upload} onDelete={remove} />}
+      {route.name === "explore" && <Sidebar datasets={datasets} selectedId={selectedId} busy={busy} onSelect={(id) => { setSelectedId(id); remember("dataset", id); }} onUpload={upload} onDelete={remove} canEdit={canEdit} />}
 
       <main className="main">
         <div className="main-inner">
@@ -120,7 +126,9 @@ export default function App() {
             </div>
           )}
 
-          {route.name === "dashboard" ? (
+          {route.name === "users" ? (
+            <UsersPage />
+          ) : route.name === "dashboard" ? (
             <Suspense fallback={<div className="empty"><span className="spinner" aria-label="Carregando" /></div>}>
               <DashboardPage key={route.id} id={route.id} datasets={datasets} />
             </Suspense>
@@ -140,7 +148,9 @@ export default function App() {
                 <p style={{ margin: "0 auto 18px", maxWidth: 460 }}>
                   Envie um CSV pela barra lateral para explorar com SQL, montar gráficos e rodar análises estatísticas (testes t, com mais a caminho).
                 </p>
-                <button className="btn primary" onClick={loadSample} disabled={busy}>{busy ? <span className="spinner" /> : null} Carregar dados de exemplo</button>
+                {canEdit
+                  ? <button className="btn primary" onClick={loadSample} disabled={busy}>{busy ? <span className="spinner" /> : null} Carregar dados de exemplo</button>
+                  : <p className="muted small">Peça a um editor ou administrador para enviar os dados.</p>}
               </div>
             ) : (
               <>

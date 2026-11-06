@@ -25,6 +25,8 @@ services:
       R_WORKER_URLS: http://r-worker-1:8000,http://r-worker-2:8000
       ANALYSIS_TIMEOUT_S: "60"
       DATA_DIR: /data
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}   # true: exige login; o primeiro acesso cria o administrador
+      COOKIE_SECURE: ${COOKIE_SECURE:-false} # true atrás de HTTPS
     ports: ["8000:8000"]
     volumes:
       - datasets:/data

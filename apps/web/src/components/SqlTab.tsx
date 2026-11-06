@@ -2,6 +2,7 @@ import type { EditorView } from "@codemirror/view";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Dataset, type QueryResult } from "../api";
 import { suggestSpec, type ChartSpec } from "../lib/chartSpec";
+import { useCan } from "./AuthGate";
 import { ChartView } from "./ChartView";
 import { DataTable } from "./DataTable";
 import { SqlEditor } from "./SqlEditor";
@@ -19,6 +20,7 @@ interface Props {
 const stem = (name: string) => name.replace(/\.csv$/i, "");
 
 export function SqlTab({ dataset, datasets, onDatasetCreated }: Props) {
+  const canEdit = useCan("editor");
   const [text, setText] = useState(() => defaultSql(dataset));
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,9 +99,9 @@ export function SqlTab({ dataset, datasets, onDatasetCreated }: Props) {
         <button className="btn primary" onClick={run} disabled={running || !text.trim()}>
           {running ? <span className="spinner" /> : "▶"} Executar
         </button>
-        <button className="btn" onClick={() => { setSaveOpen((o) => !o); setSaveName((n) => n || `${stem(dataset.name)} (derivado)`); }} disabled={!text.trim()} aria-expanded={saveOpen}>
+        {canEdit && <button className="btn" onClick={() => { setSaveOpen((o) => !o); setSaveName((n) => n || `${stem(dataset.name)} (derivado)`); }} disabled={!text.trim()} aria-expanded={saveOpen}>
           Salvar como dataset…
-        </button>
+        </button>}
         <span className="muted small">Ctrl/⌘ + Enter · somente leitura (SELECT)</span>
         <span className="spacer" />
         {result && <span className="muted small">{result.row_count.toLocaleString("pt-BR")} linhas{result.truncated && " (truncado)"} · {result.elapsed_ms} ms</span>}

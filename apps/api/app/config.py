@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     derived_dataset_max_rows: int = 2_000_000
     derived_dataset_timeout_s: float = 120.0
 
+    # Autenticação: desligada por padrão (comportamento anterior: todos são administradores).
+    # Ligada, tudo exige sessão; o primeiro acesso cria o administrador em POST /auth/setup.
+    auth_enabled: bool = False
+    session_ttl_hours: int = 24 * 7
+    cookie_secure: bool = False           # true atrás de HTTPS
+    login_max_failures: int = 5           # falhas seguidas (por usuário) antes do bloqueio temporário
+    login_lock_s: float = 60.0
+
     @property
     def worker_urls(self) -> list[str]:
         urls = [u.strip().rstrip("/") for u in self.r_worker_urls.split(",") if u.strip()]

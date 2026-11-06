@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type DashboardSummary } from "../api";
 import { navigate, routeHref } from "../lib/route";
+import { useCan } from "./AuthGate";
 
 const when = (iso: string) => new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
@@ -8,6 +9,7 @@ export function DashboardsPage() {
   const [list, setList] = useState<DashboardSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const canEdit = useCan("editor");
 
   const load = () => api.listDashboards().then(setList).catch((e) => setError(e.message));
   useEffect(() => { void load(); }, []);
@@ -33,7 +35,7 @@ export function DashboardsPage() {
       <div className="page-head">
         <h1>Dashboards</h1>
         <span className="spacer" />
-        <button className="btn primary" onClick={create} disabled={busy}>Novo dashboard</button>
+        {canEdit && <button className="btn primary" onClick={create} disabled={busy}>Novo dashboard</button>}
       </div>
       {error && <div className="alert" role="alert">{error}</div>}
       {list === null && !error && <div className="empty"><span className="spinner" aria-label="Carregando" /></div>}
@@ -51,7 +53,7 @@ export function DashboardsPage() {
                 <span className="report-title">{d.title}</span>
                 <span className="muted small">{d.n_tiles} {d.n_tiles === 1 ? "tile" : "tiles"} · atualizado em {when(d.updated_at)}</span>
               </a>
-              <button className="btn ghost sm" onClick={() => remove(d)} aria-label={`Excluir ${d.title}`}>Excluir</button>
+              {canEdit && <button className="btn ghost sm" onClick={() => remove(d)} aria-label={`Excluir ${d.title}`}>Excluir</button>}
             </li>
           ))}
         </ul>

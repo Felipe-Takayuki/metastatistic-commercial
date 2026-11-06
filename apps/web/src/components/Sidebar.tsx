@@ -8,9 +8,10 @@ interface Props {
   onSelect: (id: string) => void;
   onUpload: (files: File[]) => void;
   onDelete: (ds: Dataset) => void;
+  canEdit: boolean;
 }
 
-export function Sidebar({ datasets, selectedId, busy, onSelect, onUpload, onDelete }: Props) {
+export function Sidebar({ datasets, selectedId, busy, onSelect, onUpload, onDelete, canEdit }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const pick = (list: FileList | null) => {
@@ -20,7 +21,7 @@ export function Sidebar({ datasets, selectedId, busy, onSelect, onUpload, onDele
   return (
     <aside className="sidebar" aria-label="Datasets">
       <div className="section-label">Datasets</div>
-      <div
+      {canEdit && <div
         className={`dropzone${over ? " over" : ""}`}
         role="button"
         tabIndex={0}
@@ -32,7 +33,7 @@ export function Sidebar({ datasets, selectedId, busy, onSelect, onUpload, onDele
       >
         {busy ? <span className="spinner" aria-label="Enviando" /> : <><strong>Enviar CSV</strong><span className="small">clique ou arraste o arquivo</span></>}
         <input ref={input} type="file" accept=".csv,text/csv" multiple hidden onChange={(e) => pick(e.target.files)} />
-      </div>
+      </div>}
       {datasets.length === 0 ? (
         <p className="muted small" style={{ margin: 0 }}>Nenhum dataset ainda.</p>
       ) : (
@@ -43,7 +44,7 @@ export function Sidebar({ datasets, selectedId, busy, onSelect, onUpload, onDele
                 <span className="ds-name" title={d.name}>{d.name}</span>
                 <span className="ds-meta">{d.n_rows.toLocaleString("pt-BR")} linhas · {d.columns.length} colunas</span>
               </button>
-              <button className="btn ghost sm ds-del" onClick={() => onDelete(d)} aria-label={`Excluir ${d.name}`} title="Excluir">✕</button>
+              {canEdit && <button className="btn ghost sm ds-del" onClick={() => onDelete(d)} aria-label={`Excluir ${d.name}`} title="Excluir">✕</button>}
             </li>
           ))}
         </ul>

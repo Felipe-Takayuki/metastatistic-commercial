@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from .. import reports
 from ..schemas import Report, ReportIn, ReportUpdate
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+from ..security import require_editor, require_viewer
+
+router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[Depends(require_viewer)])
 
 
 def _http(exc: reports.ReportError) -> HTTPException:
@@ -11,7 +13,7 @@ def _http(exc: reports.ReportError) -> HTTPException:
     return HTTPException(code, str(exc))
 
 
-@router.post("", response_model=Report, status_code=201)
+@router.post("", response_model=Report, status_code=201, dependencies=[Depends(require_editor)])
 def create_report(rep: ReportIn) -> Report:
     return reports.create_report(rep)
 
@@ -29,7 +31,7 @@ def get_report(report_id: str) -> Report:
         raise _http(exc) from exc
 
 
-@router.put("/{report_id}", response_model=Report)
+@router.put("/{report_id}", response_model=Report, dependencies=[Depends(require_editor)])
 def update_report(report_id: str, rep: ReportUpdate) -> Report:
     """Salva o relatório inteiro. 409 se `version` não for a atual (alterado em outra aba)."""
     try:
@@ -38,7 +40,7 @@ def update_report(report_id: str, rep: ReportUpdate) -> Report:
         raise _http(exc) from exc
 
 
-@router.delete("/{report_id}", status_code=204)
+@router.delete("/{report_id}", status_code=204, dependencies=[Depends(require_editor)])
 def delete_report(report_id: str) -> None:
     try:
         reports.delete_report(report_id)

@@ -41,3 +41,12 @@ SALES_CSV = (
     "3,Norte,15.25,3,2024-01-03\n"
     "4,Norte,,5,2024-01-04\n"
 )
+
+
+@pytest.fixture(autouse=True)
+def login_state():
+    from app import auth
+
+    auth.reset_login_state()
+    yield
+    auth.reset_login_state()

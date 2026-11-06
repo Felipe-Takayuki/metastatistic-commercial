@@ -15,6 +15,7 @@
     "e2e:dashboards": "node e2e/dashboards.mjs",
     "e2e:filters": "node e2e/dashboard-filters.mjs",
     "e2e:dash-analysis": "node e2e/dashboard-analysis.mjs",
+    "e2e:auth": "node e2e/auth.mjs",
     "e2e:all": "node e2e/walkthrough.mjs && node e2e/reports.mjs && node e2e/analyses.mjs && node e2e/dashboards.mjs && node e2e/dashboard-filters.mjs && node e2e/dashboard-analysis.mjs"
   },
   "dependencies": {

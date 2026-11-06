@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from .. import queries
 from ..schemas import QueryRequest, QueryResult
 
-router = APIRouter(prefix="/queries", tags=["queries"])
+from ..security import require_viewer
+
+router = APIRouter(prefix="/queries", tags=["queries"], dependencies=[Depends(require_viewer)])
 
 
 @router.post("/run", response_model=QueryResult)

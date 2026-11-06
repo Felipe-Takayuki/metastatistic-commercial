@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Dataset, type Measurement, type QueryResult } from "../api";
 import { isNumericDtype } from "../lib/analyses";
+import { useCan } from "./AuthGate";
 import { DataTable } from "./DataTable";
 
 const LEVELS: { value: Measurement; label: string }[] = [
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function DataTab({ dataset, onChange, onError }: Props) {
+  const canEdit = useCan("editor");
   const [preview, setPreview] = useState<QueryResult | null>(null);
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export function DataTab({ dataset, onChange, onError }: Props) {
             <div key={c.name} className="col-card">
               <span className="name" title={c.name}>{c.name}</span>
               <span className="small muted"><span className="chip">{c.dtype}</span>{c.n_distinct !== null && <> · {c.n_distinct} valores distintos</>}</span>
-              <select value={c.measurement} onChange={(e) => setLevel(c.name, e.target.value as Measurement)} aria-label={`Nível de medida de ${c.name}`}>
+              <select value={c.measurement} disabled={!canEdit} onChange={(e) => setLevel(c.name, e.target.value as Measurement)} aria-label={`Nível de medida de ${c.name}`}>
                 {LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
               {c.measurement === "ordinal" && isNumericDtype(c.dtype) && (

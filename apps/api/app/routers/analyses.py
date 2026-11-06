@@ -6,8 +6,9 @@ from .. import datasets
 from ..analysis_service import AnalysisService, cache_key, get_service
 from ..pool import PoolError
 from ..schemas import AnalysisRequest, AnalysisResponse
+from ..security import require_viewer
 
-router = APIRouter(prefix="/analyses", tags=["analyses"])
+router = APIRouter(prefix="/analyses", tags=["analyses"], dependencies=[Depends(require_viewer)])
 
 
 def _strings(value: Any):

@@ -6,6 +6,7 @@ import { applyLayout, GRID_COLS, GRID_GAP, newTile, readingOrder, ROW_HEIGHT, ST
 import { filterProblems, reconcileValues, substitute } from "../lib/params";
 import { routeHref } from "../lib/route";
 import { Saver, type SaveStatus } from "../lib/saver";
+import { useCan } from "./AuthGate";
 import { FilterBar, FiltersEditor } from "./dashboard/Filters";
 import { ParamsContext, type ParamsCtx } from "./dashboard/params";
 import { TILE_LABEL, TileBody, TileEditor, tileHeading } from "./dashboard/TileViews";
@@ -37,7 +38,8 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
   const [filters, setFilters] = useState<DashFilter[]>(initial.filters);
   const [values, setValues] = useState<Record<string, string>>(() => reconcileValues(initial.filters, {}));
   const filtersRef = useRef(initial.filters);
-  const [mode, setMode] = useState<"edit" | "view">(initial.tiles.length === 0 ? "edit" : "view");
+  const canEdit = useCan("editor");
+  const [mode, setMode] = useState<"edit" | "view">(initial.tiles.length === 0 && canEdit ? "edit" : "view");
   const [editingId, setEditingId] = useState<string | null>(null);
   // SQL do tile em edição NO MOMENTO em que o editor abriu. O tile de fundo usa este valor até o editor fechar: sem isso
   // cada tecla digitada reexecutaria a consulta (com SQL pela metade, falhando e sobrecarregando o banco).
@@ -144,7 +146,7 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
           {STATUS_TEXT[status.s]}
           {status.s === "error" && <> · <button className="link-btn" onClick={() => void saver.flush()}>tentar de novo</button></>}
         </span>
-        {editing ? <button className="btn primary sm" onClick={() => { closeEditor(); setMode("view"); }}>Concluir edição</button> : <button className="btn sm" onClick={() => setMode("edit")}>Editar</button>}
+        {editing ? <button className="btn primary sm" onClick={() => { closeEditor(); setMode("view"); }}>Concluir edição</button> : canEdit && <button className="btn sm" onClick={() => setMode("edit")}>Editar</button>}
       </div>
 
       {status.s === "conflict" && (
@@ -176,7 +178,7 @@ function DashboardEditor({ initial, datasets, onReload }: { initial: Dashboard; 
       {editing && <FiltersEditor filters={filters} onChange={changeFilters} />}
       <FilterBar filters={filters} values={values} onChange={params.setValue} />
 
-      {tiles.length === 0 && !editing && <p className="muted">Este dashboard está vazio. Clique em <strong>Editar</strong> para adicionar tiles.</p>}
+      {tiles.length === 0 && !editing && <p className="muted">Este dashboard está vazio. {canEdit && <> Clique em <strong>Editar</strong> para adicionar tiles.</>}</p>}
 
       <div ref={containerRef} className="dash-grid">
         {mounted && stacked && (

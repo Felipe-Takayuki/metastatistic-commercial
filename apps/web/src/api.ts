@@ -56,6 +56,13 @@ export interface AnalysisStatus {
   cache: { entries: number; bytes: number; hits: number; misses: number };
 }
 
+export type Role = "viewer" | "editor" | "admin";
+export interface User { id: string; username: string; display_name: string; role: Role; active: boolean }
+export interface AuthStatus { auth_enabled: boolean; needs_setup: boolean; user: User | null }
+
+/** Disparado quando a API responde 401 fora das telas de login: a sessão acabou e o AuthGate volta ao login. */
+export const UNAUTHORIZED_EVENT = "ms:unauthorized";
+
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -79,6 +86,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
+  if (res.status === 401 && !path.startsWith("/auth/")) dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (!res.ok) throw new ApiError(detailMessage(body, `Erro ${res.status}`), res.status);
   return body as T;
 }
@@ -90,6 +98,15 @@ const json = (method: string, body: unknown): RequestInit => ({
 });
 
 export const api = {
+  authStatus: () => request<AuthStatus>("/auth/status"),
+  setup: (username: string, password: string, display_name: string) => request<User>("/auth/setup", json("POST", { username, password, display_name })),
+  login: (username: string, password: string) => request<User>("/auth/login", json("POST", { username, password })),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  changePassword: (current: string, next: string) => request<void>("/auth/password", json("POST", { current, new: next })),
+  listUsers: () => request<User[]>("/users"),
+  createUser: (u: { username: string; password: string; display_name: string; role: Role }) => request<User>("/users", json("POST", u)),
+  patchUser: (id: string, patch: Partial<Pick<User, "display_name" | "role" | "active">> & { password?: string }) => request<User>(`/users/${id}`, json("PATCH", patch)),
+  deleteUser: (id: string) => request<void>(`/users/${id}`, { method: "DELETE" }),
   listDatasets: () => request<Dataset[]>("/datasets"),
   uploadDataset: (file: File) => {
     const form = new FormData();

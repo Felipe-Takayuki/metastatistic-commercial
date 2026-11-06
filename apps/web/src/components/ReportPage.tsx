@@ -3,6 +3,7 @@ import { api, ApiError, type Block, type Dataset, type Report } from "../api";
 import { moveBlock, newBlock, type BlockType } from "../lib/blocks";
 import { routeHref } from "../lib/route";
 import { Saver, type SaveStatus } from "../lib/saver";
+import { useCan } from "./AuthGate";
 import { AnalysisBlockEditor, AnalysisBlockView } from "./report/AnalysisBlock";
 import { BlockFrame } from "./report/BlockFrame";
 import { ChartBlockEditor, ChartBlockView } from "./report/ChartBlock";
@@ -35,7 +36,8 @@ interface EditorProps { initial: Report; datasets: Dataset[]; onReload: () => vo
 function ReportEditor({ initial, datasets, onReload }: EditorProps) {
   const [title, setTitle] = useState(initial.title);
   const [blocks, setBlocks] = useState<Block[]>(initial.blocks);
-  const [mode, setMode] = useState<"edit" | "view">(initial.blocks.length === 0 ? "edit" : "view");
+  const canEdit = useCan("editor");
+  const [mode, setMode] = useState<"edit" | "view">(initial.blocks.length === 0 && canEdit ? "edit" : "view");
   const [status, setStatus] = useState<{ s: SaveStatus; msg?: string }>({ s: "saved" });
   const titleRef = useRef(initial.title);
   const blocksRef = useRef(initial.blocks);
@@ -104,7 +106,7 @@ function ReportEditor({ initial, datasets, onReload }: EditorProps) {
           <button className="btn primary sm" onClick={() => setMode("view")}>Concluir edição</button>
         ) : (
           <>
-            <button className="btn sm" onClick={() => setMode("edit")}>Editar</button>
+            {canEdit && <button className="btn sm" onClick={() => setMode("edit")}>Editar</button>}
             <button className="btn primary sm" onClick={exportPdf}>Exportar PDF</button>
           </>
         )}
@@ -126,7 +128,7 @@ function ReportEditor({ initial, datasets, onReload }: EditorProps) {
           <h1 className="report-h1">{title}</h1>
         )}
 
-        {blocks.length === 0 && !editing && <p className="muted">Este relatório está vazio. Clique em <strong>Editar</strong> para adicionar blocos.</p>}
+        {blocks.length === 0 && !editing && <p className="muted">Este relatório está vazio.{canEdit && <> Clique em <strong>Editar</strong> para adicionar blocos.</>}</p>}
 
         {blocks.map((b, i) =>
           editing ? (

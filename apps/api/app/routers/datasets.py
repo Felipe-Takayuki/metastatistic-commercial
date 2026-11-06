@@ -1,20 +1,22 @@
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from .. import datasets, derive, queries
 from ..config import settings
 from ..schemas import Dataset, DatasetFromQuery, DatasetPatch, QueryResult
 
-router = APIRouter(prefix="/datasets", tags=["datasets"])
+from ..security import require_editor, require_viewer
+
+router = APIRouter(prefix="/datasets", tags=["datasets"], dependencies=[Depends(require_viewer)])
 
 
 def _http(exc: datasets.DatasetError) -> HTTPException:
     return HTTPException(404 if isinstance(exc, datasets.DatasetNotFound) else 422, str(exc))
 
 
-@router.post("", response_model=Dataset, status_code=201)
+@router.post("", response_model=Dataset, status_code=201, dependencies=[Depends(require_editor)])
 def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default=None)) -> Dataset:
     """Envia um CSV. O nome do arquivo nunca vira caminho em disco (só o nome lógico do dataset)."""
     display = (name or file.filename or "dataset").strip()[:120] or "dataset"
@@ -40,7 +42,7 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
         tmp_path.unlink(missing_ok=True)
 
 
-@router.post("/from-query", response_model=Dataset, status_code=201)
+@router.post("/from-query", response_model=Dataset, status_code=201, dependencies=[Depends(require_editor)])
 def create_from_query(body: DatasetFromQuery) -> Dataset:
     """Salva o resultado de uma consulta SQL (somente leitura) como um novo dataset analisável."""
     try:
@@ -64,7 +66,7 @@ def get_dataset(dataset_id: str) -> Dataset:
         raise _http(exc) from exc
 
 
-@router.patch("/{dataset_id}", response_model=Dataset)
+@router.patch("/{dataset_id}", response_model=Dataset, dependencies=[Depends(require_editor)])
 def patch_dataset(dataset_id: str, patch: DatasetPatch) -> Dataset:
     """Corrige o nível de medida das colunas (define se o R trata como fator ou número)."""
     try:
@@ -82,7 +84,7 @@ def preview_dataset(dataset_id: str, limit: int = 50) -> QueryResult:
         raise (_http(exc) if isinstance(exc, datasets.DatasetError) else HTTPException(422, str(exc))) from exc
 
 
-@router.delete("/{dataset_id}", status_code=204)
+@router.delete("/{dataset_id}", status_code=204, dependencies=[Depends(require_editor)])
 def delete_dataset(dataset_id: str) -> None:
     try:
         datasets.delete_dataset(dataset_id)
