@@ -1,3 +1,5 @@
+import type { Recipe } from "./lib/transforms";
+
 export type Measurement = "nominal" | "ordinal" | "scale";
 
 export interface Column {
@@ -60,6 +62,9 @@ export interface AnalysisStatus {
   completed: number; rejected: number; inflight: number; timeout_s: number;
   cache: { entries: number; bytes: number; hits: number; misses: number };
 }
+
+export interface TransformPreview extends QueryResult { total_rows: number; sql: string; schemas: { name: string; dtype: string }[][] }
+export interface SavedRecipe { recipe: Recipe; sql: string; created_at: string }
 
 export type Role = "viewer" | "editor" | "admin";
 export interface User { id: string; username: string; display_name: string; role: Role; active: boolean; attributes?: Record<string, string> }
@@ -149,6 +154,9 @@ export const api = {
   saveDashboard: (id: string, title: string, tiles: Tile[], filters: DashFilter[], version: number) =>
     request<Dashboard>(`/dashboards/${id}`, json("PUT", { title, tiles, filters, version })),
   deleteDashboard: (id: string) => request<void>(`/dashboards/${id}`, { method: "DELETE" }),
+  transformPreview: (recipe: Recipe, limit = 100) => request<TransformPreview>("/transforms/preview", json("POST", { recipe, limit })),
+  transformSave: (recipe: Recipe, name: string) => request<Dataset>("/transforms/save", json("POST", { recipe, name })),
+  getRecipe: (datasetId: string) => request<SavedRecipe | null>(`/transforms/recipes/${datasetId}`),
   analysisStatus: () => request<AnalysisStatus>("/analyses/status"),
   runAnalysis: (analysis: string, dataset_id: string, options: Record<string, unknown>) =>
     request<AnalysisResponse>("/analyses/run", json("POST", { analysis, dataset_id, options })),

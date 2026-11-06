@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from .. import access, audit, auth, datasets, derive, permissions, queries
+from .. import access, audit, auth, datasets, derive, permissions, queries, transforms
 from ..config import settings
 from ..schemas import AccessConfig, Dataset, DatasetFromQuery, DatasetPatch, QueryResult
 
@@ -16,9 +16,7 @@ def _http(exc: datasets.DatasetError) -> HTTPException:
     return HTTPException(404 if isinstance(exc, datasets.DatasetNotFound) else 422, str(exc))
 
 
-def _present(items: list[Dataset], user: auth.User) -> list[Dataset]:
-    """Só o que o usuário lê, com dono, `can_edit` e as marcas de acesso/linhas."""
-    return permissions.decorate(access.annotate("dataset", permissions.readable(user, items), user), user)
+_present = permissions.present
 
 
 def _readable(dataset_id: str, user: auth.User) -> Dataset:
@@ -111,6 +109,7 @@ def delete_dataset(dataset_id: str, user: auth.User = Depends(current_user)) -> 
         datasets.delete_dataset(dataset_id)
         access.forget("dataset", dataset_id)
         permissions.forget_dataset(dataset_id)
+        transforms.forget_recipe(dataset_id)
         audit.log(user, "delete", "dataset", dataset_id, name)
     except datasets.DatasetError as exc:
         raise _http(exc) from exc

@@ -193,6 +193,11 @@ def _drop_filtered_views(dataset_id: str) -> None:
         datasets.parquet_path(vid).unlink(missing_ok=True)
 
 
+def present(items: list[Dataset], user: auth.User) -> list[Dataset]:
+    """O que o usuário lê, já com dono, `can_edit` e as marcas de acesso/linhas (resposta padrão dos datasets)."""
+    return decorate(access.annotate("dataset", readable(user, items), user), user)
+
+
 # ---------- derivados ----------
 
 def inherit_for_derived(new_id: str, source_ids: list[str]) -> None:

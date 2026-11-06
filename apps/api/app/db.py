@@ -33,6 +33,9 @@ _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS dataset_rls (dataset_id TEXT PRIMARY KEY, column_name TEXT NOT NULL, attribute TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS user_attributes (user_id TEXT NOT NULL, name TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, name))""",
     """CREATE TABLE IF NOT EXISTS rls_views (view_id TEXT PRIMARY KEY, dataset_id TEXT NOT NULL)""",
+    # de que receita (passos sobre qual dataset) cada dataset derivado saiu
+    """CREATE TABLE IF NOT EXISTS dataset_recipes (
+         dataset_id TEXT PRIMARY KEY, recipe_json TEXT NOT NULL, sql TEXT NOT NULL, created_at TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS audit (
          id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, user_id TEXT, username TEXT,
          action TEXT NOT NULL, kind TEXT, target TEXT, detail TEXT)""",

@@ -9,6 +9,7 @@ import { UsersPage } from "./components/UsersPage";
 import { DashboardsPage } from "./components/DashboardsPage";
 import { ReportsPage } from "./components/ReportsPage";
 import { newSession, type AnalysisSession } from "./lib/analyses";
+import { newDraft, type TransformDraft } from "./components/TransformTab";
 import { clearRemoteCache } from "./lib/remote";
 import { routeHref, useRoute } from "./lib/route";
 import { sampleCsv } from "./lib/sample";
@@ -18,11 +19,13 @@ import { applyThemeMode, loadThemeMode, type ThemeMode } from "./lib/theme";
 const ReportPage = lazy(() => import("./components/ReportPage").then((m) => ({ default: m.ReportPage })));
 const DashboardPage = lazy(() => import("./components/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const SqlTab = lazy(() => import("./components/SqlTab").then((m) => ({ default: m.SqlTab })));
+const TransformTab = lazy(() => import("./components/TransformTab").then((m) => ({ default: m.TransformTab })));
 const AnalysisTab = lazy(() => import("./components/AnalysisTab").then((m) => ({ default: m.AnalysisTab })));
 
-type Tab = "data" | "sql" | "analysis";
+type Tab = "data" | "transform" | "sql" | "analysis";
 const TABS: { id: Tab; label: string }[] = [
   { id: "data", label: "Dados" },
+  { id: "transform", label: "Transformar" },
   { id: "sql", label: "Consulta SQL" },
   { id: "analysis", label: "Análise estatística" },
 ];
@@ -39,6 +42,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(() => recall("dataset"));
   const [tab, setTab] = useState<Tab>("data");
   const [sessions, setSessions] = useState<Record<string, AnalysisSession>>({}); // estado da aba Análise por dataset
+  const [drafts, setDrafts] = useState<Record<string, TransformDraft>>({}); // receita em edição por dataset (sobrevive à troca de aba)
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +176,7 @@ export default function App() {
                 </div>
                 {tab === "data" && <DataTab dataset={selected} onChange={updateDataset} onError={onError} />}
                 <Suspense fallback={<div className="empty"><span className="spinner" aria-label="Carregando" /></div>}>
+                  {tab === "transform" && <TransformTab key={selected.id} dataset={selected} datasets={datasets} draft={drafts[selected.id] ?? newDraft(selected.id)} onDraft={(d) => setDrafts((all) => ({ ...all, [selected.id]: d }))} onDatasetCreated={async (ds) => { await refresh(ds.id); setTab("data"); }} />}
                   {tab === "sql" && <SqlTab dataset={selected} datasets={datasets} onDatasetCreated={async (ds) => { await refresh(ds.id); setTab("data"); }} />}
                   {tab === "analysis" && <AnalysisTab key={selected.id} dataset={selected} session={sessions[selected.id] ?? newSession()} onSession={(update) => setSessions((all) => ({ ...all, [selected.id]: update(all[selected.id] ?? newSession()) }))} />}
                 </Suspense>

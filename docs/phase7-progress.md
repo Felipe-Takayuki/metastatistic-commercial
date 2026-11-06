@@ -69,7 +69,7 @@ API: `GET /auth/status` (público), `POST /auth/setup|login|logout|password`, `G
 ## Verificado
 `pytest` 195 (+23: `test_permissions.py` 16 e `test_audit.py` 7), `vitest` 219 (+8), `tsc`/`vite build` limpos e `e2e:auth` estendido num navegador real (dono restringe e filtra; o editor com `regiao=Sul` vê 2 de 5 linhas na tabela e no SQL; leitor fora da lista não vê o dataset e leva 404; auditoria mostra mudança de acesso, login falho e acessos negados, sem senhas). O e2e passou, e nesta rodada o harness foi corrigido (ver abaixo).
 **Não reexecutados** (Docker parado desde o início da fase): integração com o motor R (`RUN_INTEGRATION=1`) e `e2e:all`. Em especial, **a análise de um usuário com filtro de linhas contra o motor real não foi exercitada de ponta a ponta** (os testes provam que a API envia o id da cópia filtrada e que a cópia tem as linhas certas; o worker lê qualquer `<id32hex>.parquet` em `datasets/`, então deve funcionar, mas vale conferir com o Docker no ar).
-Achado no caminho: `e2e/lib.mjs → finish()` chama `process.exit` dentro do `finally`, então **uma exceção no meio do teste saía como "Tudo certo"**. O `auth.mjs` agora captura e conta como falha; os outros 6 e2e têm o mesmo risco latente.
+Achado no caminho: no `auth.mjs` (escrito nesta fase) o `finish()` ficava num `try/finally` sem `catch`, e como ele chama `process.exit`, **uma exceção no meio do teste saía como "Tudo certo"**. Corrigido: agora captura e conta como falha. Os outros 6 e2e já capturavam a exceção antes do `finish()` (conferido em 2026-11-06), então não tinham o problema.
 
 # Estado final da fase 7 e limites conhecidos
 
