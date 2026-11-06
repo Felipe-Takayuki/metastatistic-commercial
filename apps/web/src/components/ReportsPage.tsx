@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, type Dataset, type ReportSummary } from "../api";
 import { exampleBlocks } from "../lib/blocks";
+import { filterByCollection, itemEditable } from "../lib/collections";
 import { navigate, routeHref } from "../lib/route";
 import { useCan } from "./AuthGate";
+import { CollectionsPanel, MoveSelect, useCollections } from "./CollectionsPanel";
 
 const when = (iso: string) => new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
@@ -11,6 +13,7 @@ export function ReportsPage({ datasets }: { datasets: Dataset[] }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const canEdit = useCan("editor");
+  const { collections, filter, setFilter, reload } = useCollections();
 
   const load = () => api.listReports().then(setList).catch((e) => setError(e.message));
   useEffect(() => { void load(); }, []);
@@ -35,6 +38,15 @@ export function ReportsPage({ datasets }: { datasets: Dataset[] }) {
     try { await api.deleteReport(r.id); await load(); } catch (e) { setError((e as Error).message); }
   };
 
+  const move = async (r: ReportSummary, to: string | null) => {
+    try { await api.moveReport(r.id, to); await Promise.all([load(), reload()]); } catch (e) { setError((e as Error).message); }
+  };
+  const visible = list ? filterByCollection(list, filter) : null;
+  const counts = {
+    all: list?.length ?? 0, none: list ? filterByCollection(list, "none").length : 0,
+    byId: Object.fromEntries(collections.map((c) => [c.id, list ? filterByCollection(list, c.id).length : 0])),
+  };
+
   return (
     <>
       <div className="page-head">
@@ -44,6 +56,7 @@ export function ReportsPage({ datasets }: { datasets: Dataset[] }) {
         {canEdit && <button className="btn primary" onClick={() => create(false)} disabled={busy}>Novo relatório</button>}
       </div>
       {error && <div className="alert" role="alert">{error}</div>}
+      {list && (list.length > 0 || collections.length > 0) && <CollectionsPanel collections={collections} filter={filter} counts={counts} onFilter={setFilter} onChanged={async () => { await Promise.all([load(), reload()]); }} onError={setError} />}
       {list === null && !error && <div className="empty"><span className="spinner" aria-label="Carregando" /></div>}
       {list && list.length === 0 && (
         <div className="card empty">
@@ -54,15 +67,17 @@ export function ReportsPage({ datasets }: { datasets: Dataset[] }) {
           </p>
         </div>
       )}
-      {list && list.length > 0 && (
+      {list && list.length > 0 && visible?.length === 0 && <p className="muted">Nenhum relatório nesta coleção.</p>}
+      {visible && visible.length > 0 && (
         <ul className="report-list">
-          {list.map((r) => (
+          {visible.map((r) => (
             <li key={r.id} className="card report-row">
               <a className="report-link" href={routeHref({ name: "report", id: r.id })}>
                 <span className="report-title">{r.title}</span>
-                <span className="muted small">{r.n_blocks} {r.n_blocks === 1 ? "bloco" : "blocos"} · atualizado em {when(r.updated_at)}</span>
+                <span className="muted small">{r.n_blocks} {r.n_blocks === 1 ? "bloco" : "blocos"} · atualizado em {when(r.updated_at)}{r.owner_name ? ` · por ${r.owner_name}` : ""}</span>
               </a>
-              {canEdit && <button className="btn ghost sm" onClick={() => remove(r)} aria-label={`Excluir ${r.title}`}>Excluir</button>}
+              {itemEditable(canEdit, r) && <MoveSelect title={r.title} value={r.collection_id} collections={collections} onMove={(to) => void move(r, to)} />}
+              {itemEditable(canEdit, r) && <button className="btn ghost sm" onClick={() => remove(r)} aria-label={`Excluir ${r.title}`}>Excluir</button>}
             </li>
           ))}
         </ul>

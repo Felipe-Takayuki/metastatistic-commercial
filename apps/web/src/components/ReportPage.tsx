@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, type Block, type Dataset, type Report } from "../api";
+import { itemEditable } from "../lib/collections";
 import { moveBlock, newBlock, type BlockType } from "../lib/blocks";
 import { routeHref } from "../lib/route";
 import { Saver, type SaveStatus } from "../lib/saver";
@@ -36,7 +37,7 @@ interface EditorProps { initial: Report; datasets: Dataset[]; onReload: () => vo
 function ReportEditor({ initial, datasets, onReload }: EditorProps) {
   const [title, setTitle] = useState(initial.title);
   const [blocks, setBlocks] = useState<Block[]>(initial.blocks);
-  const canEdit = useCan("editor");
+  const canEdit = itemEditable(useCan("editor"), initial);
   const [mode, setMode] = useState<"edit" | "view">(initial.blocks.length === 0 && canEdit ? "edit" : "view");
   const [status, setStatus] = useState<{ s: SaveStatus; msg?: string }>({ s: "saved" });
   const titleRef = useRef(initial.title);

@@ -20,6 +20,12 @@ _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS sessions (
          token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
          created_at TEXT NOT NULL, expires_at TEXT NOT NULL)""",
+    # dono e coleção ficam à parte dos recursos: um recurso SEM linha aqui é "legado" (sem dono, na raiz)
+    """CREATE TABLE IF NOT EXISTS resources (
+         kind TEXT NOT NULL, id TEXT NOT NULL, owner_id TEXT, collection_id TEXT,
+         PRIMARY KEY (kind, id))""",
+    """CREATE TABLE IF NOT EXISTS collections (
+         id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT, created_at TEXT NOT NULL)""",
 )
 
 

@@ -13,6 +13,8 @@ export interface Dataset {
   n_rows: number;
   columns: Column[];
   created_at: string;
+  owner_name?: string | null;
+  can_edit?: boolean; // ausente = pode (o servidor sempre manda)
 }
 export interface QueryResult {
   columns: { name: string; dtype: string }[];
@@ -37,8 +39,8 @@ export interface TextBlock { type: "text"; id: string; markdown: string }
 export interface ChartBlock { type: "chart"; id: string; title: string; sql: string; chart: ChartConfig | null }
 export interface AnalysisBlock { type: "analysis"; id: string; analysis: string; dataset_id: string; options: Record<string, unknown>; show_notes?: boolean }
 export type Block = TextBlock | ChartBlock | AnalysisBlock;
-export interface Report { id: string; title: string; blocks: Block[]; version: number; created_at: string; updated_at: string }
-export interface ReportSummary { id: string; title: string; n_blocks: number; version: number; updated_at: string }
+export interface Report { id: string; title: string; blocks: Block[]; version: number; created_at: string; updated_at: string; owner_name?: string | null; collection_id?: string | null; can_edit?: boolean }
+export interface ReportSummary { id: string; title: string; n_blocks: number; version: number; updated_at: string; owner_name?: string | null; collection_id?: string | null; can_edit?: boolean }
 
 export interface TileLayout { x: number; y: number; w: number; h: number }
 export type TextTile = TextBlock & { layout: TileLayout };
@@ -47,8 +49,9 @@ export interface KpiTile { type: "kpi"; id: string; title: string; sql: string; 
 export type AnalysisTile = AnalysisBlock & { layout: TileLayout };
 export type Tile = TextTile | ChartTile | KpiTile | AnalysisTile;
 export interface DashFilter { name: string; label: string; type: "text" | "number" | "date"; default: string }
-export interface Dashboard { id: string; title: string; tiles: Tile[]; filters: DashFilter[]; version: number; created_at: string; updated_at: string }
-export interface DashboardSummary { id: string; title: string; n_tiles: number; version: number; updated_at: string }
+export interface Dashboard { id: string; title: string; tiles: Tile[]; filters: DashFilter[]; version: number; created_at: string; updated_at: string; owner_name?: string | null; collection_id?: string | null; can_edit?: boolean }
+export interface DashboardSummary { id: string; title: string; n_tiles: number; version: number; updated_at: string; owner_name?: string | null; collection_id?: string | null; can_edit?: boolean }
+export interface Collection { id: string; name: string; owner_name: string | null; n_reports: number; n_dashboards: number; can_edit: boolean }
 
 export interface AnalysisStatus {
   workers: number; busy: number; down: number; queued: number; queue_max: number;
@@ -124,6 +127,12 @@ export const api = {
   getReport: (id: string) => request<Report>(`/reports/${id}`),
   saveReport: (id: string, title: string, blocks: Block[], version: number) =>
     request<Report>(`/reports/${id}`, json("PUT", { title, blocks, version })),
+  moveReport: (id: string, collection_id: string | null) => request<void>(`/reports/${id}/collection`, json("PUT", { collection_id })),
+  moveDashboard: (id: string, collection_id: string | null) => request<void>(`/dashboards/${id}/collection`, json("PUT", { collection_id })),
+  listCollections: () => request<Collection[]>("/collections"),
+  createCollection: (name: string) => request<Collection>("/collections", json("POST", { name })),
+  renameCollection: (id: string, name: string) => request<Collection>(`/collections/${id}`, json("PATCH", { name })),
+  deleteCollection: (id: string) => request<void>(`/collections/${id}`, { method: "DELETE" }),
   deleteReport: (id: string) => request<void>(`/reports/${id}`, { method: "DELETE" }),
   listDashboards: () => request<DashboardSummary[]>("/dashboards"),
   createDashboard: (title: string, tiles: Tile[], filters: DashFilter[] = []) => request<Dashboard>("/dashboards", json("POST", { title, tiles, filters })),

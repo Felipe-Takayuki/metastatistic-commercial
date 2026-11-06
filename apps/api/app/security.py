@@ -1,7 +1,7 @@
 """Dependências do FastAPI: quem está chamando e o que ele pode fazer."""
 from fastapi import Depends, HTTPException, Request
 
-from . import auth
+from . import access, auth
 from .config import settings
 
 COOKIE = "ms_session"
@@ -28,3 +28,13 @@ def _require(role: str):
 require_viewer = _require("viewer")
 require_editor = _require("editor")
 require_admin = _require("admin")
+
+
+def can_modify(kind: str, param: str):
+    """Dependência: o usuário é editor E dono do recurso (ou admin, ou o recurso não tem dono)."""
+    def dep(request: Request, user: auth.User = Depends(require_editor)) -> auth.User:
+        if not access.can_modify(user, kind, request.path_params[param]):
+            raise HTTPException(403, "only the owner or an administrator can change this item")
+        return user
+
+    return dep

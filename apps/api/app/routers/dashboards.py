@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import dashboards
-from ..schemas import Dashboard, DashboardIn, DashboardUpdate
-
-from ..security import require_editor, require_viewer
+from .. import access, auth, dashboards
+from ..schemas import Dashboard, DashboardIn, DashboardUpdate, MoveIn
+from ..security import can_modify, current_user, require_editor, require_viewer
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"], dependencies=[Depends(require_viewer)])
 
@@ -14,35 +13,49 @@ def _http(exc: dashboards.DashboardError) -> HTTPException:
 
 
 @router.post("", response_model=Dashboard, status_code=201, dependencies=[Depends(require_editor)])
-def create_dashboard(d: DashboardIn) -> Dashboard:
-    return dashboards.create_dashboard(d)
+def create_dashboard(d: DashboardIn, user: auth.User = Depends(current_user)) -> Dashboard:
+    created = dashboards.create_dashboard(d)
+    access.claim("dashboard", created.id, user)
+    return access.annotate_one("dashboard", created, user)
 
 
 @router.get("")
-def list_dashboards() -> list[dict]:
-    return dashboards.list_dashboards()
+def list_dashboards(user: auth.User = Depends(current_user)) -> list[dict]:
+    return access.annotate("dashboard", dashboards.list_dashboards(), user)
 
 
 @router.get("/{dash_id}", response_model=Dashboard)
-def get_dashboard(dash_id: str) -> Dashboard:
+def get_dashboard(dash_id: str, user: auth.User = Depends(current_user)) -> Dashboard:
     try:
-        return dashboards.get_dashboard(dash_id)
+        return access.annotate_one("dashboard", dashboards.get_dashboard(dash_id), user)
     except dashboards.DashboardError as exc:
         raise _http(exc) from exc
 
 
-@router.put("/{dash_id}", response_model=Dashboard, dependencies=[Depends(require_editor)])
-def update_dashboard(dash_id: str, d: DashboardUpdate) -> Dashboard:
+@router.put("/{dash_id}", response_model=Dashboard, dependencies=[Depends(can_modify("dashboard", "dash_id"))])
+def update_dashboard(dash_id: str, d: DashboardUpdate, user: auth.User = Depends(current_user)) -> Dashboard:
     """Salva o dashboard inteiro. 409 se `version` não for a atual (alterado em outra aba)."""
     try:
-        return dashboards.update_dashboard(dash_id, d)
+        return access.annotate_one("dashboard", dashboards.update_dashboard(dash_id, d), user)
     except dashboards.DashboardError as exc:
         raise _http(exc) from exc
 
 
-@router.delete("/{dash_id}", status_code=204, dependencies=[Depends(require_editor)])
+@router.put("/{dash_id}/collection", status_code=204, dependencies=[Depends(can_modify("dashboard", "dash_id"))])
+def move_dashboard(dash_id: str, body: MoveIn) -> None:
+    try:
+        dashboards.get_dashboard(dash_id)
+        access.set_collection("dashboard", dash_id, body.collection_id)
+    except dashboards.DashboardError as exc:
+        raise _http(exc) from exc
+    except access.CollectionNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.delete("/{dash_id}", status_code=204, dependencies=[Depends(can_modify("dashboard", "dash_id"))])
 def delete_dashboard(dash_id: str) -> None:
     try:
         dashboards.delete_dashboard(dash_id)
+        access.forget("dashboard", dash_id)
     except dashboards.DashboardError as exc:
         raise _http(exc) from exc

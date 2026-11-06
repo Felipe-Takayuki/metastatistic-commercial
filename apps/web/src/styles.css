@@ -348,3 +348,10 @@ input[type="number"], .field input[type="text"] { padding: 6px 10px; border: 1px
 .users-actions { white-space: nowrap; text-align: right !important; }
 .new-user { padding: 16px; display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .new-user-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+
+/* Coleções */
+.coll-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 14px; }
+.chip.btn-chip.coll-chip { font-family: var(--font); font-size: 13px; padding: 3px 10px; }
+.chip.btn-chip.coll-chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.chip.btn-chip.coll-chip[aria-pressed="true"] .muted { color: inherit; opacity: .85; }
+.move-select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); color: var(--text-primary); font: inherit; font-size: 13px; max-width: 160px; }

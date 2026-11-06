@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function DataTab({ dataset, onChange, onError }: Props) {
-  const canEdit = useCan("editor");
+  const canEdit = useCan("editor") && dataset.can_edit !== false;
   const [preview, setPreview] = useState<QueryResult | null>(null);
 
   useEffect(() => {

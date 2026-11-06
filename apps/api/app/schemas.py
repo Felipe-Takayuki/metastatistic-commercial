@@ -20,6 +20,9 @@ class Dataset(BaseModel):
     n_rows: int
     columns: list[Column]
     created_at: str
+    owner_name: str | None = Field(default=None, description="quem criou (None = criado antes dos usuários ou sem autenticação)")
+    collection_id: str | None = None
+    can_edit: bool = Field(default=True, description="o usuário atual pode alterar/excluir este item")
 
 
 class DatasetFromQuery(BaseModel):
@@ -134,6 +137,9 @@ class Report(ReportIn):
     version: int
     created_at: str
     updated_at: str
+    owner_name: str | None = Field(default=None, description="quem criou (None = criado antes dos usuários ou sem autenticação)")
+    collection_id: str | None = None
+    can_edit: bool = Field(default=True, description="o usuário atual pode alterar/excluir este item")
 
 
 # --- Dashboards -------------------------------------------------------------
@@ -238,3 +244,22 @@ class Dashboard(DashboardIn):
     version: int
     created_at: str
     updated_at: str
+    owner_name: str | None = Field(default=None, description="quem criou (None = criado antes dos usuários ou sem autenticação)")
+    collection_id: str | None = None
+    can_edit: bool = Field(default=True, description="o usuário atual pode alterar/excluir este item")
+
+
+class CollectionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be blank")
+        return v
+
+
+class MoveIn(BaseModel):
+    collection_id: str | None = Field(description="coleção de destino; null = raiz (sem coleção)")

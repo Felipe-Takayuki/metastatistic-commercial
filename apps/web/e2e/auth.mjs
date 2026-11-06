@@ -7,7 +7,7 @@
  */
 import { BASE, session } from "./lib.mjs";
 
-const s = await session({ allowConsole: { "status of 401": 4, "status of 403": 2, "status of 422": 1 } });
+const s = await session({ allowConsole: { "status of 401": 10, "status of 403": 3, "status of 422": 1 } });
 const { page, check, shot } = s;
 const PASS = "senha-forte-1";
 
@@ -50,7 +50,8 @@ try {
   };
   await create("e2eeditor", "editor");
   await create("e2eleitor", "viewer");
-  check("3 usuários listados", (await page.locator(".users-table tbody tr").count()) === 3);
+  await create("e2eeditor2", "editor");
+  check("4 usuários listados", (await page.locator(".users-table tbody tr").count()) === 4);
   await page.getByLabel("Papel de e2eadmin").selectOption("viewer");
   await page.getByRole("alert").waitFor();
   check("não deixa rebaixar o último administrador", (await page.getByRole("alert").innerText()).includes("last active administrator"));
@@ -92,8 +93,44 @@ try {
   const reportId = page.url().match(/#\/reports\/([0-9a-f]{32})/)[1];
   check("editor cria um relatório", !!reportId);
 
+  // --- coleções: o editor cria uma e move o relatório para ela ---
+  await page.goto(`${BASE}/#/reports`);
+  await page.getByRole("button", { name: "+ Nova coleção" }).waitFor();
+  s.onNextDialog((d) => d.accept("E2E Coleção"));
+  await page.getByRole("button", { name: "+ Nova coleção" }).click();
+  await page.locator(".coll-chip", { hasText: "E2E Coleção" }).waitFor();
+  check("coleção criada já fica selecionada (e vazia)", (await page.locator(".coll-chip[aria-pressed=true]").innerText()).includes("E2E Coleção") && (await page.getByText("Nenhum relatório nesta coleção.").count()) === 1);
+  await page.locator(".coll-chip", { hasText: "Todos" }).click();
+  await page.locator(".report-row").first().getByLabel(/^Coleção de/).selectOption({ label: "E2E Coleção" });
+  await page.locator(".coll-chip", { hasText: "E2E Coleção" }).filter({ hasText: "1" }).waitFor();
+  await page.locator(".coll-chip", { hasText: "Sem coleção" }).click();
+  await page.getByText("Nenhum relatório nesta coleção.").waitFor();
+  check("filtro 'Sem coleção' não mostra o relatório movido", (await page.locator(".report-row").count()) === 0);
+  await page.locator(".coll-chip", { hasText: "E2E Coleção" }).click();
+  check("filtro da coleção mostra o relatório", (await page.locator(".report-row").count()) === 1);
+  await shot("auth-collections");
+  await logout();
+
+  // --- outro editor: vê, mas não altera o que é do primeiro ---
+  await loginAs("e2eeditor2");
+  await page.goto(`${BASE}/#/reports`);
+  await page.locator(".report-row").first().waitFor();
+  const row = page.locator(".report-row").first();
+  check("outro editor vê o relatório com o nome do dono", (await row.innerText()).includes("por e2eeditor"));
+  check("outro editor não vê Excluir nem 'Coleção de'", !(await has(row.getByRole("button", { name: /^Excluir/ }))) && !(await has(row.getByLabel(/^Coleção de/))));
+  await page.locator(".coll-chip", { hasText: "E2E Coleção" }).click();
+  check("outro editor não renomeia nem exclui a coleção alheia", !(await has(page.getByRole("button", { name: "Renomear" }))) && !(await has(page.getByRole("button", { name: "Excluir coleção" }))));
+  await row.getByRole("link").click();
+  await page.locator(".report-toolbar").waitFor();
+  check("outro editor não vê o botão Editar do relatório alheio", !(await has(page.getByRole("button", { name: "Editar", exact: true }))));
+  const putStatus = await page.evaluate(async (id) => (await fetch(`/api/reports/${id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "x", blocks: [], version: 1 }) })).status, reportId);
+  check("e a API recusa o PUT do outro editor (403)", putStatus === 403, String(putStatus));
+  await logout();
+  await loginAs("e2eeditor");
+
   // --- sessão derrubada pelo administrador enquanto o editor está com a página aberta ---
   const admin = await (await s.browser.newContext()).newPage();
+  admin.on("dialog", (d) => d.accept()); // confirmações do administrador (a página dele não passa pelo monitor de diálogos)
   await admin.goto(BASE);
   await fillLogin(admin, "e2eadmin", PASS);
   await admin.getByRole("link", { name: "Usuários" }).click();
@@ -107,6 +144,15 @@ try {
   check("usuário desativado não consegue entrar", (await page.getByRole("alert").innerText()).includes("invalid username or password"));
 
   // --- limpeza: o relatório criado pelo editor e os usuários ---
+  await admin.goto(`${BASE}/#/reports`);
+  const arow = admin.locator(".report-row").first();
+  await arow.waitFor();
+  check("administrador altera o que é de outro (vê Excluir e mover)", (await has(arow.getByRole("button", { name: /^Excluir/ }))) && (await has(arow.getByLabel(/^Coleção de/))));
+  await admin.locator(".coll-chip", { hasText: "E2E Coleção" }).click();
+  check("administrador renomeia/exclui a coleção de outro", (await has(admin.getByRole("button", { name: "Renomear" }))) && (await has(admin.getByRole("button", { name: "Excluir coleção" }))));
+  await admin.getByRole("button", { name: "Excluir coleção" }).click();
+  await admin.locator(".coll-chip", { hasText: "E2E Coleção" }).waitFor({ state: "detached" });
+  check("excluir a coleção devolve o relatório à raiz (não o apaga)", (await admin.locator(".report-row").count()) === 1);
   const del = await admin.evaluate(async (id) => (await fetch(`/api/reports/${id}`, { method: "DELETE" })).status, reportId);
   check("limpeza do relatório de teste", del === 204, String(del));
 } finally {

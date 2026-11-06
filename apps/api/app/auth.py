@@ -182,6 +182,9 @@ def delete_user(user_id: str) -> None:
     with closing(db.connect()) as con, con:
         if current.role == "admin" and current.active and _active_admins(con, excluding=user_id) == 0:
             raise AuthError("cannot remove the last active administrator")
+        # o que a pessoa criou passa a "sem dono" (qualquer editor mantém), em vez de ficar só com administradores
+        con.execute("UPDATE resources SET owner_id = NULL WHERE owner_id = ?", [user_id])
+        con.execute("UPDATE collections SET owner_id = NULL WHERE owner_id = ?", [user_id])
         con.execute("DELETE FROM users WHERE id = ?", [user_id])
 
 
