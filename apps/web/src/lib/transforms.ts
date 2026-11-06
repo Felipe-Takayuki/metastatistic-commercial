@@ -28,7 +28,14 @@ export type Step =
   | { op: "rank"; name: string; column: string; by: string[]; desc: boolean; method: "rank" | "dense" | "row" }
   | { op: "zscore"; name: string; column: string; by: string[] }
   | { op: "running"; name: string; fn: "sum" | "mean" | "min" | "max" | "count"; column: string; window: number | null; order_by: SortKey[]; by: string[]; require_full: boolean }
-  | { op: "lag"; name: string; column: string; kind: "diff" | "pct_change" | "previous"; periods: number; order_by: SortKey[]; by: string[] };
+  | { op: "lag"; name: string; column: string; kind: "diff" | "pct_change" | "previous"; periods: number; order_by: SortKey[]; by: string[] }
+  | { op: "summarize"; by: string[]; aggs: AggSpec[] }
+  | { op: "pivot"; index: string[]; names_from: string; values: string; fn: "first" | "sum" | "mean" | "min" | "max" | "count"; prefix: string }
+  | { op: "unpivot"; columns: string[]; names_to: string; values_to: string; drop_nulls: boolean }
+  | { op: "join"; other_id: string; kind: "left" | "inner" | "full" | "anti"; keys: { left: string; right: string }[]; columns: string[]; suffix: string; allow_multiple: boolean }
+  | { op: "append"; other_id: string; source_column?: string; label_current: string; label_other: string };
+export type AggFn = "count_rows" | "count" | "count_distinct" | "mean" | "sum" | "min" | "max" | "median" | "std";
+export interface AggSpec { name: string; fn: AggFn; column?: string }
 export interface SortKey { column: string; desc: boolean }
 
 export type StepOp = Step["op"];
@@ -53,7 +60,11 @@ export const RUNNING_FN_LABEL = { sum: "soma", mean: "média", min: "mínimo", m
 export const RANK_METHOD_LABEL = { rank: "Empates dividem a posição (1, 2, 2, 4)", dense: "Empates dividem a posição, sem buracos (1, 2, 2, 3)", row: "Sem empates: desempata pela ordem das linhas (1, 2, 3, 4)" } as const;
 export const LAG_KIND_LABEL = { diff: "Diferença (valor − valor anterior)", pct_change: "Variação percentual em relação ao anterior", previous: "Valor da linha anterior" } as const;
 
-export interface StepKind { op: StepOp; label: string; group: "Colunas" | "Linhas" | "Nova coluna" | "Por grupo e janela" }
+export const AGG_LABEL: Record<AggFn, string> = { count_rows: "número de linhas", count: "contagem (valores preenchidos)", count_distinct: "valores distintos", mean: "média", sum: "soma", min: "mínimo", max: "máximo", median: "mediana", std: "desvio padrão" };
+export const PIVOT_FN_LABEL = { first: "o valor (primeiro encontrado)", sum: "soma", mean: "média", min: "mínimo", max: "máximo", count: "contagem" } as const;
+export const JOIN_KIND_LABEL = { left: "Manter todas as linhas daqui e trazer o que casar", inner: "Só as linhas que existem nos dois", full: "Todas as linhas dos dois", anti: "Só as linhas daqui que NÃO existem no outro" } as const;
+
+export interface StepKind { op: StepOp; label: string; group: "Colunas" | "Linhas" | "Nova coluna" | "Por grupo e janela" | "Reformatar e combinar" }
 export const STEP_KINDS: StepKind[] = [
   { op: "select", label: "Escolher ou remover colunas", group: "Colunas" },
   { op: "rename", label: "Renomear colunas", group: "Colunas" },
@@ -79,6 +90,11 @@ export const STEP_KINDS: StepKind[] = [
   { op: "zscore", label: "Padronizar (z-score)", group: "Por grupo e janela" },
   { op: "running", label: "Acumulado ou média móvel", group: "Por grupo e janela" },
   { op: "lag", label: "Diferença ou variação em relação à linha anterior", group: "Por grupo e janela" },
+  { op: "summarize", label: "Resumir por grupo (uma linha por grupo)", group: "Reformatar e combinar" },
+  { op: "pivot", label: "Pivotar: valores de uma coluna viram colunas", group: "Reformatar e combinar" },
+  { op: "unpivot", label: "Despivotar: várias colunas viram linhas", group: "Reformatar e combinar" },
+  { op: "join", label: "Mesclar com outro dataset (trazer colunas)", group: "Reformatar e combinar" },
+  { op: "append", label: "Acrescentar linhas de outro dataset", group: "Reformatar e combinar" },
 ];
 
 const isNum = (dtype: string) => /^(U?(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT)|FLOAT|DOUBLE|REAL|DECIMAL)/i.test(dtype);
@@ -94,7 +110,7 @@ export function freeName(base: string, cols: ColumnInfo[]): string {
 }
 
 /** Passo recém-criado, já com valores razoáveis para as colunas disponíveis. */
-export function defaultStep(op: StepOp, cols: ColumnInfo[]): Step {
+export function defaultStep(op: StepOp, cols: ColumnInfo[], otherId = ""): Step {
   const first = cols[0]?.name ?? "";
   const num = numericColumns(cols);
   const firstNum = num[0]?.name ?? first;
@@ -124,6 +140,11 @@ export function defaultStep(op: StepOp, cols: ColumnInfo[]): Step {
     case "zscore": return { op, name: freeName("z", cols), column: firstNum, by: [] };
     case "running": return { op, name: freeName("acumulado", cols), fn: "sum", column: firstNum, window: null, order_by: [], by: [], require_full: false };
     case "lag": return { op, name: freeName("variacao", cols), column: firstNum, kind: "diff", periods: 1, order_by: [], by: [] };
+    case "summarize": return { op, by: [], aggs: [{ name: "n", fn: "count_rows" }] };
+    case "pivot": return { op, index: first ? [first] : [], names_from: cols[1]?.name ?? first, values: cols[2]?.name ?? first, fn: "first", prefix: "" };
+    case "unpivot": return { op, columns: num.slice(0, 2).map((c) => c.name), names_to: freeName("variavel", cols), values_to: freeName("valor", cols), drop_nulls: false };
+    case "join": return { op, other_id: otherId, kind: "left", keys: [{ left: first, right: "" }], columns: [], suffix: "_2", allow_multiple: false };
+    case "append": return { op, other_id: otherId, label_current: "", label_other: "" };
   }
 }
 
@@ -137,7 +158,7 @@ export const describeCondition = (c: Condition): string =>
 const scope = (by: string[]): string => (by.length ? `por ${list(by)}` : "(todas as linhas)");
 const orderText = (keys: SortKey[]): string => (keys.length ? `, ordem ${list(keys.map((k) => `${k.column}${k.desc ? " ↓" : " ↑"}`))}` : "");
 
-export function describeStep(s: Step): string {
+export function describeStep(s: Step, names: (id: string) => string = (id) => id): string {
   switch (s.op) {
     case "select": return `${s.mode === "keep" ? "Manter" : "Remover"} colunas: ${list(s.columns)}`;
     case "rename": return `Renomear: ${list(Object.entries(s.mapping).map(([a, b]) => `${a} → ${b}`), 3)}`;
@@ -162,6 +183,11 @@ export function describeStep(s: Step): string {
     case "rank": return `"${s.name}" = posição de ${s.column} (${s.desc ? "maior" : "menor"} = 1) ${scope(s.by)}`;
     case "zscore": return `"${s.name}" = z-score de ${s.column} ${scope(s.by)}`;
     case "running": return `"${s.name}" = ${s.window ? `${RUNNING_FN_LABEL[s.fn]} móvel de ${s.window} linhas` : `${RUNNING_FN_LABEL[s.fn]} acumulada`} de ${s.column}${orderText(s.order_by)} ${scope(s.by)}`;
+    case "summarize": return `Resumir ${s.by.length ? `por ${list(s.by)}` : "a tabela inteira"}: ${list(s.aggs.map((a) => `${a.name} = ${AGG_LABEL[a.fn].split(" (")[0]}${a.column ? ` de ${a.column}` : ""}`), 3)}`;
+    case "pivot": return `Pivotar: valores de ${s.names_from} viram colunas (${s.fn === "first" ? "" : PIVOT_FN_LABEL[s.fn] + " de "}${s.values}), identificando por ${list(s.index)}`;
+    case "unpivot": return `Despivotar ${list(s.columns)} em "${s.names_to}" / "${s.values_to}"${s.drop_nulls ? " (sem vazios)" : ""}`;
+    case "join": return `Mesclar com ${names(s.other_id)} por ${list(s.keys.map((k) => (k.left === k.right ? k.left : `${k.left} = ${k.right}`)))} (${{ left: "mantém as daqui", inner: "só as comuns", full: "todas", anti: "só as sem correspondência" }[s.kind]})${s.columns.length ? `, trazendo ${list(s.columns)}` : ""}`;
+    case "append": return `Acrescentar linhas de ${names(s.other_id)}${s.source_column ? ` (origem em "${s.source_column}")` : ""}`;
     case "lag": return `"${s.name}" = ${{ diff: "diferença de", pct_change: "variação % de", previous: "valor anterior de" }[s.kind]} ${s.column}${s.periods > 1 ? ` (${s.periods} linhas atrás)` : ""}${orderText(s.order_by)} ${scope(s.by)}`;
   }
 }
@@ -208,6 +234,28 @@ export function stepProblem(s: Step, cols: ColumnInfo[], editing?: Step): string
     case "group_stat": case "pct_total": case "rank": case "zscore": return newName(s.name) ?? (s.column ? null : "escolha a coluna");
     case "running": return newName(s.name) ?? (!s.column ? "escolha a coluna" : s.window !== null && !(s.window >= 2) ? "a janela móvel precisa de ao menos 2 linhas" : null);
     case "lag": return newName(s.name) ?? (!s.column ? "escolha a coluna" : !(s.periods >= 1) ? "informe quantas linhas atrás (1 ou mais)" : null);
+    case "summarize": {
+      const names = [...s.by, ...s.aggs.map((a) => a.name.trim())].map((n) => n.toLowerCase());
+      return s.aggs.some((a) => !a.name.trim()) ? "dê um nome a cada resultado"
+        : new Set(names).size !== names.length ? "há nomes repetidos entre as colunas de grupo e os resultados"
+          : s.aggs.some((a) => a.fn !== "count_rows" && !a.column) ? "escolha a coluna de cada resultado" : null;
+    }
+    case "pivot":
+      return !s.index.length ? "escolha ao menos uma coluna que identifique cada linha"
+        : !s.names_from || !s.values ? "escolha as colunas de nomes e de valores"
+          : s.index.includes(s.names_from) || s.index.includes(s.values) || s.names_from === s.values ? "as colunas de identificação, de nomes e de valores precisam ser diferentes" : null;
+    case "unpivot": {
+      const rest = cols.filter((c) => !s.columns.includes(c.name)).map((c) => c.name.toLowerCase());
+      const a = s.names_to.trim().toLowerCase(), b = s.values_to.trim().toLowerCase();
+      return s.columns.length < 2 ? "escolha ao menos 2 colunas"
+        : !a || !b ? "dê um nome às duas colunas novas"
+          : a === b || rest.includes(a) || rest.includes(b) ? "os nomes novos não podem repetir os de colunas que ficam" : null;
+    }
+    case "join":
+      return !s.other_id ? "escolha o outro dataset" : s.keys.some((k) => !k.left || !k.right) ? "escolha a coluna de ligação nos dois lados" : null;
+    case "append":
+      return !s.other_id ? "escolha o outro dataset"
+        : s.source_column?.trim() && (!s.label_current.trim() || !s.label_other.trim() || s.label_current.trim() === s.label_other.trim()) ? "informe dois rótulos diferentes para a coluna de origem" : null;
   }
 }
 
@@ -217,6 +265,9 @@ export function cleanStep(s: Step): Step {
   if (s.op === "running") return { ...s, name: s.name.trim(), window: s.window && Number.isFinite(s.window) ? Math.floor(s.window) : null };
   if (s.op === "filter" || s.op === "cond") return { ...s, conditions: s.conditions.map((c) => (MULTI_VALUE.includes(c.operator) ? { ...c, value: undefined } : NO_VALUE.includes(c.operator) ? { column: c.column, operator: c.operator } : { ...c, values: undefined })) } as Step;
   if ("name" in s && typeof s.name === "string") return { ...s, name: s.name.trim() } as Step;
+  if (s.op === "summarize") return { ...s, aggs: s.aggs.map((a) => ({ name: a.name.trim(), fn: a.fn, ...(a.fn === "count_rows" ? {} : { column: a.column }) })) };
+  if (s.op === "unpivot") return { ...s, names_to: s.names_to.trim(), values_to: s.values_to.trim() };
+  if (s.op === "append") return { ...s, source_column: s.source_column?.trim() || undefined };
   return s;
 }
 

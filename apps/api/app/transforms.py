@@ -253,10 +253,64 @@ class LagStep(BaseModel):
     by: By
 
 
+# --- reformatar tabelas (8.4): o número de linhas MUDA (resumir, pivotar) ou entram dados de outro dataset ---
+class AggSpec(BaseModel):
+    name: NewName
+    fn: Literal["count_rows", "count", "count_distinct", "mean", "sum", "min", "max", "median", "std"]
+    column: Ident | None = None  # `count_rows` (todas as linhas do grupo) dispensa coluna
+
+
+class SummarizeStep(BaseModel):
+    op: Literal["summarize"]
+    by: By  # vazio = a tabela inteira vira uma linha
+    aggs: list[AggSpec] = Field(min_length=1, max_length=20)
+
+
+class PivotStep(BaseModel):
+    op: Literal["pivot"]  # longo -> largo: cada valor de `names_from` vira uma coluna
+    index: Annotated[list[Ident], Field(min_length=1, max_length=10)]
+    names_from: Ident
+    values: Ident
+    fn: Literal["first", "sum", "mean", "min", "max", "count"] = "first"
+    prefix: str = Field(default="", max_length=40)
+
+
+class UnpivotStep(BaseModel):
+    op: Literal["unpivot"]  # largo -> longo: várias colunas viram pares (nome, valor)
+    columns: Annotated[list[Ident], Field(min_length=2, max_length=50)]
+    names_to: NewName
+    values_to: NewName
+    drop_nulls: bool = False
+
+
+class JoinKey(BaseModel):
+    left: Ident
+    right: Ident
+
+
+class JoinStep(BaseModel):
+    op: Literal["join"]  # mesclar com outro dataset (as colunas do outro entram ao lado)
+    other_id: str = Field(min_length=1, max_length=64)
+    kind: Literal["left", "inner", "full", "anti"] = "left"
+    keys: list[JoinKey] = Field(min_length=1, max_length=5)
+    columns: list[Ident] = Field(default_factory=list, max_length=100)  # colunas do outro a trazer (vazio = todas, menos as chaves)
+    suffix: str = Field(default="_2", min_length=1, max_length=20)  # acrescentado quando o nome já existe
+    allow_multiple: bool = False  # aceitar chave repetida no outro dataset (cada linha da esquerda é copiada)
+
+
+class AppendStep(BaseModel):
+    op: Literal["append"]  # acrescentar as linhas de outro dataset (colunas casadas pelo nome)
+    other_id: str = Field(min_length=1, max_length=64)
+    source_column: NewName | None = None  # coluna opcional que diz de qual dataset veio cada linha
+    label_current: str = Field(default="", max_length=100)
+    label_other: str = Field(default="", max_length=100)
+
+
 Step = Annotated[
     Union[SelectStep, RenameStep, CastStep, FilterStep, SortStep, DedupeStep, DropNullsStep, FillNullsStep, RowStatStep,
           ArithStep, MathStep, CondStep, BinsStep, ReplaceStep, TextFnStep, ConcatStep, DatePartStep, FormulaStep,
-          GroupStatStep, PctTotalStep, RankStep, ZScoreStep, RunningStep, LagStep],
+          GroupStatStep, PctTotalStep, RankStep, ZScoreStep, RunningStep, LagStep,
+          SummarizeStep, PivotStep, UnpivotStep, JoinStep, AppendStep],
     Field(discriminator="op"),
 ]
 
@@ -483,7 +537,212 @@ def _fmt(x: float) -> str:
     return f"{x:g}"
 
 
-def compile_step(step, schema: Schema, prev: str) -> str:
+@dataclass
+class Ctx:
+    """O que os passos que olham fora da tabela corrente precisam: o sandbox (valores distintos, chaves repetidas,
+    esquema de outro dataset), as CTEs já montadas e quem está pedindo (acesso ao outro dataset)."""
+    con: object
+    ctes: list[str]
+    user: object
+
+    def rows(self, sql: str) -> list:
+        return self.con.execute(sql).fetchall()
+
+    def with_ctes(self, sql: str) -> str:
+        return f"WITH {', '.join(self.ctes)} {sql}"
+
+
+MAX_PIVOT_COLUMNS = 40
+
+
+def _kind(dtype: str) -> str:
+    return "number" if is_numeric(dtype) else "date" if is_temporal(dtype) else "boolean" if dtype.upper() == "BOOLEAN" else "text"
+
+
+def _other(ctx: Ctx | None, other_id: str):
+    """Dataset de fora que o passo usa: precisa existir e o usuário precisa poder lê-lo (mesma mensagem nos dois casos)."""
+    if ctx is None:
+        raise TransformError("este passo precisa de acesso aos outros datasets")
+    try:
+        other = datasets.get_dataset(other_id)
+    except datasets.DatasetNotFound as exc:
+        raise TransformError(f"dataset não encontrado: {other_id}") from exc
+    if not permissions.can_read(ctx.user, other.id):
+        raise TransformError(f"dataset não encontrado: {other_id}")
+    return other, _describe(ctx.con, f"SELECT * FROM {q(other.table_name)}")
+
+
+def _reserved(schema: Schema, *names: str) -> None:
+    for n in names:
+        if n in schema:
+            raise TransformError(f"a coluna {n!r} é reservada; renomeie-a antes")
+
+
+def _unique_names(names: list[str]) -> None:
+    seen: set[str] = set()
+    for n in names:
+        if not n.strip() or any(ord(c) < 32 for c in n):
+            raise TransformError("os nomes das colunas não podem ser vazios")
+        if n.lower() in seen:
+            raise TransformError(f"o nome {n!r} ficaria repetido; escolha outro")
+        seen.add(n.lower())
+
+
+def _agg_expr(a: AggSpec, schema: Schema) -> str:
+    if a.fn == "count_rows":
+        return "COUNT(*)"
+    if not a.column:
+        raise TransformError(f"escolha a coluna de {a.name!r}")
+    col = _col(schema, a.column, need=None if a.fn in ("count", "count_distinct", "min", "max") else "numeric")
+    if a.fn == "sum":
+        return _sum(col, schema[a.column], "")
+    return {"count": f"COUNT({col})", "count_distinct": f"COUNT(DISTINCT {col})", "mean": f"AVG({col})", "min": f"MIN({col})",
+            "max": f"MAX({col})", "median": f"MEDIAN({col})", "std": f"STDDEV_SAMP({col})"}[a.fn]
+
+
+def _compile_summarize(step: SummarizeStep, schema: Schema, prev: str) -> str:
+    _reserved(schema, "__rn", "__o")
+    for c in step.by:
+        _col(schema, c)
+    if len(set(step.by)) != len(step.by):
+        raise TransformError("há colunas repetidas em 'agrupar por'")
+    _unique_names(list(step.by) + [a.name.strip() for a in step.aggs])
+    aggs = ", ".join(f"{_agg_expr(a, schema)} AS {q(a.name.strip())}" for a in step.aggs)
+    if not step.by:
+        return f"SELECT {aggs} FROM {prev}"
+    keys = ", ".join(q(c) for c in step.by)
+    # grupos na ordem em que aparecem (GROUP BY sozinho não garante ordem)
+    return (f"SELECT * EXCLUDE (__o) FROM (SELECT {keys}, {aggs}, MIN(__rn) AS __o "
+            f"FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM {prev}) GROUP BY {keys}) ORDER BY __o")
+
+
+def _compile_pivot(step: PivotStep, schema: Schema, prev: str, ctx: Ctx | None) -> str:
+    if ctx is None:
+        raise TransformError("este passo precisa de acesso aos dados")
+    _reserved(schema, "__rn", "__o")
+    for c in step.index:
+        _col(schema, c)
+    names = _col(schema, step.names_from)
+    value = _col(schema, step.values, need=None if step.fn in ("first", "count", "min", "max") else "numeric")
+    if step.names_from in step.index or step.values in step.index or step.names_from == step.values:
+        raise TransformError("a coluna de nomes, a de valores e as de identificação precisam ser diferentes")
+    found = ctx.rows(ctx.with_ctes(f"SELECT DISTINCT {names} AS c, CAST({names} AS VARCHAR) AS v FROM {prev} "
+                                   f"WHERE {names} IS NOT NULL ORDER BY c LIMIT {MAX_PIVOT_COLUMNS + 1}"))
+    labels = [r[1] for r in found]
+    if not labels:
+        raise TransformError(f"a coluna {step.names_from!r} não tem valores preenchidos para virar colunas")
+    if len(labels) > MAX_PIVOT_COLUMNS:
+        raise TransformError(f"{step.names_from!r} tem mais de {MAX_PIVOT_COLUMNS} valores distintos; filtre antes de pivotar")
+    new = [(step.prefix + v).strip() for v in labels]
+    _unique_names([c for c in step.index] + new)
+    cols = []
+    for label, name in zip(labels, new):
+        cond = f"CAST({names} AS VARCHAR) = {sql_str(label)}"
+        if step.fn == "first":
+            expr = f"arg_min({value}, __rn) FILTER (WHERE {cond})"
+        elif step.fn == "count":
+            expr = f"COUNT({value}) FILTER (WHERE {cond})"
+        elif step.fn == "sum":
+            total = f"SUM({value}) FILTER (WHERE {cond})"
+            expr = f"CAST({total} AS BIGINT)" if is_integer(schema[step.values]) else total
+        else:
+            fn = {"mean": "AVG", "min": "MIN", "max": "MAX"}[step.fn]
+            expr = f"{fn}({value}) FILTER (WHERE {cond})"
+        cols.append(f"{expr} AS {q(name)}")
+    keys = ", ".join(q(c) for c in step.index)
+    return (f"SELECT * EXCLUDE (__o) FROM (SELECT {keys}, {', '.join(cols)}, MIN(__rn) AS __o "
+            f"FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM {prev}) GROUP BY {keys}) ORDER BY __o")
+
+
+def _compile_unpivot(step: UnpivotStep, schema: Schema, prev: str) -> str:
+    _reserved(schema, "__rn", "__k")
+    if len(set(step.columns)) != len(step.columns):
+        raise TransformError("há colunas repetidas na lista")
+    for c in step.columns:
+        _col(schema, c)
+    kinds = {_kind(schema[c]) for c in step.columns}
+    if len(kinds) > 1:
+        raise TransformError("as colunas escolhidas têm tipos diferentes (número, texto, data…); converta-as para o mesmo tipo antes")
+    rest = [c for c in schema if c not in step.columns]
+    _unique_names(rest + [step.names_to.strip(), step.values_to.strip()])
+    keep = "".join(f"{q(c)}, " for c in rest)
+    parts = [
+        f"SELECT {keep}{sql_str(c)} AS {q(step.names_to.strip())}, {q(c)} AS {q(step.values_to.strip())}, __rn, {i} AS __k "
+        f"FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM {prev})" + (f" WHERE {q(c)} IS NOT NULL" if step.drop_nulls else "")
+        for i, c in enumerate(step.columns)
+    ]
+    return f"SELECT * EXCLUDE (__rn, __k) FROM ({' UNION ALL '.join(parts)}) ORDER BY __rn, __k"
+
+
+def _compile_join(step: JoinStep, schema: Schema, prev: str, ctx: Ctx | None) -> str:
+    other, rschema = _other(ctx, step.other_id)
+    _reserved(schema, "__rn", "__rr")
+    _reserved(rschema, "__rn", "__rr")
+    rtable = q(other.table_name)
+    for k in step.keys:
+        _col(schema, k.left)
+        _col(rschema, k.right)
+        if _kind(schema[k.left]) != _kind(rschema[k.right]):
+            raise TransformError(f"as chaves {k.left!r} ({schema[k.left]}) e {k.right!r} ({rschema[k.right]}) têm tipos diferentes; converta uma delas")
+    rkeys = [k.right for k in step.keys]
+    if not step.allow_multiple and step.kind != "anti":
+        dup = ctx.rows(f"SELECT COUNT(*) FROM (SELECT 1 FROM {rtable} WHERE "
+                       + " AND ".join(f"{q(c)} IS NOT NULL" for c in rkeys)
+                       + f" GROUP BY {', '.join(q(c) for c in rkeys)} HAVING COUNT(*) > 1)")[0][0]
+        if dup:
+            raise TransformError(f"no dataset {other.name!r} há {dup} chave(s) repetida(s): cada linha da esquerda seria copiada. "
+                                 "Marque “permitir várias correspondências” ou remova as duplicatas antes")
+    on = " AND ".join(f"l.{q(k.left)} = r.{q(k.right)}" for k in step.keys)
+    if step.kind == "anti":
+        return (f"SELECT * EXCLUDE (__rn) FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM {prev}) AS l "
+                f"WHERE NOT EXISTS (SELECT 1 FROM {rtable} AS r WHERE {on}) ORDER BY __rn")
+    bring = step.columns or [c for c in rschema if c not in rkeys]
+    for c in bring:
+        _col(rschema, c)
+    if len(set(bring)) != len(bring):
+        raise TransformError("há colunas repetidas na lista de colunas a trazer")
+    taken = {c.lower() for c in schema}
+    right_out = []
+    for c in bring:
+        name = c if c.lower() not in taken else c + step.suffix
+        if name.lower() in taken:
+            raise TransformError(f"a coluna {name!r} ainda ficaria repetida; mude o sufixo")
+        taken.add(name.lower())
+        right_out.append((c, name))
+    lkey = {k.left: k.right for k in step.keys}
+    left_sel = ", ".join((f"COALESCE(l.{q(c)}, r.{q(lkey[c])}) AS {q(c)}" if step.kind == "full" and c in lkey else f"l.{q(c)}") for c in schema)
+    right_sel = "".join(f", r.{q(c)} AS {q(n)}" for c, n in right_out)
+    how = {"left": "LEFT", "inner": "INNER", "full": "FULL"}[step.kind]
+    return (f"SELECT * EXCLUDE (__rn, __rr) FROM (SELECT {left_sel}{right_sel}, l.__rn AS __rn, r.__rr AS __rr "
+            f"FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM {prev}) AS l "
+            f"{how} JOIN (SELECT *, ROW_NUMBER() OVER () AS __rr FROM {rtable}) AS r ON {on}) ORDER BY __rn NULLS LAST, __rr")
+
+
+def _compile_append(step: AppendStep, schema: Schema, prev: str, ctx: Ctx | None) -> str:
+    other, rschema = _other(ctx, step.other_id)
+    _reserved(schema, "__o", "__rn")
+    _reserved(rschema, "__o", "__rn")
+    lower = {c.lower(): c for c in schema}
+    common = [(lower[c.lower()], c) for c in rschema if c.lower() in lower]
+    if not common:
+        raise TransformError(f"nenhuma coluna em comum com {other.name!r}: as colunas são casadas pelo nome (renomeie antes)")
+    for a, b in common:
+        if _kind(schema[a]) != _kind(rschema[b]):
+            raise TransformError(f"a coluna {a!r} é {schema[a]} aqui e {rschema[b]} em {other.name!r}; converta o tipo antes")
+    tag_l = tag_r = ""
+    if step.source_column:
+        _new_name({**schema, **rschema}, step.source_column)
+        if not step.label_current.strip() or not step.label_other.strip():
+            raise TransformError("informe o rótulo das duas origens para a coluna de origem")
+        if step.label_current.strip() == step.label_other.strip():
+            raise TransformError("os dois rótulos de origem precisam ser diferentes")
+        name = q(step.source_column.strip())
+        tag_l, tag_r = f", {sql_str(step.label_current.strip())} AS {name}", f", {sql_str(step.label_other.strip())} AS {name}"
+    return (f"SELECT * EXCLUDE (__o, __rn) FROM (SELECT *{tag_l}, 0 AS __o, ROW_NUMBER() OVER () AS __rn FROM {prev} "
+            f"UNION ALL BY NAME SELECT *{tag_r}, 1 AS __o, ROW_NUMBER() OVER () AS __rn FROM {q(other.table_name)}) ORDER BY __o, __rn")
+
+
+def compile_step(step, schema: Schema, prev: str, ctx: Ctx | None = None) -> str:
     """Corpo do SELECT desta etapa, lendo da etapa anterior (`prev`) com o esquema `schema`."""
     op = step.op
     if op == "select":
@@ -635,7 +894,17 @@ def compile_step(step, schema: Schema, prev: str) -> str:
         expr = {"previous": previous, "diff": f"({col} - {previous})",
                 "pct_change": f"(100.0 * ({col} - {previous}) / NULLIF({previous}, 0))"}[step.kind]
         return _windowed(schema, prev, step.name, expr)
-    raise TransformError(f"passo desconhecido: {op}")  # inalcançável: a união discriminada já recusa
+    if op == "summarize":
+        return _compile_summarize(step, schema, prev)
+    if op == "pivot":
+        return _compile_pivot(step, schema, prev, ctx)
+    if op == "unpivot":
+        return _compile_unpivot(step, schema, prev)
+    if op == "join":
+        return _compile_join(step, schema, prev, ctx)
+    if op == "append":
+        return _compile_append(step, schema, prev, ctx)
+    raise TransformError(f"passo desconhecido: {op}")  # inalcançável
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -665,7 +934,7 @@ def compile_recipe(recipe: Recipe, user) -> Compiled:
         schemas = [schema]
         for i, step in enumerate(recipe.steps, 1):
             try:
-                body = compile_step(step, schema, f"__s{i - 1}")
+                body = compile_step(step, schema, f"__s{i - 1}", Ctx(con, ctes, user))
                 ctes.append(f"__s{i} AS ({body})")
                 schema = _describe(con, f"WITH {', '.join(ctes)} SELECT * FROM __s{i}")
             except TransformError as exc:

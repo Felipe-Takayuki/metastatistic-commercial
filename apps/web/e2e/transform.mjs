@@ -22,6 +22,10 @@ try {
   const up = await fetch(`${BASE}/api/datasets`, { method: "POST", body: (() => { const f = new FormData(); f.append("file", new Blob([CSV], { type: "text/csv" }), NAME); return f; })() });
   const ds = await up.json();
   created.push(ds.id);
+  const NAME2 = "e2e-nomes.csv", SAVED2 = "e2e-reformatado";
+  const up2 = await fetch(`${BASE}/api/datasets`, { method: "POST", body: (() => { const f = new FormData(); f.append("file", new Blob(["id,nome\n1,Ana\n2,Bia\n3,Caio\n"], { type: "text/csv" }), NAME2); return f; })() });
+  const ds2 = await up2.json();
+  created.push(ds2.id);
   await page.goto(BASE);
   await page.locator(".ds-item", { hasText: NAME }).click();
   await page.getByRole("tab", { name: "Transformar" }).click();
@@ -130,6 +134,69 @@ try {
   check("a ordem original das linhas é preservada (ids 1 a 6)", (await Promise.all([0, 1, 2, 3, 4, 5].map((r) => cell(r, 1)))).join(",") === "1,2,3,4,5,6");
   check("os 3 passos aparecem descritos em português", (await stepTexts()).join(" | ") === '"media_grupo" = média de nota1 por grupo | "posicao" = posição de nota1 (maior = 1) por grupo | "acumulado" = soma acumulada de nota3, ordem id ↑ por grupo');
   await shot("tf-grupo");
+
+  // --- 10) reformatar e combinar (8.4): resumir, mesclar, despivotar, pivotar, acrescentar ---
+  await page.getByRole("button", { name: "Desfazer todos os passos" }).click();
+  const D = () => page.getByRole("dialog");
+  const waitSummary = (txt) => page.waitForFunction((t) => document.querySelector('[data-testid="tf-summary"]')?.textContent?.startsWith(t), txt);
+
+  await addStep("Resumir por grupo (uma linha por grupo)");
+  await box(D().getByRole("group", { name: "Agrupar por" }), "grupo").check();
+  await D().getByRole("button", { name: "+ resultado" }).click();
+  await D().getByLabel("Coluna do cálculo 2").selectOption("nota1");
+  check("o nome do resultado acompanha a escolha (mean_nota1)", (await D().getByLabel("Nome do resultado 2").inputValue()) === "mean_nota1");
+  await confirm();
+  await waitSummary("2 linhas · 3 colunas");
+  check("resumo: A = 3 linhas, média 6; B = 3 linhas, média 6,5 (vazio ignorado)", (await cell(0, 1)) === "A" && (await cell(0, 2)) === "3" && (await cell(0, 3)) === "6" && (await cell(1, 1)) === "B" && (await cell(1, 3)) === "6.5", `${await cell(0, 3)} ${await cell(1, 3)}`);
+  check("o passo vem descrito", (await stepTexts())[0] === "Resumir por grupo: n = número de linhas, mean_nota1 = média de nota1");
+  await shot("tf-resumo");
+  await page.getByRole("button", { name: "Desfazer todos os passos" }).click();
+
+  await addStep("Mesclar com outro dataset (trazer colunas)");
+  await D().getByLabel("Mesclar com").selectOption({ label: `${NAME2} · 3 linhas` });
+  check("sem escolher a coluna do outro, o botão diz o que falta", (await D().getByRole("button", { name: "Adicionar passo", exact: true }).isDisabled()) && (await D().getByRole("status").innerText()).includes("dois lados"));
+  await D().getByLabel("Coluna do outro 1").selectOption("id");
+  await confirm();
+  await waitSummary("6 linhas · 6 colunas");
+  check("mesclar: nomes entram ao lado (Ana na linha 1, vazio onde não há correspondência), 6 linhas na mesma ordem", (await cell(0, 6)) === "Ana" && (await cell(2, 6)) === "Caio" && (await cell(3, 6)) === "—" && (await cell(5, 1)) === "6");
+
+  await addStep("Despivotar: várias colunas viram linhas");
+  const cg = D().getByRole("group", { name: /^Colunas que viram linhas/ });
+  for (const c of ["nota1", "nota2", "nota3"]) await box(cg, c).check();
+  for (const c of ["id"]) await box(cg, c).uncheck();
+  await D().getByLabel("Nome da coluna de nomes").fill("prova");
+  await D().getByLabel("Nome da coluna de valores").fill("nota");
+  await confirm();
+  await waitSummary("18 linhas · 5 colunas");
+  check("despivotar: 6 linhas × 3 notas = 18, linha a linha (id 1: nota1, nota2, nota3)", (await cell(0, 4)) === "nota1" && (await cell(1, 4)) === "nota2" && (await cell(2, 5)) === "9" && (await cell(3, 1)) === "2");
+
+  await addStep("Pivotar: valores de uma coluna viram colunas");
+  const ig = D().getByRole("group", { name: /^Colunas que identificam/ });
+  for (const c of ["grupo", "nome"]) await box(ig, c).check();
+  await D().getByLabel("Valores desta coluna viram colunas").selectOption("prova");
+  await D().getByLabel("Valores que preenchem as colunas novas").selectOption("nota");
+  await confirm();
+  await waitSummary("6 linhas · 6 colunas");
+  check("pivotar de volta: nota1/2/3 viram colunas, 1ª linha = 7, 8, 9 e a nota ausente continua vazia", (await cell(0, 4)) === "7" && (await cell(0, 5)) === "8" && (await cell(0, 6)) === "9" && (await cell(1, 5)) === "—" && (await cell(5, 6)) === "—");
+
+  await addStep("Acrescentar linhas de outro dataset");
+  await D().getByLabel("Acrescentar linhas de").selectOption({ label: `${NAME2} · 3 linhas` });
+  await D().getByLabel("Marcar de onde veio cada linha").check();
+  await D().getByLabel("Rótulo das linhas daqui").fill("notas");
+  await D().getByLabel("Rótulo das linhas do outro dataset").fill("nomes");
+  await confirm();
+  await waitSummary("9 linhas · 7 colunas");
+  check("acrescentar: 6 + 3 = 9 linhas, coluna de origem marca de onde veio cada uma", (await cell(0, 7)) === "notas" && (await cell(8, 7)) === "nomes" && (await cell(8, 1)) === "3");
+  check("os 4 passos aparecem descritos em português", (await stepTexts()).length === 4 && (await stepTexts())[0].startsWith(`Mesclar com ${NAME2} por id`));
+  await shot("tf-reformatar");
+
+  await page.getByLabel("Nome do novo dataset").fill(SAVED2);
+  await page.getByRole("button", { name: "Salvar como dataset" }).click();
+  await page.getByRole("heading", { name: SAVED2 }).waitFor();
+  const saved2 = (await (await fetch(`${BASE}/api/datasets`)).json()).find((d) => d.name === SAVED2);
+  if (saved2) created.push(saved2.id);
+  check("salvo como dataset de 9 linhas e 7 colunas", saved2?.n_rows === 9 && saved2?.columns.length === 7, JSON.stringify(saved2?.n_rows));
+  await page.goto("about:blank"); // sai da página antes de apagar: uma prévia em andamento leria um Parquet que acabou de sumir (500 do sandbox)
 } catch (e) {
   s.failures.push(`exceção: ${e.message}`);
   console.log(`FAIL exceção: ${e.message}`);

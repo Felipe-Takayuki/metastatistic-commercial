@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
+import type { Dataset } from "../../api";
 import {
-  CAST_LABEL, DATE_PART_LABEL, FN_LABEL, GROUP_FN_LABEL, LAG_KIND_LABEL, MATH_LABEL, RANK_METHOD_LABEL, RUNNING_FN_LABEL, MULTI_VALUE, NO_VALUE, OPERATOR_LABEL, TEXT_FN_LABEL, dateColumns, numericColumns,
-  parseNumberList, parseTextList, type ColumnInfo, type Condition, type Operand, type Operator, type SortKey, type Step,
+  AGG_LABEL, CAST_LABEL, DATE_PART_LABEL, JOIN_KIND_LABEL, PIVOT_FN_LABEL, FN_LABEL, GROUP_FN_LABEL, LAG_KIND_LABEL, MATH_LABEL, RANK_METHOD_LABEL, RUNNING_FN_LABEL, MULTI_VALUE, NO_VALUE, OPERATOR_LABEL, TEXT_FN_LABEL, dateColumns, numericColumns,
+  parseNumberList, parseTextList, type AggFn, type AggSpec, type ColumnInfo, type Condition, type Operand, type Operator, type SortKey, type Step,
 } from "../../lib/transforms";
 
-interface Props { step: Step; cols: ColumnInfo[]; onChange: (s: Step) => void }
+interface Props { step: Step; cols: ColumnInfo[]; onChange: (s: Step) => void; datasets: Dataset[]; currentId: string }
 type Of<T extends Step["op"]> = Extract<Step, { op: T }>;
 
 const Field = ({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) => (
@@ -101,7 +102,7 @@ function Conditions({ conditions, combine, cols, onChange }: { conditions: Condi
   );
 }
 
-export function StepForm({ step, cols, onChange }: Props) {
+export function StepForm({ step, cols, onChange, datasets, currentId }: Props) {
   const nameField = (s: Step & { name: string }) => <Field label="Nome da nova coluna"><input value={s.name} onChange={(e) => onChange({ ...s, name: e.target.value } as Step)} maxLength={100} aria-label="Nome da nova coluna" /></Field>;
   const num = numericColumns(cols);
   switch (step.op) {
@@ -366,7 +367,140 @@ export function StepForm({ step, cols, onChange }: Props) {
         </>
       );
     }
+    case "summarize": return <SummarizeForm s={step as Of<"summarize">} cols={cols} num={num} onChange={onChange} />;
+    case "pivot": {
+      const s = step as Of<"pivot">;
+      const others = cols.filter((c) => !s.index.includes(c.name));
+      return (
+        <>
+          <ColumnPicker cols={cols} selected={s.index} onChange={(index) => onChange({ ...s, index })} label="Colunas que identificam cada linha" hint="ex.: o código do participante" />
+          <ColumnSelect cols={cols} only={others} value={s.names_from} onChange={(names_from) => onChange({ ...s, names_from })} label="Valores desta coluna viram colunas" />
+          <ColumnSelect cols={cols} only={others} value={s.values} onChange={(values) => onChange({ ...s, values })} label="Valores que preenchem as colunas novas" />
+          <Field label="Se houver mais de um valor na mesma célula, usar">
+            <select value={s.fn} onChange={(e) => onChange({ ...s, fn: e.target.value as Of<"pivot">["fn"] })} aria-label="Se houver mais de um valor na mesma célula, usar">{Object.entries(PIVOT_FN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          </Field>
+          <Field label="Prefixo dos nomes novos (opcional)"><input value={s.prefix} maxLength={40} onChange={(e) => onChange({ ...s, prefix: e.target.value })} aria-label="Prefixo dos nomes novos" /></Field>
+          <p className="muted small" style={{ margin: 0 }}>Cada valor distinto vira uma coluna (máximo 40). Combinações sem dado ficam vazias e linhas com o nome vazio são ignoradas.</p>
+        </>
+      );
+    }
+    case "unpivot": {
+      const s = step as Of<"unpivot">;
+      return (
+        <>
+          <ColumnPicker cols={cols} selected={s.columns} onChange={(columns) => onChange({ ...s, columns })} label="Colunas que viram linhas" hint="mesmo tipo (ex.: as notas)" />
+          <Field label="Nome da coluna que guarda o nome antigo"><input value={s.names_to} maxLength={100} onChange={(e) => onChange({ ...s, names_to: e.target.value })} aria-label="Nome da coluna de nomes" /></Field>
+          <Field label="Nome da coluna que guarda o valor"><input value={s.values_to} maxLength={100} onChange={(e) => onChange({ ...s, values_to: e.target.value })} aria-label="Nome da coluna de valores" /></Field>
+          <label className="check"><input type="checkbox" checked={s.drop_nulls} onChange={(e) => onChange({ ...s, drop_nulls: e.target.checked })} /> Descartar linhas sem valor</label>
+        </>
+      );
+    }
+    case "join": return <JoinForm s={step as Of<"join">} cols={cols} datasets={datasets} currentId={currentId} onChange={onChange} />;
+    case "append": {
+      const s = step as Of<"append">;
+      const withTag = s.source_column !== undefined;
+      return (
+        <>
+          <OtherDataset value={s.other_id} datasets={datasets} currentId={currentId} onChange={(other_id) => onChange({ ...s, other_id })} label="Acrescentar linhas de" />
+          <label className="check"><input type="checkbox" checked={withTag} onChange={(e) => onChange({ ...s, source_column: e.target.checked ? "origem" : undefined })} /> Marcar de onde veio cada linha</label>
+          {withTag && (
+            <>
+              <Field label="Nome da coluna de origem"><input value={s.source_column ?? ""} maxLength={100} onChange={(e) => onChange({ ...s, source_column: e.target.value })} aria-label="Nome da coluna de origem" /></Field>
+              <Field label="Rótulo das linhas daqui"><input value={s.label_current} maxLength={100} onChange={(e) => onChange({ ...s, label_current: e.target.value })} aria-label="Rótulo das linhas daqui" /></Field>
+              <Field label="Rótulo das linhas do outro dataset"><input value={s.label_other} maxLength={100} onChange={(e) => onChange({ ...s, label_other: e.target.value })} aria-label="Rótulo das linhas do outro dataset" /></Field>
+            </>
+          )}
+          <p className="muted small" style={{ margin: 0 }}>As colunas são casadas pelo <strong>nome</strong> (e precisam ter o mesmo tipo). Colunas que só existem de um lado ficam vazias do outro.</p>
+        </>
+      );
+    }
   }
+}
+
+const autoName = (a: AggSpec): string => (a.fn === "count_rows" ? "n" : `${a.fn}_${a.column ?? ""}`.slice(0, 100));
+
+function SummarizeForm({ s, cols, num, onChange }: { s: Of<"summarize">; cols: ColumnInfo[]; num: ColumnInfo[]; onChange: (s: Step) => void }) {
+  const setAgg = (i: number, patch: Partial<AggSpec>) => onChange({
+    ...s,
+    aggs: s.aggs.map((a, j) => {
+      if (j !== i) return a;
+      const next = { ...a, ...patch };
+      if (next.fn === "count_rows") delete next.column;
+      else if (!next.column) next.column = (["count", "count_distinct", "min", "max"].includes(next.fn) ? cols : num)[0]?.name;
+      // o nome acompanha a escolha enquanto a pessoa não tiver digitado o seu
+      return !a.name || a.name === autoName(a) ? { ...next, name: autoName(next) } : next;
+    }),
+  });
+  return (
+    <>
+      <ColumnPicker cols={cols} selected={s.by} onChange={(by) => onChange({ ...s, by })} label="Agrupar por" hint="nenhuma marcada = a tabela inteira vira uma linha" />
+      <span className="small muted">Resultados (uma coluna cada):</span>
+      {s.aggs.map((a, i) => {
+        const anyType = ["count", "count_distinct", "min", "max"].includes(a.fn);
+        return (
+          <div key={i} className="condition-row">
+            <select value={a.fn} onChange={(e) => setAgg(i, { fn: e.target.value as AggFn })} aria-label={`Cálculo ${i + 1}`}>{Object.entries(AGG_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            {a.fn !== "count_rows" && (
+              <select value={a.column ?? ""} onChange={(e) => setAgg(i, { column: e.target.value })} aria-label={`Coluna do cálculo ${i + 1}`}>{(anyType ? cols : num).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select>
+            )}
+            <input value={a.name} maxLength={100} placeholder="nome do resultado" onChange={(e) => onChange({ ...s, aggs: s.aggs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} aria-label={`Nome do resultado ${i + 1}`} />
+            {s.aggs.length > 1 && <button type="button" className="btn ghost sm" onClick={() => onChange({ ...s, aggs: s.aggs.filter((_, j) => j !== i) })} aria-label={`Remover resultado ${i + 1}`}>✕</button>}
+          </div>
+        );
+      })}
+      <div><button type="button" className="btn ghost sm" onClick={() => onChange({ ...s, aggs: [...s.aggs, { name: autoName({ name: "", fn: "mean", column: num[0]?.name }), fn: "mean", column: num[0]?.name }] })}>+ resultado</button></div>
+      <p className="muted small" style={{ margin: 0 }}>O resultado tem uma linha por grupo, na ordem em que os grupos aparecem. As colunas que não forem de grupo nem de resultado somem. Valores vazios são ignorados nos cálculos.</p>
+    </>
+  );
+}
+
+function OtherDataset({ value, datasets, currentId, onChange, label }: { value: string; datasets: Dataset[]; currentId: string; onChange: (id: string) => void; label: string }) {
+  const options = datasets.filter((d) => d.id !== currentId);
+  return (
+    <Field label={label}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+        <option value="">(escolha um dataset)</option>
+        {options.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.n_rows.toLocaleString("pt-BR")} linhas</option>)}
+      </select>
+    </Field>
+  );
+}
+
+function JoinForm({ s, cols, datasets, currentId, onChange }: { s: Of<"join">; cols: ColumnInfo[]; datasets: Dataset[]; currentId: string; onChange: (s: Step) => void }) {
+  const other = datasets.find((d) => d.id === s.other_id);
+  const otherCols: ColumnInfo[] = other?.columns.map((c) => ({ name: c.name, dtype: c.dtype })) ?? [];
+  const setKey = (i: number, patch: Partial<{ left: string; right: string }>) => onChange({ ...s, keys: s.keys.map((k, j) => (j === i ? { ...k, ...patch } : k)) });
+  const keyRights = s.keys.map((k) => k.right);
+  return (
+    <>
+      <OtherDataset value={s.other_id} datasets={datasets} currentId={currentId} label="Mesclar com"
+        onChange={(other_id) => onChange({ ...s, other_id, columns: [], keys: s.keys.map((k) => ({ left: k.left, right: "" })) })} />
+      <Field label="Quais linhas manter">
+        <select value={s.kind} onChange={(e) => onChange({ ...s, kind: e.target.value as Of<"join">["kind"] })} aria-label="Quais linhas manter">{Object.entries(JOIN_KIND_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+      </Field>
+      <span className="small muted">Ligar as linhas quando estas colunas forem iguais:</span>
+      {s.keys.map((k, i) => (
+        <div key={i} className="condition-row">
+          <select value={k.left} onChange={(e) => setKey(i, { left: e.target.value })} aria-label={`Coluna daqui ${i + 1}`}>{cols.map((c) => <option key={c.name} value={c.name}>{c.name} · {c.dtype}</option>)}</select>
+          <span>=</span>
+          <select value={k.right} onChange={(e) => setKey(i, { right: e.target.value })} aria-label={`Coluna do outro ${i + 1}`} disabled={!other}>
+            <option value="">(escolha)</option>
+            {otherCols.map((c) => <option key={c.name} value={c.name}>{c.name} · {c.dtype}</option>)}
+          </select>
+          {s.keys.length > 1 && <button type="button" className="btn ghost sm" onClick={() => onChange({ ...s, keys: s.keys.filter((_, j) => j !== i) })} aria-label={`Remover ligação ${i + 1}`}>✕</button>}
+        </div>
+      ))}
+      {s.keys.length < 5 && <div><button type="button" className="btn ghost sm" onClick={() => onChange({ ...s, keys: [...s.keys, { left: cols[0]?.name ?? "", right: "" }] })}>+ ligação</button></div>}
+      {s.kind !== "anti" && other && (
+        <>
+          <ColumnPicker cols={otherCols.filter((c) => !keyRights.includes(c.name))} selected={s.columns} onChange={(columns) => onChange({ ...s, columns })} label="Colunas do outro dataset a trazer" hint="nenhuma marcada = todas" />
+          <Field label="Sufixo quando o nome já existir aqui"><input value={s.suffix} maxLength={20} onChange={(e) => onChange({ ...s, suffix: e.target.value })} aria-label="Sufixo" /></Field>
+          <label className="check"><input type="checkbox" checked={s.allow_multiple} onChange={(e) => onChange({ ...s, allow_multiple: e.target.checked })} /> Permitir várias correspondências (copia a linha daqui para cada uma)</label>
+        </>
+      )}
+      <p className="muted small" style={{ margin: 0 }}>Por padrão o outro dataset precisa ter <strong>no máximo uma linha por chave</strong>; se não tiver, o passo avisa em vez de duplicar linhas em silêncio. Chaves vazias nunca se ligam. O novo dataset herda as restrições de acesso dos dois.</p>
+    </>
+  );
 }
 
 function GroupBy({ cols, s, onChange }: { cols: ColumnInfo[]; s: Step & { by: string[] }; onChange: (s: Step) => void }) {

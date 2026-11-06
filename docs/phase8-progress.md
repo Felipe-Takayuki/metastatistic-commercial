@@ -1,6 +1,6 @@
-# Fase 8 (projeto) — transformações de dados, estilo Power Query ✅ fatias 8.1, 8.2 e 8.3 (2026-11-06)
+# Fase 8 (projeto) — transformações de dados, estilo Power Query ✅ fatias 8.1 a 8.4 (2026-11-06)
 
-Plano completo (aprovado em 2026-11-06, ordem: 8.1+8.2 → 8.3 → 8.4 → 8.5 → 8.6). Feitas: **8.1 (base e passos de coluna/linha)**, **8.2 (colunas calculadas)** e **8.3 (por grupo e janela, seção final)**.
+Plano completo (aprovado em 2026-11-06, ordem: 8.1+8.2 → 8.3 → 8.4 → 8.5 → 8.6). Feitas: **8.1 (base e passos de coluna/linha)**, **8.2 (colunas calculadas)**, **8.3 (por grupo e janela)** e **8.4 (reformatar e combinar, seção final)**.
 Interface: aba **Transformar** (entre Dados e Consulta SQL), em http://localhost:8080 → Explorar.
 
 ## Como funciona
@@ -62,3 +62,38 @@ Seis passos novos, grupo "Por grupo e janela" do menu. **A linha continua sendo 
 - Sem **resumo por grupo** (uma linha por grupo), pivotar, mesclar e acrescentar: **8.4**. Sem medidas salvas (8.5) nem construtor visual de gráficos (8.6).
 - Janela só por número de **linhas** (não por intervalo de tempo); sem média móvel centrada nem "ano contra ano".
 - A coluna de ordem aceita até 5 critérios; "agrupar por" até 10 colunas.
+
+
+---
+
+# Fatia 8.4 — reformatar e combinar ✅
+
+Cinco passos novos, grupo **"Reformatar e combinar"** do menu. Ao contrário da 8.3, aqui o **número de linhas muda** (resumir, pivotar, despivotar) ou entram **dados de outro dataset** (mesclar, acrescentar).
+
+| Passo | O que faz |
+|---|---|
+| **Resumir por grupo** (`summarize`) | uma linha por grupo; 9 cálculos (nº de linhas, contagem, valores distintos, média, soma, mín., máx., mediana, desvio); sem grupo = a tabela vira uma linha |
+| **Pivotar** (`pivot`, longo → largo) | cada valor distinto de uma coluna vira uma coluna; célula com mais de um valor usa "primeiro", soma, média, mín., máx. ou contagem; prefixo opcional |
+| **Despivotar** (`unpivot`, largo → longo) | várias colunas viram pares (nome, valor); opção de descartar linhas sem valor |
+| **Mesclar** (`join`) | ligar por 1 a 5 colunas com outro dataset: manter todas daqui (`left`), só as comuns (`inner`), todas (`full`) ou só as **sem** correspondência (`anti`); escolhe quais colunas trazer; sufixo se o nome já existir |
+| **Acrescentar** (`append`) | empilha as linhas de outro dataset casando colunas **pelo nome**; coluna opcional "origem" com um rótulo para cada lado |
+
+## Decisões e armadilhas
+- **Ordem determinística**: grupos saem na ordem em que aparecem (`MIN(__rn)`), despivotar vai linha a linha e coluna a coluna, mesclar mantém a ordem da esquerda (as só-da-direita do `full` vão ao fim) e acrescentar põe as linhas daqui antes das do outro. `GROUP BY`/`UNION ALL` sozinhos não garantem isso.
+- **Mesclar não duplica linhas em silêncio**: se o outro dataset tem chave repetida, o passo **recusa** ("há N chave(s) repetida(s)…") até a pessoa marcar "permitir várias correspondências" ou remover as duplicatas. O `anti` não precisa de chave única. Chaves vazias nunca se ligam (como no SQL).
+- **Tipos precisam ser compatíveis** (número/texto/data/booleano): chaves de tipos diferentes, colunas de mesmo nome com tipos diferentes no acrescentar e colunas de tipos diferentes no despivotar dão erro com a instrução "converta o tipo antes", em vez de uma conversão escondida.
+- **Pivotar descobre as colunas consultando os dados** (valores distintos, no máximo **40**; acima disso pede para filtrar). Nomes novos que colidam (`a` e `A`) ou colidam com as colunas de identificação são recusados. Valores vazios na coluna de nomes são ignorados.
+- **Soma de inteiros continua inteira** (BIGINT), no resumo e no pivô; soma de nada é vazio, não 0.
+- **Acesso**: o outro dataset passa pelo mesmo sandbox do usuário. Se ele não pode ler, a mensagem é a mesma de "não existe" (não confirma que existe e não vaza colunas); se há filtro de linhas, o passo usa a **cópia filtrada**; e o dataset salvo **herda a restrição de todos os datasets citados no SQL** (já era assim por `derive.source_ids`, agora com teste: origem aberta + outro restrito → derivado restrito).
+- `compile_step` ganhou um parâmetro `Ctx` (conexão do sandbox, CTEs já montadas, usuário) para os passos que olham fora da tabela corrente. Colunas reservadas novas: `__o`, `__k`, `__rr`.
+
+## Verificado
+`pytest` 320 (+23 em `tests/test_transforms_reshape.py`, **cada passo contra cálculo independente em Python**: 9 agregações por grupo, tabela inteira e chave dupla, pivô com `first`/soma/média/contagem e prefixo, ida e volta despivotar → pivotar, 4 tipos de mesclagem, duas chaves, colunas escolhidas com sufixo, chave repetida recusada/aceita, acrescentar com colunas faltantes e com coluna de origem, mensagens de erro, limite de 40 colunas, nomes colidindo, encadeamento + salvar + receita, **outro dataset ilegível não vaza e o derivado herda a restrição**, **filtro de linhas vale no outro dataset**), `vitest` 243 (+5), `tsc`/`vite build` limpos e `npm run e2e:transform` (**22 checagens novas em navegador real**: resumo, mesclar, despivotar, pivotar de volta, acrescentar com origem e salvar; captura conferida).
+**Não reexecutados**: integração com o motor R (`RUN_INTEGRATION`) e `e2e:all` (a aba só ganhou itens de menu e formulários). **Não verificado**: análise do JASP sobre um dataset reformatado.
+
+## Limites
+- Pivotar não tem "ordem das novas colunas" (saem em ordem alfabética/numérica do valor) nem pivô com várias colunas de valores.
+- Mesclar não oferece direita (`right`) nem anti da direita; para isso, inverta os datasets. Não casa colunas por "parecido" (só igualdade exata).
+- Acrescentar só casa por nome (sem mapear nomes diferentes: renomeie antes).
+- Pré-existente, visto no e2e: se um dataset é **apagado enquanto outra requisição monta o sandbox**, a consulta pode falhar com 500 (`queries._sandbox` cria uma view para cada dataset legível). Só aparece em corrida; não tratado aqui.
+- **Falta (ordem aprovada)**: 8.5 medidas salvas (sem materializar) → 8.6 construtor visual → tile/bloco. **Antes da 8.6**, simplificar a geração de gráficos: criar gráfico/KPI **sem precisar escrever SQL** (pedido do usuário).

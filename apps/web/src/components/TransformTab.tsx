@@ -16,7 +16,7 @@ interface Props {
   onDatasetCreated: (ds: Dataset) => void | Promise<void>;
 }
 
-const GROUPS = ["Colunas", "Linhas", "Nova coluna", "Por grupo e janela"] as const;
+const GROUPS = ["Colunas", "Linhas", "Nova coluna", "Por grupo e janela", "Reformatar e combinar"] as const;
 
 export function TransformTab({ dataset, datasets, draft, onDraft, onDatasetCreated }: Props) {
   const canEdit = useCan("editor");
@@ -63,7 +63,7 @@ export function TransformTab({ dataset, datasets, draft, onDraft, onDatasetCreat
   const failing = failingStep(error);
 
   const setSteps = (steps: Step[]) => onDraft({ ...draft, steps });
-  const startNew = (op: StepOp) => setEditing({ index: null, step: defaultStep(op, colsBefore(null)) });
+  const startNew = (op: StepOp) => setEditing({ index: null, step: defaultStep(op, colsBefore(null), datasets.find((d) => d.id !== draft.sourceId)?.id ?? "") });
   const apply = () => {
     if (!editing) return;
     const step = cleanStep(editing.step);
@@ -124,7 +124,7 @@ export function TransformTab({ dataset, datasets, draft, onDraft, onDatasetCreat
           {draft.steps.map((s, i) => (
             <li key={i} className={`step${failing === i + 1 ? " failing" : failing !== null && i + 1 > failing ? " skipped" : ""}`}>
               <span className="step-n">{i + 1}</span>
-              <span className="step-text">{describeStep(s)}</span>
+              <span className="step-text">{describeStep(s, (id) => datasets.find((d) => d.id === id)?.name ?? "dataset removido")}</span>
               <span className="step-actions">
                 <button className="btn ghost sm" onClick={() => setSteps(moveStep(draft.steps, i, -1))} disabled={i === 0} aria-label={`Subir passo ${i + 1}`}>↑</button>
                 <button className="btn ghost sm" onClick={() => setSteps(moveStep(draft.steps, i, 1))} disabled={i === draft.steps.length - 1} aria-label={`Descer passo ${i + 1}`}>↓</button>
@@ -159,7 +159,7 @@ export function TransformTab({ dataset, datasets, draft, onDraft, onDatasetCreat
           <div className="modal card" style={{ maxWidth: 620 }} role="dialog" aria-modal="true" aria-label={editing.index === null ? "Novo passo" : `Editar passo ${editing.index + 1}`}>
             <div className="modal-head"><strong>{STEP_KINDS.find((k) => k.op === editing.step.op)?.label}</strong><span className="spacer" /><button className="btn ghost sm" onClick={() => setEditing(null)} aria-label="Fechar">✕</button></div>
             <div className="modal-body">
-              <StepForm step={editing.step} cols={editingCols} onChange={(step) => setEditing({ ...editing, step })} />
+              <StepForm step={editing.step} cols={editingCols} datasets={datasets} currentId={draft.sourceId} onChange={(step) => setEditing({ ...editing, step })} />
               {problem && <p className="muted small" role="status" style={{ margin: 0 }}>Falta: {problem}.</p>}
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn primary" onClick={apply} disabled={!!problem}>{editing.index === null ? "Adicionar passo" : "Aplicar"}</button>

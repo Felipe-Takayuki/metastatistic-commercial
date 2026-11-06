@@ -115,3 +115,53 @@ describe("passos por grupo e janela", () => {
   });
   it("o catálogo agrupa os novos passos", () => expect(STEP_KINDS.filter((k) => k.group === "Por grupo e janela").map((k) => k.op)).toEqual(["group_stat", "pct_total", "rank", "zscore", "running", "lag"]));
 });
+
+describe("reformatar e combinar (8.4)", () => {
+  type S<T extends Step["op"]> = Extract<Step, { op: T }>;
+  it("o catálogo tem os cinco passos novos, em grupo próprio", () =>
+    expect(STEP_KINDS.filter((k) => k.group === "Reformatar e combinar").map((k) => k.op)).toEqual(["summarize", "pivot", "unpivot", "join", "append"]));
+  it("descreve cada um em português", () => {
+    expect(describeStep({ op: "summarize", by: ["grupo"], aggs: [{ name: "n", fn: "count_rows" }, { name: "media", fn: "mean", column: "nota1" }] })).toBe("Resumir por grupo: n = número de linhas, media = média de nota1");
+    expect(describeStep({ op: "summarize", by: [], aggs: [{ name: "n", fn: "count_rows" }] })).toBe("Resumir a tabela inteira: n = número de linhas");
+    expect(describeStep({ op: "pivot", index: ["id"], names_from: "tempo", values: "nota", fn: "first", prefix: "" })).toBe("Pivotar: valores de tempo viram colunas (nota), identificando por id");
+    expect(describeStep({ op: "unpivot", columns: ["a", "b"], names_to: "prova", values_to: "nota", drop_nulls: true })).toBe('Despivotar a, b em "prova" / "nota" (sem vazios)');
+    const names = (id: string) => (id === "x" ? "nomes.csv" : id);
+    expect(describeStep({ op: "join", other_id: "x", kind: "left", keys: [{ left: "id", right: "id" }, { left: "a", right: "b" }], columns: [], suffix: "_2", allow_multiple: false }, names)).toBe("Mesclar com nomes.csv por id, a = b (mantém as daqui)");
+    expect(describeStep({ op: "append", other_id: "x", source_column: "lote", label_current: "1", label_other: "2" }, names)).toBe('Acrescentar linhas de nomes.csv (origem em "lote")');
+  });
+  it("resumir: nomes e colunas são exigidos, e o nome pode repetir a coluna original", () => {
+    const s = defaultStep("summarize", cols) as S<"summarize">;
+    expect(stepProblem(s, cols)).toBeNull();
+    expect(stepProblem({ ...s, by: ["grupo"], aggs: [{ name: "grupo", fn: "count_rows" }] }, cols)).toMatch(/repetidos/);
+    expect(stepProblem({ ...s, aggs: [{ name: " ", fn: "count_rows" }] }, cols)).toMatch(/nome a cada/);
+    expect(stepProblem({ ...s, aggs: [{ name: "m", fn: "mean" }] }, cols)).toMatch(/escolha a coluna/);
+    expect(stepProblem({ ...s, aggs: [{ name: "nota1", fn: "mean", column: "nota1" }] }, cols)).toBeNull(); // a original some, então o nome é livre
+    expect(cleanStep({ ...s, aggs: [{ name: " n ", fn: "count_rows", column: "x" }] })).toEqual({ ...s, aggs: [{ name: "n", fn: "count_rows" }] });
+  });
+  it("pivotar e despivotar exigem colunas distintas", () => {
+    const p = defaultStep("pivot", cols) as S<"pivot">;
+    expect(stepProblem(p, cols)).toBeNull();
+    expect(stepProblem({ ...p, names_from: p.index[0] }, cols)).toMatch(/diferentes/);
+    expect(stepProblem({ ...p, index: [] }, cols)).toMatch(/identifique/);
+    const u = defaultStep("unpivot", cols) as S<"unpivot">;
+    expect(u.columns).toEqual(["id", "nota1"]);
+    expect(stepProblem(u, cols)).toBeNull();
+    expect(stepProblem({ ...u, columns: ["nota1"] }, cols)).toMatch(/ao menos 2/);
+    expect(stepProblem({ ...u, names_to: "grupo" }, cols)).toMatch(/não podem repetir/); // 'grupo' continua existindo
+    expect(stepProblem({ ...u, names_to: "id" }, cols)).toBeNull(); // 'id' vira linha, então o nome fica livre
+    expect(stepProblem({ ...u, values_to: "VARIAVEL" }, cols)).toMatch(/não podem repetir/); // igual ao outro nome novo (sem diferenciar maiúsculas)
+  });
+  it("mesclar e acrescentar exigem o outro dataset", () => {
+    const j = defaultStep("join", cols, "") as S<"join">;
+    expect(stepProblem(j, cols)).toMatch(/outro dataset/);
+    expect(stepProblem({ ...j, other_id: "x" }, cols)).toMatch(/dois lados/);
+    expect(stepProblem({ ...j, other_id: "x", keys: [{ left: "id", right: "codigo" }] }, cols)).toBeNull();
+    const a = defaultStep("append", cols, "x") as S<"append">;
+    expect(a.other_id).toBe("x");
+    expect(stepProblem(a, cols)).toBeNull();
+    expect(stepProblem({ ...a, source_column: "lote", label_current: "a", label_other: "a" }, cols)).toMatch(/diferentes/);
+    expect(stepProblem({ ...a, source_column: "lote", label_current: "a", label_other: "b" }, cols)).toBeNull();
+    expect(cleanStep({ ...a, source_column: "  " }).op).toBe("append");
+    expect((cleanStep({ ...a, source_column: "  " }) as S<"append">).source_column).toBeUndefined();
+  });
+});
