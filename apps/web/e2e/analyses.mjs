@@ -180,6 +180,18 @@ try {
   check("ANCOVA: resíduos com 20 gl e nenhuma interação fantasma", has(t, "Residuals") && !t.includes("✻"), t.slice(0, 300));
   await shot("a2b-ancova");
 
+  // médias marginais ajustadas e comparações dois a dois (modelo tratamento + altura, como na referência do R)
+  await page.getByRole("group", { name: /^Fatores/ }).getByLabel(/^bloco/).uncheck();
+  await page.getByLabel(/^Médias marginais ajustadas/).check();
+  await page.getByLabel(/^Comparar os níveis de cada fator/).check();
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText(/Post Hoc/).first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  t = await resultText();
+  const AJ = REF.ancova_adj;
+  check("ANCOVA: médias marginais ajustadas dos 3 primeiros níveis iguais ao R (covariável na média)", AJ.lsmean.slice(0, 3).every((m) => has(t, f3(m))), t.slice(0, 900));
+  check("ANCOVA: post hoc (1 − 2): estimativa, t e p de Tukey iguais ao R", has(t, f3(AJ.pairs[0].est), f3(AJ.pairs[0].t), " 23 "), t.slice(0, 1400));
+  await shot("a2b2-ancova-ajustadas");
+
   // qui-quadrado com frequências esperadas baixas (tratamento 8 × bloco 4, uma observação por célula): aviso de Cochran
   await pickAnalysis("Qui-quadrado (tabela de contingência)");
   await page.getByLabel(/^Linhas/).selectOption("tratamento");
@@ -241,6 +253,14 @@ try {
   check("logística: razões de chances de altura e diametro iguais ao R", has(t, f3(LG.or[1]), f3(LG.or[2])), t.slice(0, 600));
   check("logística: acurácia e AUC iguais ao R", has(t, f3(LG.accuracy), f3(LG.auc)), t.slice(0, 800));
   await shot("a4b-logistica");
+  // seleção por AIC (backward): o JASP percorre cheio -> diametro -> nulo (AIC 47,048 -> 45,646 -> 45,230), como step() do R
+  await page.getByLabel("Método").selectOption("backward");
+  check("logística: nos métodos por AIC a tela explica que a tabela mostra os passos", (await page.getByLabel("Resumo dos campos").innerText()).includes("cada passo"));
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText("45.230").first().waitFor({ timeout: 90000 }); // run() vê a tabela da execução anterior
+  t = await resultText();
+  check("logística backward: AIC de cada passo igual ao step() do R (47,048; 45,646; 45,230)", has(t, "47.048", "45.646", "45.230"), t.slice(0, 900));
+  await page.getByLabel("Método").selectOption("enter");
   // desfecho com 8 categorias: recusado com a saída sugerida
   await page.getByLabel(/^Desfecho binário/).selectOption({ label: "tratamento (8 níveis)" });
   check("logística: desfecho com 8 níveis bloqueia a execução e sugere SQL + dataset",

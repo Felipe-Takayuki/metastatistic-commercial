@@ -84,6 +84,8 @@ def data():
     tt = upload("e2e-ttest.csv", FIX / "ttest.csv")
     ids["tt"] = tt["id"]
     ids["colin"] = derive("e2e-colinear", f"SELECT produtividade, altura, 2 * altura + (CAST(FLOOR(produtividade) AS BIGINT) % 3) AS altura2, diametro FROM \"{raw['table_name']}\"")["id"]
+    ids["steps"] = derive("e2e-passos", f"SELECT CASE WHEN altura + 5 * ((CAST(FLOOR(produtividade) AS BIGINT) % 7) - 3) >= 140 THEN 'alto' ELSE 'baixo' END AS nivel, "
+                                       f"altura, diametro, 2 * altura + (CAST(FLOOR(produtividade) AS BIGINT) % 3) AS altura2 FROM \"{raw['table_name']}\"")["id"]
     ids["resp"] = derive("e2e-resposta", f"SELECT \"group\" AS grupo, score, CASE WHEN score >= 10.5 THEN 'sim' ELSE 'nao' END AS resposta FROM \"{tt['table_name']}\"")["id"]
     ids["rm"] = upload("e2e-medidas-repetidas.csv", FIX / "medidas_repetidas.csv")["id"]
     fr = upload("e2e-friedman.csv", FIX / "friedman.csv")
@@ -759,3 +761,57 @@ def test_bayesian_contingency_tables_match_contingencyTableBF(data):
         row = table(res, "contTabBasBF")["data"][0]
         close(row["value[BF]"], ref[key], rel=1e-5)
         assert row["value[N]"] == 80
+
+
+ANCOVA_BASE = {"dependent": "produtividade", "fixedFactors": ["tratamento"], "covariates": ["altura"], "modelTerms": [{"components": ["tratamento"]}, {"components": ["altura"]}]}
+
+
+def test_ancova_adjusted_marginal_means_match_R(data):
+    """Médias marginais ajustadas pela covariável (altura na sua média): predict() do lm em R."""
+    ref = REF["ancova_adj"]
+    res = run("Ancova", data["dbc"], {**ANCOVA_BASE, "marginalMeanTerms": ["tratamento"]})
+    rows = {str(r["tratamento"]): r for r in table(res, "marginalMeansContainer_tratamento")["data"]}
+    assert list(rows) == ref["levels"]
+    for lvl, m, se in zip(ref["levels"], ref["lsmean"], ref["se"]):
+        close(rows[lvl]["lsmean"], m); close(rows[lvl]["SE"], se)
+
+
+def test_ancova_posthoc_tukey_holm_bonferroni_match_R(data):
+    ref = REF["ancova_adj"]
+    res = run("Ancova", data["dbc"], {**ANCOVA_BASE, "postHocTerms": ["tratamento"], "postHocTypeStandard": True,
+                                      "postHocCorrectionTukey": True, "postHocCorrectionHolm": True, "postHocCorrectionBonferroni": True})
+    rows = {(str(r["contrast_A"]), str(r["contrast_B"])): r for r in table(res, "postHocStandardContainer_tratamento1")["data"]}
+    assert len(rows) == len(ref["pairs"]) == 28
+    for want in ref["pairs"]:
+        got = rows[(want["a"], want["b"])]
+        assert got["df"] == ref["df"]
+        close(got["estimate"], want["est"]); close(got["SE"], want["se"]); close(got["t.ratio"], want["t"])
+        close(got["tukey"], want["tukey"], rel=1e-4); close(got["holm"], want["holm"]); close(got["bonferroni"], want["bonferroni"])
+
+
+STEP_PREDS = ["altura", "diametro", "altura2"]
+
+
+def logit_steps(data, method, blocks):
+    opts = {"dependent": "nivel", "covariates": STEP_PREDS, "factors": [], "coefficientEstimate": True, "method": method, "modelTerms": blocks}
+    return run("RegressionLogistic", data["steps"], opts)
+
+
+def test_logistic_stepwise_methods_match_R_step(data):
+    """Seleção por AIC: o JASP só percorre os passos com DOIS blocos (um vazio, 'forçado', e os candidatos). O último modelo = step() do R."""
+    forced = {"components": [], "name": "model0", "title": "Model 0"}
+    cand = {"components": STEP_PREDS, "name": "model1", "title": "Model 1"}
+    for method in ("backward", "forward", "stepwise"):
+        ref = REF["logit_steps"][method]
+        res = logit_steps(data, method, [forced, cand])
+        summary = table(res, "modelSummary")["data"]
+        close(summary[-1]["aic"], ref["aic"])
+        est = [r for r in table(res, "estimatesTable")["data"] if r["model"] == summary[-1]["mod"]]
+        want_terms = [ref["terms"]] if isinstance(ref["terms"], str) else ref["terms"]   # o JSON do R guarda um termo único como texto
+        assert [r["param"] for r in est if r["param"] != "(Intercept)"] == want_terms, method
+        for got, want_est, want_se in zip(est, ref["est"], ref["se"]):
+            close(got["est"], want_est, rel=1e-5); close(got["se"], want_se, rel=1e-5)
+    # backward começa no modelo cheio e o AIC cai a cada passo; forward começa no nulo
+    back = [r["aic"] for r in table(logit_steps(data, "backward", [forced, cand]), "modelSummary")["data"]]
+    assert back == sorted(back, reverse=True) and len(back) >= 2
+    assert len(table(logit_steps(data, "enter", [cand]), "modelSummary")["data"]) == 1   # 'enter': um modelo, todos os preditores

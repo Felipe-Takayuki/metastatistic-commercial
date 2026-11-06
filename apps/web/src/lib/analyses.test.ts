@@ -304,6 +304,30 @@ describe("toOptions — o contrato com o motor JASP", () => {
     expect(chi).toMatchObject({ rows: ["g"], columns: ["h"], samplingModel: "poisson", priorConcentration: 1, bayesFactorType: "BF10", countsObserved: true });
     expect(full(BAYES_CONTINGENCY_DEF, d, defaultState(BAYES_CONTINGENCY_DEF)).samplingModel).toBe("independentMultinomialRowsFixed");
   });
+  it("ANCOVA: comparações dois a dois e médias marginais ajustadas são opt-in; ida e volta preserva", () => {
+    const d = ds([col("y", "scale"), col("A", "nominal", 3), col("x", "scale")]);
+    const st = (values = {}) => state({ dependent: ["y"], fixedFactors: ["A"], covariates: ["x"] }, values, defaultState(ANCOVA_DEF));
+    const off = full(ANCOVA_DEF, d, st());
+    expect(off).toMatchObject({ marginalMeanTerms: [], postHocTerms: [], postHocTypeStandard: false });
+    for (const k of ["marginals", "posthoc"]) expect(off).not.toHaveProperty(k);
+    const on = full(ANCOVA_DEF, d, st({ marginals: true, posthoc: true, postHocCorrectionHolm: true }));
+    expect(on).toMatchObject({ marginalMeanTerms: ["A"], postHocTerms: ["A"], postHocTypeStandard: true, postHocCorrectionTukey: true, postHocCorrectionHolm: true });
+    const back = fromOptions(ANCOVA_DEF, toOptions(ANCOVA_DEF, st({ marginals: true, posthoc: true })));
+    expect(back.values).toMatchObject({ marginals: true, posthoc: true });
+  });
+  it("logística: `enter` = um modelo; backward/forward/stepwise = dois blocos (vazio + candidatos); dica de passos", () => {
+    const d = ds([col("nivel", "nominal", 2), col("a", "scale"), col("b", "scale")]);
+    const st = (values = {}) => state({ dependent: ["nivel"], covariates: ["a", "b"], factors: [] }, values, defaultState(LOGISTIC_DEF));
+    expect(full(LOGISTIC_DEF, d, st()).modelTerms).toEqual([{ components: ["a", "b"], name: "model1", title: "Model 1" }]);
+    expect(full(LOGISTIC_DEF, d, st()).method).toBe("enter");
+    for (const method of ["backward", "forward", "stepwise"]) {
+      const o = full(LOGISTIC_DEF, d, st({ method }));
+      expect(o.method).toBe(method);
+      expect(o.modelTerms).toEqual([{ components: [], name: "model0", title: "Model 0" }, { components: ["a", "b"], name: "model1", title: "Model 1" }]);
+      expect(LOGISTIC_DEF.hint!(resolve(LOGISTIC_DEF, d, st({ method })))).toMatch(/cada passo.*último modelo é o selecionado/);
+    }
+    expect(LOGISTIC_DEF.hint!(resolve(LOGISTIC_DEF, d, st()))).toBeNull();
+  });
   it("ANCOVA não oferece Kruskal-Wallis (o JASP só o tem na ANOVA)", () => {
     expect(ANCOVA_DEF.sections.flatMap((x) => x.items).some((i) => i.key.startsWith("kruskal"))).toBe(false);
   });

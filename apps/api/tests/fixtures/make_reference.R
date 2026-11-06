@@ -179,6 +179,22 @@ out$bayes_ancova <- list(trat = ab(produtividade ~ trat_f), altura = ab(produtiv
 cbf <- function(...) extractBF(contingencyTableBF(tb, ...))$bf
 out$bayes_chi <- list(poisson = cbf(sampleType = "poisson"), joint = cbf(sampleType = "jointMulti"),
   rows_fixed = cbf(sampleType = "indepMulti", fixedMargin = "rows"), cols_fixed = cbf(sampleType = "indepMulti", fixedMargin = "cols"))
+# --- catálogo 6.16: ANCOVA (médias marginais ajustadas e post hoc de Tukey/Holm/Bonferroni) e logística passo a passo (AIC) ---
+fa <- lm(produtividade ~ trat_f + altura, data = d)
+ndl <- data.frame(trat_f = factor(levels(d$trat_f), levels = levels(d$trat_f)), altura = mean(d$altura)); Xl <- model.matrix(~ trat_f + altura, ndl); bet <- coef(fa); Vc <- vcov(fa)
+lsm <- drop(Xl %*% bet); lsm_se <- sqrt(diag(Xl %*% Vc %*% t(Xl))); kk <- nrow(Xl); dfa <- fa$df.residual
+pp <- combn(kk, 2, simplify = FALSE)
+pest <- vapply(pp, function(ij) drop((Xl[ij[1], ] - Xl[ij[2], ]) %*% bet), numeric(1))
+pse <- vapply(pp, function(ij) sqrt(drop((Xl[ij[1], ] - Xl[ij[2], ]) %*% Vc %*% (Xl[ij[1], ] - Xl[ij[2], ]))), numeric(1))
+pt_ <- pest / pse; praw <- 2 * pt(-abs(pt_), dfa)
+out$ancova_adj <- list(levels = levels(d$trat_f), lsmean = lsm, se = lsm_se, df = dfa, k = kk,
+  pairs = lapply(seq_along(pp), function(i) list(a = levels(d$trat_f)[pp[[i]][1]], b = levels(d$trat_f)[pp[[i]][2]], est = pest[i], se = pse[i], t = pt_[i],
+    tukey = ptukey(abs(pt_[i]) * sqrt(2), kk, dfa, lower.tail = FALSE), holm = p.adjust(praw, "holm")[i], bonferroni = p.adjust(praw, "bonferroni")[i])))
+d$nivel_s <- factor(ifelse(d$altura + 5 * ((floor(d$produtividade) %% 7) - 3) >= 140, "alto", "baixo"))
+fullg <- glm(nivel_s ~ altura + diametro + altura2, data = d, family = binomial); nulg <- glm(nivel_s ~ 1, data = d, family = binomial)
+stp <- function(m) list(terms = attr(terms(m), "term.labels"), aic = AIC(m), est = unname(coef(m)), se = unname(summary(m)$coefficients[, 2]))
+out$logit_steps <- list(backward = stp(step(fullg, direction = "backward", trace = 0)), forward = stp(step(nulg, scope = formula(fullg), direction = "forward", trace = 0)),
+  stepwise = stp(step(nulg, scope = formula(fullg), direction = "both", trace = 0)))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

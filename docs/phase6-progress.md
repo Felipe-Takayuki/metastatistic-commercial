@@ -2,6 +2,7 @@
 
 Pedidos do usuário: **teste z de duas amostras e de proporções — FEITOS na 6.12** (análises próprias da plataforma, ver abaixo; o z de UMA média continua sendo do JASP, 6.7).
 
+Resolvido na 6.16: ANCOVA com post hoc e médias marginais ajustadas; regressão logística com seleção de preditores por AIC.
 Resolvido na 6.15: correlação, regressão linear, ANCOVA e qui-quadrado bayesianos.
 Resolvido na 6.14: t pareado (e bayesiano) com vários pares.
 Resolvido na 6.13: pressupostos para correlação, regressão e qui-quadrado; notas automáticas em relatório/dashboard (opt-in por bloco); aviso de Likert na aba Dados.
@@ -376,4 +377,25 @@ O catálogo passa a **21 análises** (grupo "Bayesianas": 8). As quatro funçõe
 - Correlação bayesiana só de Pearson (Spearman/Kendall existem no JASP, sem referência independente aqui); sem gráficos de prior/posterior e robustez para essas quatro (há nos testes t).
 - Regressão e ANCOVA bayesianas sem interpretação textual da tabela de modelos (só o BF de inclusão da ANCOVA); sem fatores na regressão bayesiana; sem priors alternativos (hyper-g, etc.) nem seleção de modelos por MCMC.
 - Qui-quadrado bayesiano: sem razão de chances nem teste de hipótese hipergeométrico (2×2).
+
+---
+
+# Fatia 6.16 — ANCOVA com post hoc/médias ajustadas e logística passo a passo ✅ (sem mudança no motor)
+
+## ANCOVA
+Duas opções novas, **desligadas por padrão** (o resultado padrão não muda):
+- **Médias marginais ajustadas** (`marginalMeanTerms`): média de cada nível do fator com a covariável na sua média, com EP e IC.
+- **Comparações dois a dois** dos níveis de cada fator (`postHocTerms` + `postHocTypeStandard`): Tukey (padrão), Holm e Bonferroni, sobre as médias ajustadas (t com gl do resíduo).
+Conferido contra o R sem pacote extra: `predict` do `lm` na média da covariável para as médias (e EP por `X V X′`), contrastes por `c′β` e `√(c′Vc)`, Tukey por `ptukey(|t|√2, k, gl, lower = FALSE)`, Holm/Bonferroni por `p.adjust` — os 28 pares de um fator com 8 níveis.
+
+## Regressão logística: método de seleção
+Novo seletor **Método**: Enter (padrão), Backward, Forward e Stepwise (por AIC). Descoberta importante: com um único bloco de modelo o JASP **não percorre os passos** (backward/forward ficavam idênticos ao Enter, em silêncio); com **dois blocos**, um vazio (preditores "forçados": nenhum) e os candidatos, ele percorre o caminho. O formulário monta os dois blocos nos métodos por AIC, e uma dica avisa que a tabela mostra cada passo (M₀, M₁…) e que o último modelo é o selecionado.
+Conferido com `step()` do R (`backward` a partir do modelo cheio; `forward` e `both` a partir do nulo) num desfecho que depende de `altura`: modelo final (`altura2`), AIC (32,903), coeficientes e EP iguais; e que o AIC cai a cada passo do backward. E2e: caminho cheio → `diametro` → nulo (AIC 47,048 → 45,646 → 45,230), igual ao `step()`.
+
+## Verificado
+`vitest` 198 (2 novos), `pytest` 213 (3 novos), `e2e:all` 6 suítes verdes.
+
+## Pendências
+- ANCOVA: sem contrastes, sem efeitos simples (interação fator × covariável) nem teste de homogeneidade das inclinações; post hoc só do tipo padrão (sem Dunnett/Games-Howell).
+- Logística: sem interações nem pesos; a dica de passos não destaca o modelo final na tabela.
 

@@ -338,6 +338,17 @@ export const ANCOVA_DEF: AnalysisDef = {
     { title: "Modelo", items: [toggle("interactions", "Incluir interações entre os fatores", false, { local: true })] },
     { title: "Pressupostos", items: [toggle("homogeneityTests", "Homogeneidade de variâncias (Levene)"), toggle("qqPlot", "Gráfico Q-Q dos resíduos")] },
     { title: "Estatísticas", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("effectSizeEtaSquared", "η² (eta ao quadrado)"), toggle("effectSizePartialEtaSquared", "η² parcial"), toggle("effectSizeOmegaSquared", "ω² (ômega ao quadrado)")] },
+    {
+      title: "Médias ajustadas pela covariável",
+      items: [toggle("marginals", "Médias marginais ajustadas de cada fator (covariável na média)", false, { local: true })],
+    },
+    {
+      title: "Comparações múltiplas (médias ajustadas)",
+      items: [
+        toggle("posthoc", "Comparar os níveis de cada fator dois a dois", false, { local: true }),
+        toggle("postHocCorrectionTukey", "Tukey", true, { showIf: (v) => !!v.posthoc }), toggle("postHocCorrectionHolm", "Holm", false, { showIf: (v) => !!v.posthoc }), toggle("postHocCorrectionBonferroni", "Bonferroni", false, { showIf: (v) => !!v.posthoc }),
+      ],
+    },
   ],
   // Efeitos principais de fatores e covariáveis (as covariáveis entram só como efeito principal) + interações entre fatores, se pedidas.
   derive: (s) => {
@@ -345,9 +356,17 @@ export const ANCOVA_DEF: AnalysisDef = {
     const terms = [...f, ...s.vars.covariates].map((x) => ({ components: [x] }));
     if (s.values.interactions) for (const combo of interactionTerms(f)) terms.push({ components: combo });
     const anyEffect = !!(s.values.effectSizeEtaSquared || s.values.effectSizePartialEtaSquared || s.values.effectSizeOmegaSquared);
-    return { modelTerms: terms, effectSizeEstimates: anyEffect };
+    return {
+      modelTerms: terms, effectSizeEstimates: anyEffect,
+      marginalMeanTerms: s.values.marginals ? f : [],
+      postHocTerms: s.values.posthoc ? f : [], postHocTypeStandard: !!s.values.posthoc,
+    };
   },
-  parse: (o) => ({ interactions: ANOVA_DEF.parse!(o).interactions }),
+  parse: (o) => ({
+    interactions: ANOVA_DEF.parse!(o).interactions,
+    marginals: Array.isArray(o.marginalMeanTerms) && o.marginalMeanTerms.length > 0,
+    posthoc: Array.isArray(o.postHocTerms) && o.postHocTerms.length > 0,
+  }),
   check: ANOVA_DEF.check,
 };
 
@@ -375,12 +394,23 @@ export const LOGISTIC_DEF: AnalysisDef = {
       items: [toggle("confusionMatrix", "Matriz de confusão", true), toggle("accuracy", "Acurácia", true), toggle("auc", "AUC", true), toggle("sensitivity", "Sensibilidade"), toggle("specificity", "Especificidade"), toggle("precision", "Precisão")],
     },
     { title: "Diagnóstico e gráficos", items: [toggle("multicollinearity", "Multicolinearidade (VIF)"), toggle("rocPlot", "Curva ROC"), toggle("residualVsFittedPlot", "Resíduos × valores ajustados")] },
+    {
+      title: "Seleção de preditores",
+      items: [{
+        type: "choice", key: "method", label: "Método", default: "enter",
+        options: [{ value: "enter", label: "Enter (todos os preditores de uma vez)" }, { value: "backward", label: "Backward (parte do modelo cheio e remove por AIC)" }, { value: "forward", label: "Forward (parte do nulo e adiciona por AIC)" }, { value: "stepwise", label: "Stepwise (adiciona e remove por AIC)" }],
+      }],
+    },
   ],
-  // Como na regressão linear, `modelTerms` é uma lista de MODELOS: um modelo com todos os preditores.
+  // Como na regressão linear, `modelTerms` é uma lista de MODELOS. `enter`: um modelo com todos os preditores. Nos métodos por AIC o
+  // JASP só percorre os passos com DOIS blocos: um vazio (preditores "forçados": nenhum) e os candidatos (conferido contra step() do R).
   derive: (s) => {
     const predictors = [...s.vars.covariates, ...s.vars.factors];
-    return { modelTerms: predictors.length ? [{ components: predictors, name: "model1", title: "Model 1" }] : [] };
+    if (predictors.length === 0) return { modelTerms: [] };
+    const candidates = { components: predictors, name: "model1", title: "Model 1" };
+    return { modelTerms: s.values.method === "enter" || !s.values.method ? [candidates] : [{ components: [], name: "model0", title: "Model 0" }, candidates] };
   },
+  hint: (s) => (s.values.method && s.values.method !== "enter" ? "Nos métodos por AIC a tabela mostra cada passo (M₀, M₁…); o último modelo é o selecionado." : null),
   check: ({ dataset, state }) => {
     const out: string[] = [];
     const y = state.vars.dependent[0];
