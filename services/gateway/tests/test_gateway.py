@@ -66,9 +66,13 @@ def test_determine_target_url():
     assert determine_target_url("/api/v1/tenants/t123") == f"{settings.auth_service_url}/tenants/t123"
     assert determine_target_url("/tenants/t123") == f"{settings.auth_service_url}/tenants/t123"
 
+    # Stat Orchestrator
+    assert determine_target_url("/api/v1/analyses/run") == f"{settings.stat_orchestrator_url}/analyses/run"
+    assert determine_target_url("/analyses/status") == f"{settings.stat_orchestrator_url}/analyses/status"
+    assert determine_target_url("/api/v1/jobs/submit") == f"{settings.stat_orchestrator_url}/jobs/submit"
+
     # Data API
     assert determine_target_url("/api/v1/datasets") == f"{settings.data_api_url}/datasets"
-    assert determine_target_url("/api/v1/analyses/run") == f"{settings.data_api_url}/analyses/run"
     assert determine_target_url("/datasets/123") == f"{settings.data_api_url}/datasets/123"
 
 

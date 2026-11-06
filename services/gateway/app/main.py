@@ -104,7 +104,7 @@ async def route_tenants(request: Request, path: str) -> Response:
 @app.api_route("/{prefix}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def route_direct(request: Request, prefix: str, path: str) -> Response:
     global http_client
-    if prefix in {"datasets", "queries", "analyses", "reports", "dashboards", "transforms", "collections"}:
+    if prefix in {"datasets", "queries", "analyses", "reports", "dashboards", "transforms", "collections", "jobs"}:
         return await proxy_request(request, f"/{prefix}/{path}", client=http_client)
     return Response(
         content=b'{"error": "Not Found", "detail": "Route not mapped in gateway"}',

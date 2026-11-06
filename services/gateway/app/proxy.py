@@ -23,7 +23,8 @@ def determine_target_url(path: str) -> str:
     """
     Roteia o caminho da requisição para o serviço downstream apropriado:
     - /api/v1/auth/* e /api/v1/tenants/* -> AUTH_SERVICE_URL
-    - /api/v1/* (datasets, queries, analyses, reports, dashboards, etc.) -> DATA_API_URL
+    - /api/v1/analyses/* e /api/v1/jobs/* -> STAT_ORCHESTRATOR_URL
+    - /api/v1/* (datasets, queries, reports, dashboards, etc.) -> DATA_API_URL
     """
     clean_path = "/" + path.lstrip("/")
 
@@ -41,12 +42,24 @@ def determine_target_url(path: str) -> str:
     elif clean_path.startswith("/tenants/") or clean_path == "/tenants":
         return f"{settings.auth_service_url.rstrip('/')}{clean_path}"
 
+    # Casos de Orquestração Estatística e Jobs
+    if clean_path.startswith("/api/v1/analyses"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.stat_orchestrator_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/analyses"):
+        return f"{settings.stat_orchestrator_url.rstrip('/')}{clean_path}"
+    elif clean_path.startswith("/api/v1/jobs"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.stat_orchestrator_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/jobs"):
+        return f"{settings.stat_orchestrator_url.rstrip('/')}{clean_path}"
+
     # Casos de Data API
     if clean_path.startswith("/api/v1/"):
         target_path = clean_path.replace("/api/v1", "", 1)
         return f"{settings.data_api_url.rstrip('/')}{target_path}"
 
-    # Outros endpoints de dados diretos (/datasets, /queries, /analyses, etc.)
+    # Outros endpoints de dados diretos (/datasets, /queries, etc.)
     return f"{settings.data_api_url.rstrip('/')}{clean_path}"
 
 

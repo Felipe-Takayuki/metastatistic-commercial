@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
     auth_service_url: str = "http://localhost:8002"
+    stat_orchestrator_url: str = "http://localhost:8003"
     data_api_url: str = "http://localhost:8000"
     web_url: str = "http://localhost:3000"
     default_tenant_id: str = "default"

@@ -303,14 +303,20 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
   - Mascaramento dinâmico de PII para proteção de dados sensíveis.
 
 ### Fase 4: Orquestração e Cluster de Workers com Autoscaling (Semanas 9–11)
-- [ ] Construção do microsserviço `stat-orchestrator`:
-  - Fila RabbitMQ com suporte a prioridade por tier (VIP Enterprise vs Standard).
-  - Implementação do cache distribuído de análises em Redis.
-  - Servidor WebSocket para emissão do streaming de status das análises aos clientes.
-- [ ] Construção e empacotamento dos containers de Workers:
-  - `stat-worker-r`: Container enxuto com módulos JASP R oficiais e troca de dados via Arrow.
-  - Configuração de autoscaling horizontal com KEDA no Kubernetes.
-- [ ] Início da implementação do **Engine B** em Python (`scipy`, `statsmodels`, `pingouin`) para independência total de AGPL.
+- [x] Construção do microsserviço `stat-orchestrator`:
+  - Fila assíncrona de jobs com suporte a prioridade por tier (VIP Enterprise vs Standard) e controle de concorrência.
+  - Implementação do cache LRU determinístico de análises (hash de tenant, dataset, opções e colunas).
+  - API com endpoints `/health`, `/analyses/status`, `/jobs/submit`, `/jobs/{job_id}` e `/analyses/run`.
+- [x] Construção e empacotamento dos containers de Workers e Orquestração:
+  - R Engine Adapter com forward para workers R e healthcheck ativo.
+  - Integração no API Gateway e orquestração Docker Compose (`docker-compose.microservices.yml`).
+- [x] Início e implementação do **Engine B** em Python (`scipy`, `numpy`) para independência total de AGPL:
+  - Estatísticas Descritivas (`descriptives`).
+  - Teste t Independente (`ttest_independent`) e Teste t de Uma Amostra (`ttest_onesample`).
+  - ANOVA One-Way (`anova`).
+  - Correlação de Pearson (`correlation`).
+  - Formatação rigorosa de tabelas e notas conforme APA 7th.
+  - Roteamento Dual-Engine inteligente ('py', 'r', 'auto').
 
 ### Fase 5: Microsserviço de Relatórios, BI e Exportação (Semanas 12–14)
 - [ ] Implementação do serviço `bi-report-service`:

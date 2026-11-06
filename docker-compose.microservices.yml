@@ -21,11 +21,13 @@ services:
     environment:
       PORT: "8080"
       AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
+      STAT_ORCHESTRATOR_URL: "http://stat-orchestrator:8003"
       DATA_API_URL: "http://api:8000"
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
     depends_on:
       - auth-tenant-service
+      - stat-orchestrator
       - api
     restart: unless-stopped
 
@@ -39,6 +41,25 @@ services:
       DATABASE_URL: "sqlite:///./data/auth_tenant.db"
     volumes:
       - auth_data:/service/data
+    restart: unless-stopped
+
+  stat-orchestrator:
+    build: ./services/stat-orchestrator
+    image: metastatistic-stat-orchestrator:latest
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: "8003"
+      R_WORKER_URLS: "http://r-worker-1:8000"
+      DATA_DIR: "/data"
+      CACHE_SIZE_MB: "64"
+      CACHE_MAX_ENTRIES: "256"
+      DEFAULT_ENGINE: "auto"
+      ANALYSIS_TIMEOUT_S: "60"
+    volumes:
+      - datasets:/data:ro
+    depends_on:
+      - r-worker-1
     restart: unless-stopped
 
   api:

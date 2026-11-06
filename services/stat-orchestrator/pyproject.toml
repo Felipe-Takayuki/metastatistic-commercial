@@ -1,0 +1,28 @@
+[project]
+name = "stat-orchestrator"
+version = "0.1.0"
+description = "Statistical Orchestrator Microservice with Dual-Engine (R and Pure Python/SciPy)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "pyarrow>=26.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
