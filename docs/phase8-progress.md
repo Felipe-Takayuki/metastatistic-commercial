@@ -1,6 +1,6 @@
-# Fase 8 (projeto) — transformações de dados, estilo Power Query ✅ fatias 8.1 + 8.2 (2026-11-06)
+# Fase 8 (projeto) — transformações de dados, estilo Power Query ✅ fatias 8.1, 8.2 e 8.3 (2026-11-06)
 
-Plano completo (aprovado em 2026-11-06, ordem: 8.1+8.2 → 8.3 → 8.4 → 8.5 → 8.6). Esta entrega junta **8.1 (base e passos de coluna/linha)** e **8.2 (colunas calculadas)**.
+Plano completo (aprovado em 2026-11-06, ordem: 8.1+8.2 → 8.3 → 8.4 → 8.5 → 8.6). Feitas: **8.1 (base e passos de coluna/linha)**, **8.2 (colunas calculadas)** e **8.3 (por grupo e janela, seção final)**.
 Interface: aba **Transformar** (entre Dados e Consulta SQL), em http://localhost:8080 → Explorar.
 
 ## Como funciona
@@ -31,3 +31,34 @@ Uma **receita** é uma lista de passos (JSON) sobre um dataset de origem. O serv
 - A prévia mostra as primeiras 100 linhas e roda a receita inteira a cada mudança (com debounce); em datasets muito grandes e receitas longas pode ficar lenta (limite de 30 s por consulta, como no SQL).
 - Editar uma receita nunca altera um dataset já salvo: salva-se outro.
 - Receitas aceitam até 50 passos; fórmulas até 500 caracteres.
+
+---
+
+# Fatia 8.3 — colunas por grupo e janela ✅
+
+Seis passos novos, grupo "Por grupo e janela" do menu. **A linha continua sendo uma linha** (o número de linhas não muda): ela ganha o valor do seu grupo ou da sua vizinhança.
+
+| Passo | O que calcula |
+|---|---|
+| **Estatística do grupo** (`group_stat`) | média, soma, mínimo, máximo, contagem, mediana, desvio padrão do grupo, repetido em cada linha. "Agrupar por" vazio = tabela inteira |
+| **Percentual do total** (`pct_total`) | 100 × valor ÷ soma do grupo (soma 100 em cada grupo) |
+| **Posição no ranking** (`rank`) | maior ou menor = 1ª; empates com buraco (1,2,2,4), sem buraco (1,2,2,3) ou desempatados pela ordem das linhas; vazio fica sem posição |
+| **Padronizar** (`zscore`) | (valor − média do grupo) ÷ desvio amostral do grupo; grupo de 1 linha ou sem variação = vazio |
+| **Acumulado ou média móvel** (`running`) | soma/média/mín./máx./contagem acumulada, ou móvel de n linhas (opção "vazio até a janela encher"), com ordem própria dentro do grupo |
+| **Diferença ou variação** (`lag`) | diferença, variação % ou valor da linha n atrás, por grupo e ordem |
+
+## Decisões e armadilhas
+- **Janela com `ORDER BY` reordena a saída no DuckDB** (conferido): todo passo de janela passa pelo índice oculto `__rn` e termina com `ORDER BY __rn`, então as linhas **nunca mudam de lugar**. O mesmo índice **desempata** acumulados e rankings, deixando-os determinísticos (empate na ordem escolhida = ordem original). `__rn` é nome reservado (o passo recusa uma coluna com esse nome, assim como a remoção de duplicatas).
+- **`SUM` de inteiros vira `HUGEINT`, que o Parquet grava como `DOUBLE`** (conferido): a soma de colunas inteiras é convertida a `BIGINT` (soma por grupo, acumulada e também a "soma entre colunas" da 8.2), então a coluna continua inteira no dataset salvo.
+- Soma/média/mín./máx. de **nada** (grupo só de vazios) é vazio, não 0; contagem é 0.
+- **Média das médias** só é a média geral com grupos do mesmo tamanho: o formulário avisa. O resumo por grupo (uma linha por grupo) vem na 8.4.
+- Valor vazio na coluna de grupo forma o seu próprio grupo (comportamento do `PARTITION BY`).
+
+## Verificado
+`pytest` 297 (+47 em `tests/test_transforms_window.py`, **cada passo contra cálculo independente em Python**: 7 estatísticas por grupo, tabela inteira e chave dupla, % do total somando 100, z-score com média 0 e desvio 1 por grupo, 3 métodos de ranking × 2 sentidos com empate e vazio, 5 acumulados, média móvel com e sem "janela cheia", ordem decrescente, `lag` (3 tipos × 1 e 2 linhas), encadeamento "média do grupo → desvio", janela depois de remover duplicatas e filtrar, 9 erros claros, limites, coluna `__rn`, salvar como dataset com tipos inteiros), `vitest` 238 (+4), `tsc` limpo e `e2e:transform` ampliado (média do grupo A = 6 e B = 6,5; ranking 1º/3º/sem posição; acumulado A = 9, 15, 23; ordem original preservada; descrições em português), passou em navegador real e a captura foi conferida.
+**Não reexecutados** (Docker parado): integração com o motor R e `e2e:all`.
+
+## Limites
+- Sem **resumo por grupo** (uma linha por grupo), pivotar, mesclar e acrescentar: **8.4**. Sem medidas salvas (8.5) nem construtor visual de gráficos (8.6).
+- Janela só por número de **linhas** (não por intervalo de tempo); sem média móvel centrada nem "ano contra ano".
+- A coluna de ordem aceita até 5 critérios; "agrupar por" até 10 colunas.

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import {
-  CAST_LABEL, DATE_PART_LABEL, FN_LABEL, MATH_LABEL, MULTI_VALUE, NO_VALUE, OPERATOR_LABEL, TEXT_FN_LABEL, dateColumns, numericColumns,
-  parseNumberList, parseTextList, type ColumnInfo, type Condition, type Operand, type Operator, type Step,
+  CAST_LABEL, DATE_PART_LABEL, FN_LABEL, GROUP_FN_LABEL, LAG_KIND_LABEL, MATH_LABEL, RANK_METHOD_LABEL, RUNNING_FN_LABEL, MULTI_VALUE, NO_VALUE, OPERATOR_LABEL, TEXT_FN_LABEL, dateColumns, numericColumns,
+  parseNumberList, parseTextList, type ColumnInfo, type Condition, type Operand, type Operator, type SortKey, type Step,
 } from "../../lib/transforms";
 
 interface Props { step: Step; cols: ColumnInfo[]; onChange: (s: Step) => void }
@@ -52,6 +52,22 @@ const OperandInput = ({ label, value, cols, onChange, numeric = false }: { label
     </div>
   );
 };
+
+function SortKeys({ keys, cols, onChange, min, label }: { keys: SortKey[]; cols: ColumnInfo[]; onChange: (k: SortKey[]) => void; min: number; label: string }) {
+  const set = (i: number, patch: Partial<SortKey>) => onChange(keys.map((k, j) => (j === i ? { ...k, ...patch } : k)));
+  return (
+    <>
+      {keys.map((k, i) => (
+        <div key={i} className="condition-row">
+          <select value={k.column} onChange={(e) => set(i, { column: e.target.value })} aria-label={`Coluna de ${label} ${i + 1}`}>{cols.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select>
+          <select value={k.desc ? "desc" : "asc"} onChange={(e) => set(i, { desc: e.target.value === "desc" })} aria-label={`Sentido de ${label} ${i + 1}`}><option value="asc">crescente</option><option value="desc">decrescente</option></select>
+          {keys.length > min && <button type="button" className="btn ghost sm" onClick={() => onChange(keys.filter((_, j) => j !== i))} aria-label={`Remover ${label} ${i + 1}`}>✕</button>}
+        </div>
+      ))}
+      <div><button type="button" className="btn ghost sm" onClick={() => onChange([...keys, { column: cols[0]?.name ?? "", desc: false }])}>+ critério</button></div>
+    </>
+  );
+}
 
 function Conditions({ conditions, combine, cols, onChange }: { conditions: Condition[]; combine: "and" | "or"; cols: ColumnInfo[]; onChange: (c: Condition[], combine: "and" | "or") => void }) {
   const set = (i: number, patch: Partial<Condition>) => onChange(conditions.map((c, j) => (j === i ? { ...c, ...patch } : c)), combine);
@@ -128,17 +144,9 @@ export function StepForm({ step, cols, onChange }: Props) {
     }
     case "sort": {
       const s = step as Of<"sort">;
-      const set = (i: number, patch: Partial<Of<"sort">["keys"][number]>) => onChange({ ...s, keys: s.keys.map((k, j) => (j === i ? { ...k, ...patch } : k)) });
       return (
         <>
-          {s.keys.map((k, i) => (
-            <div key={i} className="condition-row">
-              <select value={k.column} onChange={(e) => set(i, { column: e.target.value })} aria-label={`Coluna da ordenação ${i + 1}`}>{cols.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}</select>
-              <select value={k.desc ? "desc" : "asc"} onChange={(e) => set(i, { desc: e.target.value === "desc" })} aria-label={`Sentido da ordenação ${i + 1}`}><option value="asc">crescente</option><option value="desc">decrescente</option></select>
-              {s.keys.length > 1 && <button type="button" className="btn ghost sm" onClick={() => onChange({ ...s, keys: s.keys.filter((_, j) => j !== i) })} aria-label={`Remover ordenação ${i + 1}`}>✕</button>}
-            </div>
-          ))}
-          <div><button type="button" className="btn ghost sm" onClick={() => onChange({ ...s, keys: [...s.keys, { column: cols[0]?.name ?? "", desc: false }] })}>+ critério</button></div>
+          <SortKeys keys={s.keys} cols={cols} min={1} label="ordenação" onChange={(keys) => onChange({ ...s, keys })} />
           <p className="muted small" style={{ margin: 0 }}>Valores vazios ficam por último.</p>
         </>
       );
@@ -211,6 +219,85 @@ export function StepForm({ step, cols, onChange }: Props) {
         </>
       );
     }
+    case "group_stat": {
+      const s = step as Of<"group_stat">;
+      return (
+        <>
+          {nameField(s)}
+          <Field label="Calcular"><select value={s.fn} onChange={(e) => onChange({ ...s, fn: e.target.value as Of<"group_stat">["fn"] })} aria-label="Calcular">{Object.entries(GROUP_FN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <ColumnSelect cols={cols} only={s.fn === "count" ? cols : num} value={s.column} onChange={(column) => onChange({ ...s, column })} label="Coluna" />
+          <GroupBy cols={cols} s={s} onChange={onChange} />
+          <p className="muted small" style={{ margin: 0 }}>Cada linha recebe o valor do seu grupo; o número de linhas não muda. Valores vazios são ignorados no cálculo. Cuidado: a média das médias dos grupos só é a média geral se os grupos tiverem o mesmo tamanho.</p>
+        </>
+      );
+    }
+    case "pct_total": {
+      const s = step as Of<"pct_total">;
+      return (
+        <>
+          {nameField(s)}
+          <ColumnSelect cols={cols} only={num} value={s.column} onChange={(column) => onChange({ ...s, column })} label="Coluna" />
+          <GroupBy cols={cols} s={s} onChange={onChange} />
+          <p className="muted small" style={{ margin: 0 }}>100 × valor ÷ soma do grupo. Dentro de cada grupo os percentuais somam 100.</p>
+        </>
+      );
+    }
+    case "rank": {
+      const s = step as Of<"rank">;
+      return (
+        <>
+          {nameField(s)}
+          <ColumnSelect cols={cols} value={s.column} onChange={(column) => onChange({ ...s, column })} label="Coluna a classificar" />
+          <Field label="Ordem"><select value={s.desc ? "desc" : "asc"} onChange={(e) => onChange({ ...s, desc: e.target.value === "desc" })} aria-label="Ordem do ranking"><option value="desc">Maior valor = 1ª posição</option><option value="asc">Menor valor = 1ª posição</option></select></Field>
+          <Field label="Empates"><select value={s.method} onChange={(e) => onChange({ ...s, method: e.target.value as Of<"rank">["method"] })} aria-label="Empates">{Object.entries(RANK_METHOD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <GroupBy cols={cols} s={s} onChange={onChange} />
+          <p className="muted small" style={{ margin: 0 }}>Linhas com valor vazio ficam sem posição.</p>
+        </>
+      );
+    }
+    case "zscore": {
+      const s = step as Of<"zscore">;
+      return (
+        <>
+          {nameField(s)}
+          <ColumnSelect cols={cols} only={num} value={s.column} onChange={(column) => onChange({ ...s, column })} label="Coluna" />
+          <GroupBy cols={cols} s={s} onChange={onChange} />
+          <p className="muted small" style={{ margin: 0 }}>(valor − média do grupo) ÷ desvio padrão amostral do grupo. Grupos de uma linha ou sem variação ficam vazios.</p>
+        </>
+      );
+    }
+    case "running": {
+      const s = step as Of<"running">;
+      return (
+        <>
+          {nameField(s)}
+          <Field label="Calcular"><select value={s.fn} onChange={(e) => onChange({ ...s, fn: e.target.value as Of<"running">["fn"] })} aria-label="Calcular">{Object.entries(RUNNING_FN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <ColumnSelect cols={cols} only={s.fn === "count" ? cols : num} value={s.column} onChange={(column) => onChange({ ...s, column })} label="Coluna" />
+          <Field label="Janela" hint="Em branco: acumulado desde a primeira linha do grupo. Um número n: média (ou soma…) móvel das últimas n linhas.">
+            <input type="number" min={2} max={1000} value={s.window ?? ""} placeholder="acumulado" aria-label="Janela móvel" onChange={(e) => onChange({ ...s, window: e.target.value === "" ? null : Number(e.target.value) })} />
+          </Field>
+          {s.window !== null && <label className="check"><input type="checkbox" checked={s.require_full} onChange={(e) => onChange({ ...s, require_full: e.target.checked })} /><span>Deixar vazio até a janela ter {s.window || "n"} linhas</span></label>}
+          <span className="small muted">Ordem das linhas dentro do grupo (em branco = ordem atual):</span>
+          <SortKeys keys={s.order_by} cols={cols} min={0} label="ordem" onChange={(order_by) => onChange({ ...s, order_by })} />
+          <GroupBy cols={cols} s={s} onChange={onChange} />
+        </>
+      );
+    }
+    case "lag": {
+      const s = step as Of<"lag">;
+      return (
+        <>
+          {nameField(s)}
+          <Field label="Calcular"><select value={s.kind} onChange={(e) => onChange({ ...s, kind: e.target.value as Of<"lag">["kind"] })} aria-label="Calcular">{Object.entries(LAG_KIND_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <ColumnSelect cols={cols} only={s.kind === "previous" ? cols : num} value={s.column} onChange={(column) => onChange({ ...s, column })} label="Coluna" />
+          <Field label="Quantas linhas atrás"><input type="number" min={1} max={100} value={s.periods} aria-label="Quantas linhas atrás" onChange={(e) => onChange({ ...s, periods: Math.max(1, Math.min(100, Math.floor(Number(e.target.value)) || 1)) })} /></Field>
+          <span className="small muted">Ordem das linhas dentro do grupo (em branco = ordem atual):</span>
+          <SortKeys keys={s.order_by} cols={cols} min={0} label="ordem" onChange={(order_by) => onChange({ ...s, order_by })} />
+          <GroupBy cols={cols} s={s} onChange={onChange} />
+          <p className="muted small" style={{ margin: 0 }}>A primeira linha de cada grupo fica vazia. Variação percentual com anterior igual a zero também fica vazia.</p>
+        </>
+      );
+    }
     case "bins": return <BinsForm s={step as Of<"bins">} cols={cols} num={num} onChange={onChange} nameField={nameField} />;
     case "replace": {
       const s = step as Of<"replace">;
@@ -280,6 +367,10 @@ export function StepForm({ step, cols, onChange }: Props) {
       );
     }
   }
+}
+
+function GroupBy({ cols, s, onChange }: { cols: ColumnInfo[]; s: Step & { by: string[] }; onChange: (s: Step) => void }) {
+  return <ColumnPicker cols={cols} selected={s.by} onChange={(by) => onChange({ ...s, by } as Step)} label="Agrupar por" hint="nenhuma marcada = todas as linhas juntas" />;
 }
 
 const freshKey = (m: Record<string, string>): string => { let i = m[""] === undefined ? 0 : 1; while (m[" ".repeat(i)] !== undefined) i++; return " ".repeat(i); };

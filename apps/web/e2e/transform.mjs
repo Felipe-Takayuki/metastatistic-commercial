@@ -104,6 +104,32 @@ try {
   check("trocar de aba não perde os passos", (await stepTexts()).length === 3);
   await page.getByRole("button", { name: "Desfazer todos os passos" }).click();
   check("desfazer volta à origem", (await stepTexts()).length === 0);
+
+  // --- 9) por grupo e janela (8.3) ---
+  const groupBy = (g) => box(page.getByRole("dialog").getByRole("group", { name: "Agrupar por" }), g);
+  await addStep("Média, soma… do grupo, repetida em cada linha");
+  await page.getByRole("dialog").getByLabel("Coluna", { exact: true }).selectOption("nota1");
+  await groupBy("grupo").check();
+  await confirm();
+  await page.waitForFunction(() => document.querySelector('[data-testid="tf-summary"]')?.textContent?.includes("6 linhas · 6 colunas"));
+  check("média do grupo repetida em cada linha: A = (7+5+6)/3 = 6; B = (10+3)/2 = 6,5 (vazio ignorado)", (await cell(0, 6)) === "6" && (await cell(2, 6)) === "6.5" && (await cell(3, 6)) === "6.5", `${await cell(0, 6)} ${await cell(2, 6)} ${await cell(3, 6)}`);
+  check("o número de linhas não muda (6)", (await summary().innerText()).startsWith("6 linhas"));
+  await addStep("Posição no ranking");
+  await page.getByRole("dialog").getByLabel("Coluna a classificar").selectOption("nota1");
+  await groupBy("grupo").check();
+  await confirm();
+  await page.waitForFunction(() => document.querySelector('[data-testid="tf-summary"]')?.textContent?.includes("7 colunas"));
+  check("ranking por grupo: 7 = 1º e 5 = 3º no grupo A; vazio fica sem posição", (await cell(0, 7)) === "1" && (await cell(1, 7)) === "3" && (await cell(3, 7)) === "—", `${await cell(0, 7)} ${await cell(1, 7)} ${await cell(3, 7)}`);
+  await addStep("Acumulado ou média móvel");
+  await page.getByRole("dialog").getByLabel("Coluna", { exact: true }).selectOption("nota3");
+  await page.getByRole("dialog").getByRole("button", { name: "+ critério" }).click();
+  await groupBy("grupo").check();
+  await confirm();
+  await page.waitForFunction(() => document.querySelector('[data-testid="tf-summary"]')?.textContent?.includes("8 colunas"));
+  check("soma acumulada por grupo na ordem do id: A = 9, 15, 23", (await cell(0, 8)) === "9" && (await cell(1, 8)) === "15" && (await cell(4, 8)) === "23", `${await cell(0, 8)} ${await cell(1, 8)} ${await cell(4, 8)}`);
+  check("a ordem original das linhas é preservada (ids 1 a 6)", (await Promise.all([0, 1, 2, 3, 4, 5].map((r) => cell(r, 1)))).join(",") === "1,2,3,4,5,6");
+  check("os 3 passos aparecem descritos em português", (await stepTexts()).join(" | ") === '"media_grupo" = média de nota1 por grupo | "posicao" = posição de nota1 (maior = 1) por grupo | "acumulado" = soma acumulada de nota3, ordem id ↑ por grupo');
+  await shot("tf-grupo");
 } catch (e) {
   s.failures.push(`exceção: ${e.message}`);
   console.log(`FAIL exceção: ${e.message}`);

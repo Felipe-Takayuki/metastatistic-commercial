@@ -16,7 +16,7 @@ interface Props {
   onDatasetCreated: (ds: Dataset) => void | Promise<void>;
 }
 
-const GROUPS = ["Colunas", "Linhas", "Nova coluna"] as const;
+const GROUPS = ["Colunas", "Linhas", "Nova coluna", "Por grupo e janela"] as const;
 
 export function TransformTab({ dataset, datasets, draft, onDraft, onDatasetCreated }: Props) {
   const canEdit = useCan("editor");

@@ -22,7 +22,14 @@ export type Step =
   | { op: "text_fn"; name: string; fn: "upper" | "lower" | "trim" | "length"; column: string }
   | { op: "concat"; name: string; columns: string[]; sep: string }
   | { op: "date_part"; name: string; column: string; part: "year" | "quarter" | "month" | "day" | "week" | "weekday" | "year_month" }
-  | { op: "formula"; name: string; expr: string };
+  | { op: "formula"; name: string; expr: string }
+  | { op: "group_stat"; name: string; fn: "mean" | "sum" | "min" | "max" | "count" | "median" | "std"; column: string; by: string[] }
+  | { op: "pct_total"; name: string; column: string; by: string[] }
+  | { op: "rank"; name: string; column: string; by: string[]; desc: boolean; method: "rank" | "dense" | "row" }
+  | { op: "zscore"; name: string; column: string; by: string[] }
+  | { op: "running"; name: string; fn: "sum" | "mean" | "min" | "max" | "count"; column: string; window: number | null; order_by: SortKey[]; by: string[]; require_full: boolean }
+  | { op: "lag"; name: string; column: string; kind: "diff" | "pct_change" | "previous"; periods: number; order_by: SortKey[]; by: string[] };
+export interface SortKey { column: string; desc: boolean }
 
 export type StepOp = Step["op"];
 export interface Recipe { source_id: string; steps: Step[] }
@@ -41,7 +48,12 @@ export const CAST_LABEL = { number: "número decimal", integer: "número inteiro
 export const DATE_PART_LABEL = { year: "ano", quarter: "trimestre", month: "mês", day: "dia", week: "semana do ano", weekday: "dia da semana (1 = segunda)", year_month: "ano-mês (AAAA-MM)" } as const;
 export const TEXT_FN_LABEL = { upper: "MAIÚSCULAS", lower: "minúsculas", trim: "remover espaços das pontas", length: "comprimento" } as const;
 
-export interface StepKind { op: StepOp; label: string; group: "Colunas" | "Linhas" | "Nova coluna" }
+export const GROUP_FN_LABEL = { mean: "média", sum: "soma", min: "mínimo", max: "máximo", count: "contagem (valores preenchidos)", median: "mediana", std: "desvio padrão" } as const;
+export const RUNNING_FN_LABEL = { sum: "soma", mean: "média", min: "mínimo", max: "máximo", count: "contagem" } as const;
+export const RANK_METHOD_LABEL = { rank: "Empates dividem a posição (1, 2, 2, 4)", dense: "Empates dividem a posição, sem buracos (1, 2, 2, 3)", row: "Sem empates: desempata pela ordem das linhas (1, 2, 3, 4)" } as const;
+export const LAG_KIND_LABEL = { diff: "Diferença (valor − valor anterior)", pct_change: "Variação percentual em relação ao anterior", previous: "Valor da linha anterior" } as const;
+
+export interface StepKind { op: StepOp; label: string; group: "Colunas" | "Linhas" | "Nova coluna" | "Por grupo e janela" }
 export const STEP_KINDS: StepKind[] = [
   { op: "select", label: "Escolher ou remover colunas", group: "Colunas" },
   { op: "rename", label: "Renomear colunas", group: "Colunas" },
@@ -61,6 +73,12 @@ export const STEP_KINDS: StepKind[] = [
   { op: "concat", label: "Juntar colunas de texto", group: "Nova coluna" },
   { op: "date_part", label: "Parte de uma data (ano, mês…)", group: "Nova coluna" },
   { op: "formula", label: "Fórmula livre", group: "Nova coluna" },
+  { op: "group_stat", label: "Média, soma… do grupo, repetida em cada linha", group: "Por grupo e janela" },
+  { op: "pct_total", label: "Percentual do total (ou do grupo)", group: "Por grupo e janela" },
+  { op: "rank", label: "Posição no ranking", group: "Por grupo e janela" },
+  { op: "zscore", label: "Padronizar (z-score)", group: "Por grupo e janela" },
+  { op: "running", label: "Acumulado ou média móvel", group: "Por grupo e janela" },
+  { op: "lag", label: "Diferença ou variação em relação à linha anterior", group: "Por grupo e janela" },
 ];
 
 const isNum = (dtype: string) => /^(U?(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT)|FLOAT|DOUBLE|REAL|DECIMAL)/i.test(dtype);
@@ -100,6 +118,12 @@ export function defaultStep(op: StepOp, cols: ColumnInfo[]): Step {
     case "concat": return { op, name: freeName("junto", cols), columns: [], sep: " " };
     case "date_part": return { op, name: freeName("ano", cols), column: date, part: "year" };
     case "formula": return { op, name: freeName("formula", cols), expr: "" };
+    case "group_stat": return { op, name: freeName("media_grupo", cols), fn: "mean", column: firstNum, by: [] };
+    case "pct_total": return { op, name: freeName("pct_total", cols), column: firstNum, by: [] };
+    case "rank": return { op, name: freeName("posicao", cols), column: firstNum, by: [], desc: true, method: "rank" };
+    case "zscore": return { op, name: freeName("z", cols), column: firstNum, by: [] };
+    case "running": return { op, name: freeName("acumulado", cols), fn: "sum", column: firstNum, window: null, order_by: [], by: [], require_full: false };
+    case "lag": return { op, name: freeName("variacao", cols), column: firstNum, kind: "diff", periods: 1, order_by: [], by: [] };
   }
 }
 
@@ -109,6 +133,9 @@ export const describeCondition = (c: Condition): string =>
   NO_VALUE.includes(c.operator) ? `${c.column} ${OPERATOR_LABEL[c.operator]}`
     : MULTI_VALUE.includes(c.operator) ? `${c.column} ${OPERATOR_LABEL[c.operator]} ${list(c.values ?? [])}`
       : `${c.column} ${OPERATOR_LABEL[c.operator]} ${c.value ?? ""}`;
+
+const scope = (by: string[]): string => (by.length ? `por ${list(by)}` : "(todas as linhas)");
+const orderText = (keys: SortKey[]): string => (keys.length ? `, ordem ${list(keys.map((k) => `${k.column}${k.desc ? " ↓" : " ↑"}`))}` : "");
 
 export function describeStep(s: Step): string {
   switch (s.op) {
@@ -130,6 +157,12 @@ export function describeStep(s: Step): string {
     case "concat": return `"${s.name}" = ${list(s.columns)} juntas`;
     case "date_part": return `"${s.name}" = ${DATE_PART_LABEL[s.part].split(" (")[0]} de ${s.column}`;
     case "formula": return `"${s.name}" = ${s.expr}`;
+    case "group_stat": return `"${s.name}" = ${GROUP_FN_LABEL[s.fn].split(" ")[0]} de ${s.column} ${scope(s.by)}`;
+    case "pct_total": return `"${s.name}" = % de ${s.column} no total ${scope(s.by)}`;
+    case "rank": return `"${s.name}" = posição de ${s.column} (${s.desc ? "maior" : "menor"} = 1) ${scope(s.by)}`;
+    case "zscore": return `"${s.name}" = z-score de ${s.column} ${scope(s.by)}`;
+    case "running": return `"${s.name}" = ${s.window ? `${RUNNING_FN_LABEL[s.fn]} móvel de ${s.window} linhas` : `${RUNNING_FN_LABEL[s.fn]} acumulada`} de ${s.column}${orderText(s.order_by)} ${scope(s.by)}`;
+    case "lag": return `"${s.name}" = ${{ diff: "diferença de", pct_change: "variação % de", previous: "valor anterior de" }[s.kind]} ${s.column}${s.periods > 1 ? ` (${s.periods} linhas atrás)` : ""}${orderText(s.order_by)} ${scope(s.by)}`;
   }
 }
 
@@ -172,12 +205,16 @@ export function stepProblem(s: Step, cols: ColumnInfo[], editing?: Step): string
     case "concat": return newName(s.name) ?? (s.columns.length < 2 ? "escolha ao menos 2 colunas" : null);
     case "date_part": return newName(s.name) ?? (s.column ? null : "escolha a coluna de data");
     case "formula": return newName(s.name) ?? (s.expr.trim() ? null : "escreva a fórmula");
+    case "group_stat": case "pct_total": case "rank": case "zscore": return newName(s.name) ?? (s.column ? null : "escolha a coluna");
+    case "running": return newName(s.name) ?? (!s.column ? "escolha a coluna" : s.window !== null && !(s.window >= 2) ? "a janela móvel precisa de ao menos 2 linhas" : null);
+    case "lag": return newName(s.name) ?? (!s.column ? "escolha a coluna" : !(s.periods >= 1) ? "informe quantas linhas atrás (1 ou mais)" : null);
   }
 }
 
 /** Remove restos do formulário (entradas vazias) antes de enviar ao servidor. */
 export function cleanStep(s: Step): Step {
   if (s.op === "replace") return { ...s, name: s.name?.trim() || undefined, mapping: Object.fromEntries(Object.entries(s.mapping).filter(([k]) => k !== "")) };
+  if (s.op === "running") return { ...s, name: s.name.trim(), window: s.window && Number.isFinite(s.window) ? Math.floor(s.window) : null };
   if (s.op === "filter" || s.op === "cond") return { ...s, conditions: s.conditions.map((c) => (MULTI_VALUE.includes(c.operator) ? { ...c, value: undefined } : NO_VALUE.includes(c.operator) ? { column: c.column, operator: c.operator } : { ...c, values: undefined })) } as Step;
   if ("name" in s && typeof s.name === "string") return { ...s, name: s.name.trim() } as Step;
   return s;

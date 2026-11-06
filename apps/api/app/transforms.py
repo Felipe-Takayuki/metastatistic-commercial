@@ -197,9 +197,66 @@ class FormulaStep(BaseModel):
     expr: str = Field(min_length=1, max_length=500)
 
 
+# --- por grupo e janela (8.3): a linha continua sendo uma linha, ganhando o valor do seu grupo / da sua vizinhança ---
+By = Annotated[list[Ident], Field(default_factory=list, max_length=10)]  # colunas que definem o grupo (vazio = tabela inteira)
+
+
+class GroupStatStep(BaseModel):
+    op: Literal["group_stat"]
+    name: NewName
+    fn: Literal["mean", "sum", "min", "max", "count", "median", "std"]
+    column: Ident
+    by: By
+
+
+class PctTotalStep(BaseModel):
+    op: Literal["pct_total"]
+    name: NewName
+    column: Ident
+    by: By
+
+
+class RankStep(BaseModel):
+    op: Literal["rank"]
+    name: NewName
+    column: Ident
+    by: By
+    desc: bool = True  # 1 = o maior
+    method: Literal["rank", "dense", "row"] = "rank"  # empates: mesma posição (com buraco) / sem buraco / desempate pela ordem das linhas
+
+
+class ZScoreStep(BaseModel):
+    op: Literal["zscore"]
+    name: NewName
+    column: Ident
+    by: By
+
+
+class RunningStep(BaseModel):
+    op: Literal["running"]
+    name: NewName
+    fn: Literal["sum", "mean", "min", "max", "count"]
+    column: Ident
+    window: int | None = Field(default=None, ge=2, le=1000)  # None = acumulado desde o início do grupo; n = média móvel de n linhas
+    order_by: list[SortKey] = Field(default_factory=list, max_length=5)  # vazio = ordem atual das linhas
+    by: By
+    require_full: bool = False  # janela móvel: resultado vazio até a janela ter n linhas
+
+
+class LagStep(BaseModel):
+    op: Literal["lag"]
+    name: NewName
+    column: Ident
+    kind: Literal["diff", "pct_change", "previous"]
+    periods: int = Field(default=1, ge=1, le=100)
+    order_by: list[SortKey] = Field(default_factory=list, max_length=5)
+    by: By
+
+
 Step = Annotated[
     Union[SelectStep, RenameStep, CastStep, FilterStep, SortStep, DedupeStep, DropNullsStep, FillNullsStep, RowStatStep,
-          ArithStep, MathStep, CondStep, BinsStep, ReplaceStep, TextFnStep, ConcatStep, DatePartStep, FormulaStep],
+          ArithStep, MathStep, CondStep, BinsStep, ReplaceStep, TextFnStep, ConcatStep, DatePartStep, FormulaStep,
+          GroupStatStep, PctTotalStep, RankStep, ZScoreStep, RunningStep, LagStep],
     Field(discriminator="op"),
 ]
 
@@ -218,6 +275,13 @@ _TEMPORAL = re.compile(r"^(DATE|TIMESTAMP)", re.I)
 
 def is_numeric(dtype: str) -> bool:
     return bool(_NUMERIC.match(dtype))
+
+
+_INTEGER = re.compile(r"^U?(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT)$", re.I)
+
+
+def is_integer(dtype: str) -> bool:
+    return bool(_INTEGER.match(dtype))
 
 
 def is_temporal(dtype: str) -> bool:
@@ -380,6 +444,34 @@ def compile_formula(expr: str, schema: Schema) -> str:
 # ---------------------------------------------------------------------------------------------------------------------
 # Compilação dos passos
 # ---------------------------------------------------------------------------------------------------------------------
+def _windowed(schema: Schema, prev: str, name: str, expr: str) -> str:
+    """Nova coluna calculada por função de janela, SEM mudar a ordem das linhas (uma janela com ORDER BY reordena a
+    saída no DuckDB). O índice oculto `__rn` também desempata ordenações, deixando acumulados e ranking determinísticos."""
+    if "__rn" in schema:
+        raise TransformError("a coluna '__rn' é reservada; renomeie-a antes")
+    new = _new_name(schema, name)
+    return (f"SELECT * EXCLUDE (__rn) FROM (SELECT *, {expr} AS {q(new)} "
+            f"FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM {prev})) ORDER BY __rn")
+
+
+def _over(schema: Schema, by: list[str], order: list[SortKey] | None = None, frame: str = "", *, tiebreak: bool = True) -> str:
+    parts = []
+    if by:
+        parts.append("PARTITION BY " + ", ".join(_col(schema, c) for c in by))
+    if order is not None:
+        keys = [f"{_col(schema, k.column)} {'DESC' if k.desc else 'ASC'} NULLS LAST" for k in order]
+        if tiebreak:
+            keys.append("__rn")
+        if keys:
+            parts.append("ORDER BY " + ", ".join(keys))
+    return f"OVER ({' '.join(parts)}{' ' + frame if frame else ''})"
+
+
+def _sum(col: str, dtype: str, over: str) -> str:
+    # SUM de inteiros vira HUGEINT (o Parquet o grava como DOUBLE): volta a BIGINT para a coluna continuar inteira
+    return f"CAST(SUM({col}) {over} AS BIGINT)" if is_integer(dtype) else f"SUM({col}) {over}"
+
+
 _CAST_TYPES = {"number": "DOUBLE", "integer": "BIGINT", "text": "VARCHAR", "date": "DATE", "boolean": "BOOLEAN"}
 
 
@@ -420,6 +512,8 @@ def compile_step(step, schema: Schema, prev: str) -> str:
         keys = ", ".join(f"{_col(schema, k.column)} {'DESC' if k.desc else 'ASC'} NULLS LAST" for k in step.keys)
         return f"SELECT * FROM {prev} ORDER BY {keys}"
     if op == "dedupe":
+        if "__rn" in schema:
+            raise TransformError("a coluna '__rn' é reservada; renomeie-a antes")
         cols = step.columns or list(schema)
         part = ", ".join(_col(schema, c) for c in cols)
         # índice oculto: mantém a PRIMEIRA ocorrência e a ordem original das linhas (DISTINCT/QUALIFY puro reordenam)
@@ -443,6 +537,8 @@ def compile_step(step, schema: Schema, prev: str) -> str:
         lst = ", ".join(f"CAST({c} AS DOUBLE)" for c in cols) if step.fn == "mean" else ", ".join(cols)
         fn = {"mean": "list_avg", "sum": "list_sum", "min": "list_min", "max": "list_max", "count": "list_count"}[step.fn]
         expr = f"{fn}([{lst}])"
+        if step.fn == "sum" and all(is_integer(schema[c]) for c in step.columns):
+            expr = f"CAST({expr} AS BIGINT)"  # soma de inteiros continua inteira (list_sum devolve HUGEINT)
         if step.require_all and step.fn != "count":
             expr = f"CASE WHEN {' OR '.join(f'{c} IS NULL' for c in cols)} THEN NULL ELSE {expr} END"
         return _add_column(schema, prev, step.name, expr)
@@ -505,6 +601,40 @@ def compile_step(step, schema: Schema, prev: str) -> str:
         return _add_column(schema, prev, step.name, expr)
     if op == "formula":
         return _add_column(schema, prev, step.name, compile_formula(step.expr, schema))
+    if op == "group_stat":
+        col = _col(schema, step.column, need=None if step.fn == "count" else "numeric")
+        over = _over(schema, step.by)
+        expr = _sum(col, schema[step.column], over) if step.fn == "sum" else \
+            f"{ {'mean': 'AVG', 'min': 'MIN', 'max': 'MAX', 'count': 'COUNT', 'median': 'MEDIAN', 'std': 'STDDEV_SAMP'}[step.fn] }({col}) {over}"
+        return _windowed(schema, prev, step.name, expr)
+    if op == "pct_total":
+        col = _col(schema, step.column, need="numeric")
+        return _windowed(schema, prev, step.name, f"(100.0 * {col} / NULLIF(SUM({col}) {_over(schema, step.by)}, 0))")
+    if op == "rank":
+        col = _col(schema, step.column)
+        fn = {"rank": "RANK", "dense": "DENSE_RANK", "row": "ROW_NUMBER"}[step.method]
+        over = _over(schema, step.by, [SortKey(column=step.column, desc=step.desc)], tiebreak=step.method == "row")
+        return _windowed(schema, prev, step.name, f"CASE WHEN {col} IS NULL THEN NULL ELSE {fn}() {over} END")
+    if op == "zscore":
+        col = _col(schema, step.column, need="numeric")
+        over = _over(schema, step.by)
+        return _windowed(schema, prev, step.name, f"(({col} - AVG({col}) {over}) / NULLIF(STDDEV_SAMP({col}) {over}, 0))")
+    if op == "running":
+        col = _col(schema, step.column, need=None if step.fn == "count" else "numeric")
+        start = "UNBOUNDED PRECEDING" if step.window is None else f"{step.window - 1} PRECEDING"
+        frame = f"ROWS BETWEEN {start} AND CURRENT ROW"
+        over = _over(schema, step.by, step.order_by, frame)
+        expr = _sum(col, schema[step.column], over) if step.fn == "sum" else \
+            f"{ {'mean': 'AVG', 'min': 'MIN', 'max': 'MAX', 'count': 'COUNT'}[step.fn] }({col}) {over}"
+        if step.require_full and step.window is not None:
+            expr = f"CASE WHEN COUNT(*) {over} < {step.window} THEN NULL ELSE {expr} END"
+        return _windowed(schema, prev, step.name, expr)
+    if op == "lag":
+        col = _col(schema, step.column, need=None if step.kind == "previous" else "numeric")
+        previous = f"LAG({col}, {step.periods}) {_over(schema, step.by, step.order_by)}"
+        expr = {"previous": previous, "diff": f"({col} - {previous})",
+                "pct_change": f"(100.0 * ({col} - {previous}) / NULLIF({previous}, 0))"}[step.kind]
+        return _windowed(schema, prev, step.name, expr)
     raise TransformError(f"passo desconhecido: {op}")  # inalcançável: a união discriminada já recusa
 
 

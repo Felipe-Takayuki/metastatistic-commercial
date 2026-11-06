@@ -88,3 +88,30 @@ describe("erros e ordem", () => {
     expect(moveStep([1, 2, 3], 2, 1)).toEqual([1, 2, 3]);
   });
 });
+
+describe("passos por grupo e janela", () => {
+  it("descreve em português, com e sem grupo", () => {
+    expect(describeStep({ op: "group_stat", name: "m", fn: "mean", column: "nota1", by: ["grupo"] })).toBe('"m" = média de nota1 por grupo');
+    expect(describeStep({ op: "group_stat", name: "m", fn: "std", column: "nota1", by: [] })).toBe('"m" = desvio de nota1 (todas as linhas)');
+    expect(describeStep({ op: "pct_total", name: "p", column: "v", by: ["a", "b"] })).toBe('"p" = % de v no total por a, b');
+    expect(describeStep({ op: "rank", name: "r", column: "v", by: [], desc: false, method: "dense" })).toBe('"r" = posição de v (menor = 1) (todas as linhas)');
+    expect(describeStep({ op: "running", name: "a", fn: "sum", column: "v", window: null, order_by: [{ column: "id", desc: false }], by: ["g"], require_full: false })).toBe('"a" = soma acumulada de v, ordem id ↑ por g');
+    expect(describeStep({ op: "running", name: "mm", fn: "mean", column: "v", window: 3, order_by: [], by: [], require_full: true })).toBe('"mm" = média móvel de 3 linhas de v (todas as linhas)');
+    expect(describeStep({ op: "lag", name: "d", column: "v", kind: "pct_change", periods: 2, order_by: [{ column: "id", desc: true }], by: [] })).toBe('"d" = variação % de v (2 linhas atrás), ordem id ↓ (todas as linhas)');
+  });
+  it("valida janela e período", () => {
+    const run = defaultStep("running", cols) as Extract<Step, { op: "running" }>;
+    expect(stepProblem(run, cols)).toBeNull();
+    expect(stepProblem({ ...run, window: 1 }, cols)).toMatch(/ao menos 2 linhas/);
+    const lag = defaultStep("lag", cols) as Extract<Step, { op: "lag" }>;
+    expect(stepProblem({ ...lag, periods: 0 }, cols)).toMatch(/1 ou mais/);
+    expect(stepProblem({ ...lag, name: "ID" }, cols)).toMatch(/já existe/);
+  });
+  it("janela vazia ou inválida vira acumulado; fração é arredondada para baixo", () => {
+    const run = defaultStep("running", cols) as Extract<Step, { op: "running" }>;
+    expect((cleanStep({ ...run, window: NaN }) as typeof run).window).toBeNull();
+    expect((cleanStep({ ...run, window: 3.7 }) as typeof run).window).toBe(3);
+    expect((cleanStep({ ...run, window: null }) as typeof run).window).toBeNull();
+  });
+  it("o catálogo agrupa os novos passos", () => expect(STEP_KINDS.filter((k) => k.group === "Por grupo e janela").map((k) => k.op)).toEqual(["group_stat", "pct_total", "rank", "zscore", "running", "lag"]));
+});
