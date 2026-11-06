@@ -46,4 +46,4 @@ Cada worker atende **uma** análise por vez; paralelismo = nº de contêineres (
 - O cache não conhece a versão do módulo JASP: trocar o módulo exige reiniciar a API (senão resultados antigos continuam sendo servidos).
 - Sem progresso incremental (percentual) nem cancelamento explícito pelo usuário de uma análise já em execução.
 - Limite de memória de 1 GB por worker: datasets enormes derrubam o motor (detectado e informado), em vez de rodar.
-- Sem autenticação nem cotas por usuário: qualquer cliente pode encher a fila (limite global de 20).
+- ~~Sem autenticação~~ → **feita na fase 7** (opt-in, `AUTH_ENABLED`). **Continua sem cotas por usuário**: qualquer usuário logado pode encher a fila (limite global de 20).

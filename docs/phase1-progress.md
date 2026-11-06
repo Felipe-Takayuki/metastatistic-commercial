@@ -39,7 +39,7 @@ wrapper impede que comentário `--` no fim engula o fechamento.
 
 ### Pendências conhecidas desta fatia
 - `meta.db` fica no mesmo volume que o worker lê (só metadados, mas ideal é montar só `datasets/`).
-- Todos os datasets ficam visíveis a todas as queries (sem usuários ainda → permissões na Fase 4).
+- ~~Todos os datasets ficam visíveis a todas as queries~~ → **resolvido na fase 7.3** (acesso por dataset; tabela inexistente no SQL de quem não lê). Ver `phase7-progress.md`.
 - Metadados SQLite sem migrações/versionamento de schema.
 - Colunas de data são `nominal` (refinar: tratar como temporal).
 - Opções com listas aninhadas (ex.: `terms` de ANOVA) ainda não foram exercitadas contra o R.

@@ -33,7 +33,7 @@ API: `POST/GET /dashboards`, `GET/PUT/DELETE /dashboards/{id}` (a lista devolve 
 ## Pendências
 - **Drill-down** (clicar numa barra abre o detalhe).
 - Tile de **tabela** (resultado de SQL).
-- Exportar PDF do dashboard; coleções/pastas; RBAC e segurança por linha (exigem autenticação, que não existe).
+- Exportar PDF do dashboard. ~~Coleções/pastas, RBAC e segurança por linha~~ → **feitos na fase 7** (coleções planas compartilhadas com relatórios; papéis; dono por item; linhas por atributo no nível do dataset). Ver `phase7-progress.md`.
 - Em tela estreita não se reposicionam tiles. Sem desfazer/refazer. Sem tiles duplicados ("duplicar").
 - Mesmo problema de largura em **Explorar** (`#/`) a 420 px (a barra lateral/tabelas estouram); não tratado aqui.
 - Tema escuro dos dashboards não revisado visualmente.

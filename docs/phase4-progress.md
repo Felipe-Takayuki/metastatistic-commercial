@@ -93,8 +93,8 @@ Para o repositório (sem dados reais): fixtures sintéticas determinísticas (`t
 ## 10. Pendências conhecidas (além do travamento)
 
 - Post hoc aplica-se a **todos** os fatores (inclusive bloco); não há seleção por fator.
-- Sem contrastes, efeitos simples, médias marginais, ANCOVA, ANOVA de medidas repetidas, Kruskal-Wallis, modelos bayesianos (os módulos estão instalados, faltam definições/telas).
-- Descritivas (`jaspDescriptives`) instalado só como dependência; sem tela própria.
+- ~~ANCOVA, ANOVA de medidas repetidas, Kruskal-Wallis, modelos bayesianos~~ → **feitos na fase 6** (catálogo de 21 análises; ver `phase6-progress.md`). Seguem sem tela: contrastes personalizados, efeitos simples e mais de dois fatores intra-sujeito.
+- ~~Descritivas sem tela própria~~ → feita na fase 6.1.
 - Módulos JASP **sem versão fixada** (HEAD no momento do build): fixar tag/commit — o remendo do `modelTerms` depende disso.
 - Aquecimento ~60 s (4 módulos) torna lenta a recuperação após timeout/queda.
 - `valid_option_names` aceita qualquer nome declarado em QUALQUER arquivo do módulo (superconjunto): pega erros de digitação, não valida valores.

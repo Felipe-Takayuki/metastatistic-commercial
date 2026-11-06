@@ -41,4 +41,4 @@ Limites validados no servidor: 100 blocos, 50 mil caracteres de Markdown, ids de
 - Gráfico no PDF não ocupa a largura toda da página (o SVG é medido no layout de tela).
 - `Ctrl+P` direto, com a interface em tema escuro, imprime com cores escuras; use o botão **Exportar PDF**.
 - Sem reordenar por arrastar (só ↑/↓) e sem inserir bloco no meio (só no fim).
-- Sem controle de acesso: qualquer um que alcance a API lê/edita todos os relatórios.
+- ~~Sem controle de acesso~~ → **resolvido na fase 7** (papéis, dono por relatório, coleções, auditoria; opt-in via `AUTH_ENABLED`). Ver `phase7-progress.md`.
