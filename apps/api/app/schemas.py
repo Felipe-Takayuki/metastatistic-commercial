@@ -96,6 +96,9 @@ class AnalysisBlock(BaseModel):
     analysis: str = Field(max_length=100)
     dataset_id: str = Field(max_length=64)
     options: dict[str, Any] = Field(default_factory=dict)
+    # Mostra as notas automáticas acima do resultado (verificação de pressupostos e interpretação do fator de Bayes).
+    # Desligado por padrão: o relatório é a saída publicável e só inclui o que o autor escolher.
+    show_notes: bool = False
 
 
 Block = Annotated[Union[TextBlock, ChartBlock, AnalysisBlock], Field(discriminator="type")]

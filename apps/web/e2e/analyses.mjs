@@ -143,6 +143,8 @@ try {
   check("Regressão: R² e F iguais ao R", has(t, f3(R.R2).replace(/^0/, "")) || has(t, f3(R.R2)), t.slice(0, 500));
   check("Regressão: F(2, 29) igual ao R", has(t, f3(R.F)), t.slice(0, 500));
   await shot("a4-regressao");
+  await notes().waitFor({ timeout: 90000 });
+  check("regressão: VIF baixo e Durbin-Watson ok = nota de nenhum alerta", has((await notes().innerText()).replace(/\s+/g, " "), "nenhum alerta"), await notes().innerText());
 
   // --- trocar de aba (Dados/SQL) não pode perder a análise escolhida, as opções nem o resultado ---
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
@@ -177,6 +179,15 @@ try {
   check("ANCOVA: F e p de tratamento, bloco e covariável iguais ao R", AC.F.every((f, i) => has(t, f3(f), p3(AC.p[i]))), t.slice(0, 500));
   check("ANCOVA: resíduos com 20 gl e nenhuma interação fantasma", has(t, "Residuals") && !t.includes("✻"), t.slice(0, 300));
   await shot("a2b-ancova");
+
+  // qui-quadrado com frequências esperadas baixas (tratamento 8 × bloco 4, uma observação por célula): aviso de Cochran
+  await pickAnalysis("Qui-quadrado (tabela de contingência)");
+  await page.getByLabel(/^Linhas/).selectOption("tratamento");
+  await page.getByLabel(/^Colunas/).selectOption("bloco");
+  await run();
+  await notes().waitFor({ timeout: 90000 });
+  const cn = (await notes().innerText()).replace(/\s+/g, " ");
+  check("qui-quadrado com poucas observações: avisa frequências esperadas abaixo de 5 (regra de Cochran)", has(cn, "Atenção", "32 de 32 células", "frequência esperada abaixo de 5", "mínima 1,00"), cn);
 
   // --- Regressão logística sobre um dataset derivado por SQL (desfecho binário alto/baixo) ---
   await page.getByRole("tab", { name: "Consulta SQL" }).click();
@@ -305,6 +316,8 @@ try {
 
   // --- Friedman + Conover (alternativa não paramétrica; dados com empates e sobreposição) ---
   await upload("e2e-friedman.csv", readFileSync(join(FIX, "friedman.csv"), "utf8"));
+  check("aba Dados: a coluna ordinal numérica (c1) traz o aviso de que também vale como escalar, e as escalares não",
+    (await page.locator(".col-card", { hasText: "c1" }).locator('[data-hint="ordinal-numerica"]').count()) === 1 && (await page.locator('[data-hint="ordinal-numerica"]').count()) === 1);
   await page.getByRole("tab", { name: "Análise estatística" }).click();
   await pickAnalysis("ANOVA de medidas repetidas");
   check("Likert: a coluna ordinal numérica é oferecida como medida repetida, com rótulo explícito", (await page.getByRole("group", { name: /^Medidas repetidas/ }).getByRole("checkbox", { name: /^c1 \(ordinal, 8 valores: tratada como escalar\)$/ }).count()) === 1);
@@ -417,6 +430,8 @@ try {
     rows.length === 2 && /^[ΧX]²/.test(rows[0]) && rows[1].startsWith("N") && (await tests.locator("thead th", { hasText: "Value" }).count()) === 1, rows.join(" | "));
   check("Qui-quadrado: linha do N mostra 80 (inteiro), não 80.000", /^N\s+80$/.test(rows[1] ?? ""), rows[1]);
   await shot("a5-qui-quadrado");
+  await notes().waitFor({ timeout: 90000 });
+  check("qui-quadrado com esperadas ≥ 5: nota de nenhum alerta", has((await notes().innerText()).replace(/\s+/g, " "), "nenhum alerta"), await notes().innerText());
 
   // --- Bloco de ANOVA num relatório ---
   await page.getByRole("link", { name: "Relatórios" }).click();
@@ -439,11 +454,29 @@ try {
   check("bloco de relatório: ANOVA com os números do R", has(bt, f3(A.trat.F), f3(A.bloco.F)), bt.slice(0, 400));
   await page.locator(".save-status.saved").waitFor({ timeout: 15000 });
 
+  // 2º bloco: t independente sobre dados que violam os pressupostos. As notas automáticas são opt-in por bloco (o relatório é a saída publicável)
+  await page.getByRole("button", { name: "+ Análise", exact: true }).click();
+  const frame2 = page.locator(".block-frame").nth(1);
+  await frame2.getByLabel(/^Análise/).selectOption({ label: "Teste t independente" });
+  await frame2.getByLabel("Dataset").selectOption({ label: "e2e-pressupostos.csv" });
+  await frame2.getByRole("button", { name: "Executar análise" }).click();
+  await frame2.locator("table.apa-table").first().waitFor({ timeout: 90000 });
+  const blockNotes = (scope) => scope.getByRole("status", { name: "Verificação de pressupostos" });
+  await page.waitForTimeout(1500);   // dá tempo de uma nota (que NÃO deve vir) aparecer
+  check("bloco de relatório: sem notas de pressupostos por padrão", (await blockNotes(frame2).count()) === 0);
+  await frame2.getByLabel(/Mostrar verificação de pressupostos/).check();
+  await blockNotes(frame2).waitFor({ timeout: 90000 });
+  check("bloco de relatório: com a opção ligada, o aviso de normalidade aparece", has((await blockNotes(frame2).innerText()).replace(/\s+/g, " "), "Atenção", "Normalidade rejeitada"), await blockNotes(frame2).innerText());
+  await page.locator(".save-status.saved").waitFor({ timeout: 15000 });
+
   // recarrega: vira modo leitura e reexecuta a ANOVA salva (análise + dataset + opções persistidos)
   await page.reload();
   await page.locator(".report-doc table.apa-table").first().waitFor({ timeout: 90000 });
   bt = (await page.locator(".report-doc").innerText()).replace(/\s+/g, " ");
   check("relatório recarregado: a ANOVA salva reaparece com os números do R", has(bt, f3(A.trat.F), f3(A.bloco.F)), bt.slice(0, 400));
+  await blockNotes(page.locator(".report-doc")).waitFor({ timeout: 90000 });
+  check("relatório recarregado: a opção de notas foi salva e o aviso reaparece só no bloco que a ligou",
+    (await blockNotes(page.locator(".report-doc")).count()) === 1 && has((await blockNotes(page.locator(".report-doc")).innerText()).replace(/\s+/g, " "), "Normalidade rejeitada"));
   await shot("a6-relatorio-anova");
 } catch (e) {
   s.failures.push(`exceção: ${e.message}`);

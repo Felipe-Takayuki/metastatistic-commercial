@@ -83,6 +83,7 @@ def data():
     ids["pres"] = upload("e2e-pressupostos.csv", FIX / "pressupostos.csv")["id"]
     tt = upload("e2e-ttest.csv", FIX / "ttest.csv")
     ids["tt"] = tt["id"]
+    ids["colin"] = derive("e2e-colinear", f"SELECT produtividade, altura, 2 * altura + (CAST(FLOOR(produtividade) AS BIGINT) % 3) AS altura2, diametro FROM \"{raw['table_name']}\"")["id"]
     ids["resp"] = derive("e2e-resposta", f"SELECT \"group\" AS grupo, score, CASE WHEN score >= 10.5 THEN 'sim' ELSE 'nao' END AS resposta FROM \"{tt['table_name']}\"")["id"]
     ids["rm"] = upload("e2e-medidas-repetidas.csv", FIX / "medidas_repetidas.csv")["id"]
     fr = upload("e2e-friedman.csv", FIX / "friedman.csv")
@@ -663,3 +664,36 @@ def test_z_tests_reject_bad_requests(data):
     assert post("ZTestMeans", {"dependent": "score", "group": "group", "inventada": 1}).status_code == 422                      # opção desconhecida
     assert post("ZTestProportions", {"outcome": "score"}).status_code == 422                                                    # desfecho com > 2 categorias
     assert post("ZTestProportions", {"outcome": "resposta", "p0": 1.5}, "resp").status_code == 422
+
+
+def test_regression_diagnostics_vif_and_durbin_watson_match_R(data):
+    """As notas automáticas de regressão (lib/assumptions.ts) leem VIF do coeffTable e DW do summaryTable."""
+    ref = REF["diag"]
+    for ds, preds, vif, dw in (("colin", ["altura", "altura2"], ref["vif_collinear"], ref["dw_collinear"]), ("dbc", ["altura", "diametro"], ref["vif_ok"], ref["dw_ok"])):
+        res = run("RegressionLinear", data[ds], {"dependent": "produtividade", "covariates": preds, "factors": [], "modelFit": True, "coefficientEstimate": True,
+                                                "collinearityStatistic": True, "residualDurbinWatson": True,
+                                                "modelTerms": [{"components": preds, "name": "model1", "title": "Model 1"}]})
+        vifs = {r["name"]: r["VIF"] for r in table(res, "coeffTable")["data"] if r["name"] != "(Intercept)"}
+        assert set(vifs) == set(preds)
+        for v in vifs.values(): close(v, vif)
+        close(table(res, "summaryTable")["data"][0]["DW"], dw)
+    assert ref["vif_collinear"] > 10 > ref["vif_ok"]   # o conjunto "colin" realmente dispara o aviso; o "dbc", não
+
+
+def test_chi_square_expected_counts_table_matches_R(data):
+    """A regra de Cochran das notas automáticas usa as frequências esperadas do JASP (iguais às de chisq.test)."""
+    ref = REF["chi"]
+    res = run("ContingencyTables", data["faixas"], {"rows": ["grupo"], "columns": ["faixa"], "countsExpected": True, "chiSquared": True})
+    rows = [r for r in table(res, "crossTabMain")["data"] if r["grupo"] != "Total"]
+    got = [r[f"{lvl}[expected]"] for r in rows for lvl in ref["levels"]]
+    # `expected` do R vem em ordem de coluna (grupo × faixa, coluna a coluna); comparamos como conjunto ordenado
+    assert len(got) == len(ref["expected"]) == 6
+    for g, w in zip(sorted(got), sorted(ref["expected"])):
+        close(g, w)
+
+
+def test_correlation_pairwise_shapiro_table_exists(data):
+    res = run("Correlation", data["dbc"], {"variables": ["produtividade", "altura", "diametro"], "pearson": True, "assumptionCheckPairwiseShapiro": True})
+    rows = table(res, "pairwiseShapiro")["data"]
+    assert len(rows) == 3 and {(r["var1"], r["var2"]) for r in rows} == {("produtividade", "altura"), ("produtividade", "diametro"), ("altura", "diametro")}
+    assert all(0 < r["W"] <= 1 and 0 <= r["p"] <= 1 for r in rows)

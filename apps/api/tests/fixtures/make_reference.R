@@ -148,6 +148,11 @@ out$z_props2 <- list(x1 = x1, n1 = n1, x2 = x2, n2 = n2, p1 = x1 / n1, p2 = x2 /
   lo = pt2$conf.int[1], hi = pt2$conf.int[2])
 ps1 <- prop.test(sum(resp), length(resp), p = 0.4, correct = FALSE)
 out$z_props1 <- list(x = sum(resp), n = length(resp), ph = mean(resp), p0 = 0.4, z = sign(mean(resp) - 0.4) * sqrt(unname(ps1$statistic)), p = ps1$p.value, lo = ps1$conf.int[1], hi = ps1$conf.int[2])
+# --- catálogo 6.13: diagnósticos de regressão (VIF, Durbin-Watson) com preditores correlacionados: altura2 = 2·altura + floor(produtividade) %% 3 ---
+d$altura2 <- 2 * d$altura + floor(d$produtividade) %% 3
+fitc <- lm(produtividade ~ altura + altura2, data = d); ec <- resid(fitc); r2c <- cor(d$altura, d$altura2)^2
+fit0 <- lm(produtividade ~ altura + diametro, data = d); e0 <- resid(fit0)
+out$diag <- list(vif_collinear = 1 / (1 - r2c), dw_collinear = sum(diff(ec)^2) / sum(ec^2), vif_ok = 1 / (1 - cor(d$altura, d$diametro)^2), dw_ok = sum(diff(e0)^2) / sum(e0^2))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

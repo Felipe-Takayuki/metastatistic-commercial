@@ -11,7 +11,7 @@ export function AnalysisBlockView({ block }: { block: AnalysisBlock }) {
   if (!def) return <div className="report-block"><div className="alert info">Análise desconhecida: {block.analysis}. Abra o modo de edição e escolha outra.</div></div>;
   if (!block.dataset_id || !isComplete(def, block.options))
     return <div className="report-block"><div className="alert info">Análise incompleta: abra o modo de edição e escolha o dataset e as variáveis.</div></div>;
-  return <div className="report-block"><AnalysisRun analysis={block.analysis} datasetId={block.dataset_id} options={block.options} /></div>;
+  return <div className="report-block"><AnalysisRun analysis={block.analysis} datasetId={block.dataset_id} options={block.options} notes={block.show_notes === true} /></div>;
 }
 
 interface EditorProps {
@@ -61,6 +61,10 @@ export function AnalysisBlockEditor({ block, datasets, onChange }: EditorProps) 
         ) : (
           <div className="alert info small">{block.dataset_id ? "O dataset desta análise foi excluído. Escolha outro." : "Envie um CSV na aba Explorar para usar aqui."}</div>
         )}
+        <label className="check">
+          <input type="checkbox" checked={block.show_notes === true} onChange={(e) => onChange({ ...block, show_notes: e.target.checked })} />
+          Mostrar verificação de pressupostos e interpretação do fator de Bayes
+        </label>
         <div className="toolbar">
           <button className="btn primary sm" disabled={!dataset || issues.length > 0} onClick={() => setRan(current)}>Executar análise</button>
           {ran !== current && issues.length === 0 && <span className="muted small">Opções alteradas: execute para atualizar o resultado.</span>}
@@ -68,7 +72,7 @@ export function AnalysisBlockEditor({ block, datasets, onChange }: EditorProps) 
       </div>
       <div className="analysis-out">
         {shown.d && datasets.some((d) => d.id === shown.d) && shownDef && isComplete(shownDef, shown.o)
-          ? <AnalysisRun analysis={shown.a} datasetId={shown.d} options={shown.o} />
+          ? <AnalysisRun analysis={shown.a} datasetId={shown.d} options={shown.o} notes={block.show_notes === true} />
           : <div className="muted small">O resultado aparece aqui.</div>}
       </div>
     </div>

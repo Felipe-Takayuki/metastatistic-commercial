@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Dataset, type Measurement, type QueryResult } from "../api";
+import { isNumericDtype } from "../lib/analyses";
 import { DataTable } from "./DataTable";
 
 const LEVELS: { value: Measurement; label: string }[] = [
@@ -47,6 +48,9 @@ export function DataTab({ dataset, onChange, onError }: Props) {
               <select value={c.measurement} onChange={(e) => setLevel(c.name, e.target.value as Measurement)} aria-label={`Nível de medida de ${c.name}`}>
                 {LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
+              {c.measurement === "ordinal" && isNumericDtype(c.dtype) && (
+                <span className="small muted" data-hint="ordinal-numerica">Ordinal numérica (ex.: escala Likert): também é oferecida como variável escalar nas análises, com esse aviso. Marque “escalar” se for uma medida contínua.</span>
+              )}
             </div>
           ))}
         </div>

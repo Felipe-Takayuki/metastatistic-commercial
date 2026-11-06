@@ -5,7 +5,7 @@ BLOCKS = [
     {"type": "chart", "id": "c1", "title": "Receita por região", "sql": "SELECT 1 AS a",
      "chart": {"type": "bar", "x": "regiao", "ys": ["receita"], "slots": {"receita": 0}}},
     {"type": "analysis", "id": "a1", "analysis": "TTestIndependentSamples", "dataset_id": "0" * 32,
-     "options": {"dependent": ["receita"], "group": "grupo", "student": True}},
+     "options": {"dependent": ["receita"], "group": "grupo", "student": True}, "show_notes": False},
 ]
 
 
@@ -106,3 +106,14 @@ async def test_unicode_and_markup_in_content_roundtrip_untouched(client):
 async def test_missing_version_on_update_is_422(client):
     rep = await create(client)
     assert (await client.put(f"/reports/{rep['id']}", json={"title": "x", "blocks": []})).status_code == 422
+
+
+async def test_analysis_block_show_notes_defaults_to_false_and_roundtrips_true(client):
+    """`show_notes` (verificação de pressupostos / interpretação do BF no bloco) é opt-in; relatórios antigos, sem o campo, ficam em false."""
+    legacy = {k: v for k, v in BLOCKS[2].items() if k != "show_notes"}
+    rep = await create(client, blocks=[legacy, {**BLOCKS[2], "id": "a2", "show_notes": True}])
+    got = (await client.get(f"/reports/{rep['id']}")).json()["blocks"]
+    assert got[0]["show_notes"] is False
+    assert got[1]["show_notes"] is True
+    bad = await client.post("/reports", json={"title": "x", "blocks": [{**BLOCKS[2], "show_notes": "talvez"}]})
+    assert bad.status_code == 422

@@ -16,7 +16,7 @@ describe("assumptionOptions", () => {
     const o = { dependent: "y" };
     assumptionOptions("Anova", o);
     expect(o).toEqual({ dependent: "y" });
-    for (const a of ["Correlation", "RegressionLinear", "ContingencyTables", "Descriptives"]) expect(assumptionOptions(a, {})).toBeNull();
+    for (const a of ["RegressionLogistic", "Descriptives", "TTestBayesianOneSample", "AnovaBayesian"]) expect(assumptionOptions(a, {})).toBeNull();
   });
 });
 
@@ -56,6 +56,38 @@ describe("assumptionNotes", () => {
     const ok = tree({ "x_sphericityTable": [{ case: "tempo", "Test statistic": 0.86, "p-value": 0.2, "GG eps": 0.88 }] }).results;
     expect(assumptionNotes("AnovaRepeatedMeasures", ok)[0].level).toBe("ok");
     expect(assumptionOptions("AnovaRepeatedMeasures", { a: 1 })).toEqual({ a: 1, sphericityTests: true });
+  });
+  it("regressão: VIF > 10 e Durbin-Watson significativo viram avisos; VIF baixo e DW ok = nenhum alerta", () => {
+    const bad = tree({ "modelContainer_coeffTable": [{ name: "(Intercept)", VIF: null }, { name: "altura", VIF: 52.3 }, { name: "peso", VIF: 3.1 }],
+                       "modelContainer_summaryTable": [{ DW: 0.8, DW_p: 0.0004 }] }).results;
+    const n = assumptionNotes("RegressionLinear", bad);
+    expect(n.map((x) => x.level)).toEqual(["warn", "warn"]);
+    expect(n[0].text).toMatch(/Multicolinearidade: VIF = 52,30 em altura/);
+    expect(n.some((x) => /peso/.test(x.text))).toBe(false);
+    expect(n[1].text).toMatch(/Autocorrelação dos resíduos \(Durbin-Watson = 0,80, p < ,001\).*ordem/);
+    const ok = tree({ "m_coeffTable": [{ name: "altura", VIF: 1.003 }], "m_summaryTable": [{ DW: 2.5, DW_p: 0.13 }] }).results;
+    expect(assumptionNotes("RegressionLinear", ok)).toEqual([{ level: "ok", text: expect.stringContaining("nenhum alerta") }]);
+    expect(assumptionOptions("RegressionLinear", { dependent: "y" })).toEqual({ dependent: "y", coefficientEstimate: true, collinearityStatistic: true, residualDurbinWatson: true });
+  });
+  it("correlação: normalidade bivariada rejeitada sugere Spearman/Kendall", () => {
+    const n = assumptionNotes("Correlation", tree({ "assumptionsContainer_pairwiseShapiro": [{ var1: "a", separator: "-", var2: "b", W: 0.8, p: 0.002 }, { var1: "a", separator: "-", var2: "c", W: 0.98, p: 0.7 }] }).results);
+    expect(n).toHaveLength(1);
+    expect(n[0].text).toMatch(/Normalidade bivariada rejeitada para a e b \(Shapiro-Wilk, W = 0,80, p = ,002\).*Spearman ou Kendall/);
+  });
+  it("qui-quadrado: regra de Cochran sobre as frequências esperadas (ignora totais)", () => {
+    const row = (lvl: string, e: number[]) => ({ faixa: lvl, "a[expected]": e[0], "b[expected]": e[1], "total[expected]": e[0] + e[1] });
+    const total = { faixa: "Total", "a[expected]": 40, "b[expected]": 40, "total[expected]": 80 };
+    const few = tree({ "container_crossTabMain": [row("x", [1.6, 1.6]), row("y", [1.6, 1.6]), row("z", [20, 20]), total] }).results;
+    const n = assumptionNotes("ContingencyTables", few);
+    expect(n[0].text).toMatch(/4 de 6 células \(66,67%\) com frequência esperada abaixo de 5 \(mínima 1,60\)/);
+    const fine = tree({ "c_crossTabMain": [row("x", [16.5, 16.5]), row("y", [10, 10]), total] }).results;
+    expect(assumptionNotes("ContingencyTables", fine)[0].level).toBe("ok");
+    // até 20% das células abaixo de 5 é aceitável (1 de 5); abaixo de 1 nunca é, nem com uma só célula pequena
+    const one = (e: number) => ({ faixa: "x", "a[expected]": e, "total[expected]": e });
+    const five = tree({ "c_crossTabMain": [one(4), one(9), one(9), one(9), one(9), { faixa: "Total", "a[expected]": 40, "total[expected]": 40 }] }).results;
+    expect(assumptionNotes("ContingencyTables", five)[0].level).toBe("ok");
+    const tiny = tree({ "c_crossTabMain": [one(0.5), one(9), one(9), one(9), one(9), { faixa: "Total", "a[expected]": 40, "total[expected]": 40 }] }).results;
+    expect(assumptionNotes("ContingencyTables", tiny)[0].text).toMatch(/1 de 5 células \(20,00%\).*mínima 0,50/);
   });
   it("sem violações: um único aviso informativo", () => {
     const n = assumptionNotes("Anova", tree({ "x_leveneTable": [{ F: 1.4, df1: 7, df2: 24, p: 0.247 }] }).results);

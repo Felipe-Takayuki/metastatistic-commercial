@@ -2,6 +2,7 @@
 
 Pedidos do usuário: **teste z de duas amostras e de proporções — FEITOS na 6.12** (análises próprias da plataforma, ver abaixo; o z de UMA média continua sendo do JASP, 6.7).
 
+Resolvido na 6.13: pressupostos para correlação, regressão e qui-quadrado; notas automáticas em relatório/dashboard (opt-in por bloco); aviso de Likert na aba Dados.
 Resolvido na 6.11: dados ordinais numéricos (Likert) em papéis escalares, e regressão com um único preditor (bug do motor).
 
 Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9 e Friedman na 6.10; faltam vários fatores intra-sujeito); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
@@ -296,4 +297,32 @@ Antes de mexer no motor, conferi **cada papel escalar contra o R puro** com a co
 ## Pendências
 - Sem teste z de uma proporção com IC de Wald/Clopper-Pearson (só Wilson), nem correção de continuidade, nem z para mais de 2 grupos.
 - σ conhecido por grupo: não há opção "mesmo σ" (basta repetir o valor).
+
+---
+
+# Fatia 6.13 — mais pressupostos automáticos, notas em relatórios/dashboards e aviso de Likert ✅
+
+## Novas verificações (mecanismo da 6.5: roda de novo, em segundo plano, as mesmas opções + os testes; nada de tabelas extras na saída)
+| Análise | O que é verificado | Aviso quando |
+|---|---|---|
+| **Qui-quadrado** | frequências esperadas (`countsExpected`), regra de Cochran | alguma < 1 ou mais de 20% das células < 5 ("N de M células (P%) … mínima x") |
+| **Regressão linear** | multicolinearidade (VIF da tabela de coeficientes) e autocorrelação dos resíduos (Durbin-Watson) | VIF > 10 em algum preditor; DW com p < 0,05 (a nota lembra que só faz sentido se as linhas têm ordem, como o tempo) |
+| **Correlação** | normalidade bivariada de cada par (`assumptionCheckPairwiseShapiro`) | p < 0,05: o r de Pearson pode ser impreciso, considere Spearman/Kendall |
+
+Sem a tabela correspondente, nenhuma nota (como antes). Conferido: VIF e DW contra o R (VIF = 1/(1 − r²) e DW = Σ(Δe)²/Σe², com um conjunto de preditores correlacionados que dá VIF = 253); esperadas do qui-quadrado contra `chisq.test`; a tabela de Shapiro bivariado só tem a estrutura verificada (o valor é do JASP).
+
+## Notas em blocos de relatório e tiles de dashboard (opt-in)
+- Campo **`show_notes`** (bool, padrão `false`) no `AnalysisBlock` da API (vale também para `AnalysisTile`, que herda), tipo no front e caixa **"Mostrar verificação de pressupostos e interpretação do fator de Bayes"** no editor do bloco. Desligado por padrão: o relatório é a saída publicável, só inclui o que o autor escolher. Relatórios antigos (sem o campo) voltam como `false`; valor não booleano → 422.
+- A exportação em PDF é a impressão do navegador: as notas vão para o PDF quando o bloco as mostra (a segunda execução, em segundo plano, termina logo depois da principal).
+
+## Aviso de Likert na aba Dados
+Colunas ordinais de tipo numérico ganham, no cartão da coluna, o aviso "Ordinal numérica (ex.: escala Likert): também é oferecida como variável escalar nas análises, com esse aviso. Marque “escalar” se for uma medida contínua."
+
+## Verificado
+`vitest` 187 (5 novos), `pytest` 205 (5 novos de integração + 2 de API), `e2e:all` 6 suítes verdes (regressão e qui-quadrado com e sem alerta, bloco de relatório com a opção desligada/ligada e persistida após recarregar, aviso na aba Dados).
+
+## Pendências
+- Regressão logística e ANCOVA sem notas próprias (linearidade do logit, homogeneidade das inclinações).
+- Shapiro-Wilk continua sensível com n grande; o limite VIF > 10 é fixo.
+- Tiles de dashboard têm a opção, mas a grade pequena pode cortar as notas (ajustar o tamanho do tile).
 

@@ -35,7 +35,7 @@ export interface ChartConfig {
 }
 export interface TextBlock { type: "text"; id: string; markdown: string }
 export interface ChartBlock { type: "chart"; id: string; title: string; sql: string; chart: ChartConfig | null }
-export interface AnalysisBlock { type: "analysis"; id: string; analysis: string; dataset_id: string; options: Record<string, unknown> }
+export interface AnalysisBlock { type: "analysis"; id: string; analysis: string; dataset_id: string; options: Record<string, unknown>; show_notes?: boolean }
 export type Block = TextBlock | ChartBlock | AnalysisBlock;
 export interface Report { id: string; title: string; blocks: Block[]; version: number; created_at: string; updated_at: string }
 export interface ReportSummary { id: string; title: string; n_blocks: number; version: number; updated_at: string }

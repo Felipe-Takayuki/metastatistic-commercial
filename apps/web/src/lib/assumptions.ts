@@ -12,6 +12,9 @@ const CHECKS: Record<string, Record<string, boolean>> = {
   Anova: { homogeneityTests: true },
   Ancova: { homogeneityTests: true },
   AnovaRepeatedMeasures: { sphericityTests: true },
+  Correlation: { assumptionCheckPairwiseShapiro: true },
+  RegressionLinear: { coefficientEstimate: true, collinearityStatistic: true, residualDurbinWatson: true },
+  ContingencyTables: { countsExpected: true },
 };
 
 export const ALPHA = 0.05;
@@ -92,6 +95,48 @@ export function assumptionNotes(analysis: string, results: unknown): Note[] {
       checked++;
       if (p < ALPHA) warn.push({ level: "warn", text: `Esfericidade violada${typeof r.case === "string" ? ` em ${r.case}` : ""} (Mauchly${w !== null ? `, W = ${fmtStat(w)}` : ""}, ${fmtP(p)}). Use os resultados com correção de Greenhouse-Geisser${gg !== null ? ` (ε = ${fmtStat(gg)})` : ""} ou Huynh-Feldt.` });
     }
+  }
+
+  // correlação: normalidade bivariada de cada par (Shapiro multivariado do JASP)
+  for (const rows of tablesEndingWith(results, "pairwiseShapiro")) {
+    for (const r of rows) {
+      const p = num(r.p), w = num(r.W);
+      if (p === null) continue;
+      checked++;
+      if (p < ALPHA) warn.push({ level: "warn", text: `Normalidade bivariada rejeitada para ${r.var1} e ${r.var2} (Shapiro-Wilk${w !== null ? `, W = ${fmtStat(w)}` : ""}, ${fmtP(p)}). O r de Pearson pode ser impreciso: considere Spearman ou Kendall.` });
+    }
+  }
+
+  // regressão linear: multicolinearidade (VIF > 10) e autocorrelação dos resíduos (Durbin-Watson)
+  for (const rows of tablesEndingWith(results, "coeffTable")) {
+    for (const r of rows) {
+      const vif = num(r.VIF);
+      if (vif === null || typeof r.name !== "string") continue;
+      checked++;
+      if (vif > 10) warn.push({ level: "warn", text: `Multicolinearidade: VIF = ${fmtStat(vif)} em ${r.name} (acima de 10). Os coeficientes ficam instáveis; considere remover ou combinar preditores muito correlacionados.` });
+    }
+  }
+  for (const rows of tablesEndingWith(results, "summaryTable")) {
+    for (const r of rows) {
+      const p = num(r.DW_p), dw = num(r.DW);
+      if (p === null) continue;
+      checked++;
+      if (p < ALPHA) warn.push({ level: "warn", text: `Autocorrelação dos resíduos (Durbin-Watson${dw !== null ? ` = ${fmtStat(dw)}` : ""}, ${fmtP(p)}). O teste só faz sentido se as linhas seguem uma ordem (por exemplo, o tempo); se houver, os erros-padrão podem estar subestimados.` });
+    }
+  }
+
+  // qui-quadrado: frequências esperadas (Cochran: nenhuma < 1 e no máximo 20% das células < 5)
+  for (const rows of tablesEndingWith(results, "crossTabMain")) {
+    const expected: number[] = [];
+    for (const r of rows) {
+      if (Object.values(r).includes("Total")) continue;
+      for (const [k, v] of Object.entries(r)) if (k.endsWith("[expected]") && !k.startsWith("total") && typeof v === "number") expected.push(v);
+    }
+    if (expected.length === 0) continue;
+    checked++;
+    const small = expected.filter((v) => v < 5).length, min = Math.min(...expected);
+    if (min < 1 || small / expected.length > 0.2)
+      warn.push({ level: "warn", text: `${small} de ${expected.length} células (${fmtStat((100 * small) / expected.length)}%) com frequência esperada abaixo de 5 (mínima ${fmtStat(min)}). O qui-quadrado pode ser impreciso: agrupe categorias raras ou colete mais dados.` });
   }
 
   if (warn.length > 0) return warn;
