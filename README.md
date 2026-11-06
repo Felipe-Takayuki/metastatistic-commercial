@@ -1,48 +1,97 @@
-# Metastatistic
+# Metastatistic Commercial (Enterprise & Microservices)
 
-Plataforma web de relatórios estatísticos (JASP + Metabase). Veja [PLAN.md](PLAN.md).
+Plataforma corporativa e B2B SaaS de Business Intelligence, Data Preparation e Rigor Estatístico Avançado (Frequentista e Bayesiano), unificando a agilidade visual e conectividade do [Metabase](https://github.com/metabase/metabase) com o rigor científico e relatórios em padrão APA 7th do [JASP](https://github.com/jasp-stats/jasp-desktop).
 
-## Estrutura
-- `apps/web` — interface (React + TypeScript + ECharts)
-- `apps/api` — API FastAPI
-- `engines/r-worker` — worker R: supervisor leve + motor JASP filho (tempo limite, recuperação automática)
-- `packages/schemas` — contratos compartilhados (a definir)
+Consulte o documento mestre de arquitetura: **[PLAN.md](PLAN.md)**.
 
-## Fase 6 — catálogo estatístico (fatias 6.1 e 6.2)
-Agora com **10 análises**: teste t (independente, pareado, uma amostra), ANOVA, ANCOVA, correlação, regressão linear e logística, qui-quadrado e estatísticas descritivas, todas conferidas contra o R puro: [docs/phase6-progress.md](docs/phase6-progress.md).
+---
 
-## Fase 5 — Dashboards (fatias 5.1 a 5.3; "Fase 4" do PLAN)
-Grade arrastável/redimensionável de tiles (KPI, gráfico SQL, texto) com autosave e conflito por versão, **filtros globais** (`{{nome}}` no SQL) e **cross-filter** (clicar numa barra filtra os demais tiles) e **tiles de análise estatística** (JASP), em http://localhost:8080 → **Dashboards**. Drill-down, coleções e RBAC ficam para as próximas fatias: [docs/phase5-progress.md](docs/phase5-progress.md).
+## 🏛️ Topologia e Estrutura do Monorepo
 
-## Fase 4 — mais análises (concluída, ainda não commitada)
-ANOVA (blocos casualizados, aditivo ou com interação, Tukey/Bonferroni/Holm), correlação, regressão linear e qui-quadrado, validados contra o R puro (124 valores, 0 divergências), formulários declarativos no front-end, bloco de análise nos relatórios e **"Salvar consulta como dataset"** (cria colunas derivadas, ex.: `bloco`). O travamento intermitente do motor **não se reproduziu** em ~540 análises distintas; há um teste de resistência como guarda. Detalhes, descobertas e pendências: [docs/phase4-progress.md](docs/phase4-progress.md).
+O repositório está organizado como um monorepo (`pnpm-workspace.yaml`):
 
-## Fase 2 — execução robusta de análises (fatia 2.1)
-Pool de 2 workers R, fila, tempo limite, cache e recuperação automática do motor: [docs/phase2-progress.md](docs/phase2-progress.md). Estado em tempo real: `GET /analyses/status`.
+### Microsserviços e Backend
+- **`services/gateway`** (porta `8080`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
+- **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados e emissão de tokens JWT (HS256).
+- **`services/stat-orchestrator`** (porta `8003`): Orquestrador de computação analítica com fila assíncrona priorizada por QoS (clientes VIP furam fila), cache determinístico LRU por hash SHA-256 e roteador inteligente Dual-Engine.
+- **`apps/api`** (porta `8000`): Camada de dados, ingestão de CSV/Parquet via DuckDB, consultas SQL em sandbox, catálogo de datasets, relatórios, dashboards, data prep (receitas de transformação) e abstração de storage (`StorageProvider` Local/S3).
+- **`engines/r-worker`**: **Engine A (Open Engine)** — Worker R isolado em container com supervisor leve e runtime JASP (tempo limite, recuperação automática, AGPL-compliant).
 
-## Fase 3 — Relatórios (fatia 3.1)
-Documentos com blocos de texto, gráfico e análise, com autosave e exportação em PDF: [docs/phase3-progress.md](docs/phase3-progress.md). Em http://localhost:8080 → **Relatórios**.
+### Pacotes Compartilhados e Frontend
+- **`packages/contracts`**: Contratos canônicos e interfaces TypeScript para entidades multi-tenant, tabelas APA 7th, especificações analíticas e metadados de armazenamento.
+- **`apps/web`**: Aplicação frontend (Vite + React 19 + TypeScript + ECharts) com suporte a análise estatística, construtor de dashboards interativos, editor de relatórios em blocos e visualizações com tema escuro/claro.
 
-## Fase 1 — em andamento
-**Interface:** http://localhost:8080 (após `docker compose up -d --build`). Testes: `cd apps/web && npm test` (unitários) e `npm run e2e:all` (navegador, 6 suítes; precisa da pilha no ar e de `pdftotext`).
+---
 
-Progresso, rotas e decisões: [docs/phase1-progress.md](docs/phase1-progress.md). Docs interativas da API em `http://localhost:8000/docs`.
+## 🚀 Fases Comerciais (Enterprise Roadmap)
 
+O progresso da evolução corporativa está documentado minuciosamente nas notas de entrega abaixo:
+
+- **[Fase Comercial 1 — Monorepo, Contratos, Armazenamento e Multi-Tenancy ✅](docs/commercial-phase1-progress.md)**:
+  - Setup do monorepo e criação do pacote `@metastatistic/contracts`.
+  - Abstração agnóstica de armazenamento de arquivos (`StorageProvider`) com provedores Local e Amazon S3/MinIO com cache local.
+  - Multi-tenancy no banco de dados com auto-seed do tenant `default` e migração automática e retrocompatível de tabelas principais.
+- **[Fase Comercial 2 — IAM, Multi-Tenancy e API Gateway ✅](docs/commercial-phase2-progress.md)**:
+  - Microsserviço `auth-tenant-service` com cotas por plano, convites e tokens JWT.
+  - Microsserviço `gateway` com resolução de inquilinos em cascata (subdomínio, cabeçalho, JWT), proxy reverso assíncrono e healthcheck agregador unificado.
+  - Orquestração distribuída via `docker-compose.microservices.yml`.
+- **[Fase Comercial 4 — Orquestrador Estatístico e Engine B (Pure Python) ✅](docs/commercial-phase4-progress.md)**:
+  - Microsserviço `stat-orchestrator` com fila assíncrona, priorização VIP para planos Enterprise e cache determinístico LRU.
+  - **Engine B comercial**: Cálculos estatísticos em Python puro/SciPy (100% livre de AGPL) para Descritivas, Testes t (Independente e Uma Amostra), ANOVA One-Way e Correlação de Pearson, com formatação estrita de tabelas e notas APA 7th.
+  - Roteador Dual-Engine ('auto', 'py', 'r') garantindo conformidade e proteção de propriedade intelectual.
+
+---
+
+## 🔬 Fases do Motor Estatístico Base (Histórico)
+
+- **[Fase 8 — Transformações de Dados (Power Query web)](docs/phase8-progress.md)**: Passos encadeados em DuckDB com receitas salvas, colunas calculadas, agregações por janela e reshape (pivot/unpivot/join/append).
+- **[Fase 7 — Governança e Permissões](docs/phase7-progress.md)**: Controle de acesso refinado por dataset, segurança por linha (Row-Level Security) e trilha de auditoria.
+- **[Fase 6 — Catálogo Estatístico Expandido](docs/phase6-progress.md)**: 10 análises estatísticas validadas contra o R puro (testes t, ANOVA, ANCOVA, regressão linear/logística, qui-quadrado, descritivas).
+- **[Fase 5 — Dashboards Interativos](docs/phase5-progress.md)**: Grade flexível, filtros dinâmicos globais (`{{param}}`), cross-filtering entre gráficos e tiles de análises inferenciais.
+- **[Fase 4 — Análises Estatísticas Avançadas](docs/phase4-progress.md)**: Testes inferenciais multivariados com relatórios em estilo APA.
+- **[Fase 3 — Editor de Relatórios](docs/phase3-progress.md)**: Documentos com blocos de texto, gráficos e análises com exportação em PDF.
+- **[Fase 2 — Execução Robusta de Análises](docs/phase2-progress.md)**: Pool de workers R resilientes com supervisor de processo e timeout.
+- **[Fase 1 — Camada de Dados e Ingestão](docs/phase1-progress.md)**: Ingestão de CSV para Apache Parquet via DuckDB e consultas analíticas seguras.
+- **[Fase 0 — Spike de Arquitetura e Descobertas](docs/phase0-findings.md)**: Prova de conceito e neutralização de armadilhas iniciais.
+
+---
+
+## 🛠️ Como Executar
+
+### 1. Orquestração Completa de Microsserviços (Docker Compose)
+Para subir o ecossistema distribuído de microsserviços:
 ```bash
-curl -F file=@vendas.csv localhost:8000/datasets            # -> id, table_name, colunas
-curl -X POST localhost:8000/queries/run -H 'content-type: application/json' \
-     -d '{"sql":"SELECT regiao, sum(receita) FROM vendas GROUP BY 1"}'
+docker compose -f docker-compose.microservices.yml up -d --build
+```
+Serviços disponíveis:
+- **API Gateway**: `http://localhost:8080` (Healthcheck unificado em `http://localhost:8080/health`)
+- **Frontend Web**: `http://localhost:8080`
+- **Auth & Tenant Service**: `http://localhost:8002`
+- **Stat Orchestrator**: `http://localhost:8003`
+- **Data API**: `http://localhost:8000`
+
+### 2. Execução dos Testes Automatizados
+
+#### Microsserviços e Backend Python
+```bash
+# Testes do Stat Orchestrator (13 testes)
+uv run --directory services/stat-orchestrator pytest
+
+# Testes do Auth Tenant Service (6 testes)
+uv run --directory services/auth-tenant-service pytest
+
+# Testes do API Gateway (7 testes)
+uv run --directory services/gateway pytest
+
+# Testes da API de Dados (330 testes)
+uv run --directory apps/api pytest
 ```
 
-## Fase 0 (spike) — concluída
-Resultados e armadilhas: [docs/phase0-findings.md](docs/phase0-findings.md).
-
+#### Frontend Web (TypeScript / React)
 ```bash
-docker compose up -d --build        # worker leva ~15 s para aquecer; interface em http://localhost:8080
-curl -s localhost:8000/health
+# Testes unitários do frontend (259 testes)
+pnpm --filter web test --run
 
-# testes (venv local; o shim do uv no mise precisa de versão definida)
-cd apps/api && python3 -m venv .venv && .venv/bin/pip install fastapi httpx pydantic-settings duckdb python-multipart sqlglot pytest pytest-asyncio respx
-.venv/bin/pytest                                  # unitários
-RUN_INTEGRATION=1 .venv/bin/pytest                # + integração contra o worker R, 2 workers (177)
+# Validação de tipos e build de produção
+pnpm --filter web build
 ```
