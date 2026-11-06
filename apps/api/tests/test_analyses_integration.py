@@ -86,6 +86,7 @@ def data():
     ids["colin"] = derive("e2e-colinear", f"SELECT produtividade, altura, 2 * altura + (CAST(FLOOR(produtividade) AS BIGINT) % 3) AS altura2, diametro FROM \"{raw['table_name']}\"")["id"]
     ids["steps"] = derive("e2e-passos", f"SELECT CASE WHEN altura + 5 * ((CAST(FLOOR(produtividade) AS BIGINT) % 7) - 3) >= 140 THEN 'alto' ELSE 'baixo' END AS nivel, "
                                        f"altura, diametro, 2 * altura + (CAST(FLOOR(produtividade) AS BIGINT) % 3) AS altura2 FROM \"{raw['table_name']}\"")["id"]
+    ids["rm2"] = upload("e2e-rm2.csv", FIX / "rm2.csv")["id"]
     ids["resp"] = derive("e2e-resposta", f"SELECT \"group\" AS grupo, score, CASE WHEN score >= 10.5 THEN 'sim' ELSE 'nao' END AS resposta FROM \"{tt['table_name']}\"")["id"]
     ids["rm"] = upload("e2e-medidas-repetidas.csv", FIX / "medidas_repetidas.csv")["id"]
     fr = upload("e2e-friedman.csv", FIX / "friedman.csv")
@@ -815,3 +816,35 @@ def test_logistic_stepwise_methods_match_R_step(data):
     back = [r["aic"] for r in table(logit_steps(data, "backward", [forced, cand]), "modelSummary")["data"]]
     assert back == sorted(back, reverse=True) and len(back) >= 2
     assert len(table(logit_steps(data, "enter", [cand]), "modelSummary")["data"]) == 1   # 'enter': um modelo, todos os preditores
+
+
+RM2_COLS = ["a1b1", "a1b2", "a1b3", "a2b1", "a2b2", "a2b3"]
+RM2_FACTORS = [{"name": "A", "levels": ["pre", "pos"]}, {"name": "B", "levels": ["b1", "b2", "b3"]}]
+RM2_BASE = {"repeatedMeasuresFactors": RM2_FACTORS, "repeatedMeasuresCells": RM2_COLS,
+            "withinModelTerms": [{"components": ["A"]}, {"components": ["B"]}, {"components": ["A", "B"]}], "sphericityCorrectionNone": True}
+
+
+def test_repeated_measures_two_within_factors_match_R(data):
+    """Dois fatores intra-sujeito: as colunas em ordem (1º fator varia mais devagar), efeitos principais e interação (aov + Error())."""
+    ref = REF["rm2"]
+    res = run("AnovaRepeatedMeasures", data["rm2"], RM2_BASE)
+    w = {(r["case"], r.get("correction", "None")): r for r in table(res, "withinAnovaTable")["data"]}   # só uma correção: a tabela não traz a coluna `correction`
+    inter_key = next(k for k in w if "A" in k[0] and "B" in k[0] and k[0] != "Residuals")
+    for key, name in ((("A", "None"), "A"), (("B", "None"), "B"), (inter_key, "AB")):
+        row, want = w[key], ref[name]
+        assert row["num Df"] == want["df"]
+        close(row["Sum Sq"], want["ss"]); close(row["F value"], want["F"]); close(row["p"], want["p"])
+
+
+def test_repeated_measures_two_factors_posthoc_is_paired_t_on_marginal_means(data):
+    ref = REF["rm2"]
+    res = run("AnovaRepeatedMeasures", data["rm2"], {**RM2_BASE, "postHocTerms": ["B"], "postHocCorrectionHolm": True, "postHocCorrectionBonferroni": True})
+    rows = {(r["contrast_A"], r["contrast_B"]): r for r in table(res, "postHocStandardContainer_B1")["data"]}
+    assert len(rows) == 3
+    for want in ref["posthoc_B"]:
+        got = rows[(want["a"], want["b"])]
+        assert got["df"] == want["df"]
+        close(got["estimate"], want["est"]); close(got["t.ratio"], want["t"]); close(got["holm"], want["holm"]); close(got["bonferroni"], want["bonferroni"])
+    desc = run("AnovaRepeatedMeasures", data["rm2"], {**RM2_BASE, "descriptives": True})
+    rows = table(desc, "tableDescriptives")["data"]
+    assert [(r["A."], r["B."]) for r in rows] == [("pre", "b1"), ("pre", "b2"), ("pre", "b3"), ("pos", "b1"), ("pos", "b2"), ("pos", "b3")]   # ordem das células

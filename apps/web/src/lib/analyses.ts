@@ -570,62 +570,104 @@ export const ZTEST_PROPORTIONS_DEF: AnalysisDef = {
 // ------------------------------------------------------------------------------------------------------------------
 // ANOVA de medidas repetidas (fatia 6.9): UM fator intra-sujeito. Os níveis são colunas do dataset (formato largo: uma
 // coluna por medida, na ordem em que o usuário as marca); o nome do fator é livre. Fatores entre-sujeitos opcionais.
+const splitLevels = (raw: unknown): string[] => String(raw ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+const rmFactors = (s: FormState) => {
+  const name = String(s.values.factorName ?? "").trim(), name2 = String(s.values.factor2Name ?? "").trim();
+  const cells = s.vars.repeatedMeasuresCells ?? [];
+  const l1 = splitLevels(s.values.levels1), l2 = splitLevels(s.values.levels2);
+  if (name2 === "") return { name, name2, f1: l1.length > 0 ? l1 : cells, f2: [] as string[], two: false };
+  return { name, name2, f1: l1, f2: l2, two: true };
+};
+
 export const RM_ANOVA_DEF: AnalysisDef = {
   id: "AnovaRepeatedMeasures",
   title: "ANOVA de medidas repetidas",
-  description: "Compara as médias de uma mesma unidade medida várias vezes (tempos, condições). Cada medida é uma coluna: marque-as na ordem. Fatores entre-sujeitos (grupos) são opcionais e dão um delineamento misto.",
+  description: "Compara as médias de uma mesma unidade medida várias vezes (tempos, condições). Cada medida é uma coluna: marque-as na ordem. Fatores entre-sujeitos (grupos) são opcionais e dão um delineamento misto. Com dois fatores intra-sujeito (ex.: tempo × condição), preencha o 2º fator e os níveis de cada um.",
   slots: [
     { key: "repeatedMeasuresCells", label: "Medidas repetidas (colunas, na ordem dos níveis)", levels: ["scale"], multi: true, required: true, min: 2, ordered: true },
     { key: "betweenSubjectFactors", label: "Fatores entre-sujeitos (grupos, opcional)", levels: ["nominal", "ordinal"], multi: true },
   ],
   sections: [
-    { title: "Fator intra-sujeito", items: [{ type: "text", key: "factorName", label: "Nome do fator (ex.: tempo)", default: "tempo", maxLength: 40, local: true }] },
+    {
+      title: "Fator intra-sujeito",
+      items: [
+        { type: "text", key: "factorName", label: "Nome do fator (ex.: tempo)", default: "tempo", maxLength: 40, local: true },
+        { type: "text", key: "levels1", label: "Níveis do fator, separados por vírgula (vazio = nomes das colunas)", default: "", maxLength: 200, local: true },
+        { type: "text", key: "factor2Name", label: "2º fator intra-sujeito (opcional; ex.: condição)", default: "", maxLength: 40, local: true },
+        { type: "text", key: "levels2", label: "Níveis do 2º fator, separados por vírgula", default: "", maxLength: 200, local: true, showIf: (v) => String(v.factor2Name ?? "").trim() !== "" },
+      ],
+    },
     {
       title: "Esfericidade",
       items: [toggle("sphericityTests", "Teste de esfericidade (Mauchly)", true), toggle("sphericityCorrectionNone", "Sem correção", true), toggle("sphericityCorrectionGreenhouseGeisser", "Greenhouse-Geisser", true), toggle("sphericityCorrectionHuynhFeldt", "Huynh-Feldt")],
     },
     { title: "Estatísticas", items: [toggle("descriptives", "Estatísticas descritivas", true), toggle("effectSizePartialEtaSquared", "η² parcial"), toggle("effectSizeGeneralEtaSquared", "η² generalizado"), toggle("effectSizeOmegaSquared", "ω² (ômega ao quadrado)")] },
     {
-      title: "Comparações múltiplas entre os níveis do fator intra",
+      title: "Comparações múltiplas entre os níveis dos fatores intra",
       items: [toggle("posthoc", "Comparar os níveis dois a dois", false, { local: true }), toggle("postHocCorrectionHolm", "Holm", true, { showIf: (v) => !!v.posthoc }), toggle("postHocCorrectionBonferroni", "Bonferroni", false, { showIf: (v) => !!v.posthoc })],
     },
     {
-      title: "Não paramétrico (um teste só, com todos os sujeitos)",
+      title: "Não paramétrico (um teste só, com todos os sujeitos; só com um fator intra)",
       items: [
-        toggle("friedman", "Teste de Friedman (alternativa à ANOVA; ignora os grupos)", false, { local: true }),
-        toggle("conover", "Post hoc de Conover (Bonferroni e Holm)", false, { local: true, showIf: (v) => !!v.friedman }),
+        toggle("friedman", "Teste de Friedman (alternativa à ANOVA; ignora os grupos)", false, { local: true, showIf: (v) => String(v.factor2Name ?? "").trim() === "" }),
+        toggle("conover", "Post hoc de Conover (Bonferroni e Holm)", false, { local: true, showIf: (v) => !!v.friedman && String(v.factor2Name ?? "").trim() === "" }),
       ],
     },
   ],
   derive: (s) => {
-    const name = String(s.values.factorName ?? "").trim();
+    const { name, name2, f1, f2, two } = rmFactors(s);
     const between = s.vars.betweenSubjectFactors;
     const anyEffect = !!(s.values.effectSizePartialEtaSquared || s.values.effectSizeGeneralEtaSquared || s.values.effectSizeOmegaSquared);
+    const friedman = !two && !!s.values.friedman;
     return {
-      repeatedMeasuresFactors: [{ name, levels: s.vars.repeatedMeasuresCells }],
-      withinModelTerms: [{ components: [name] }],
+      repeatedMeasuresFactors: two ? [{ name, levels: f1 }, { name: name2, levels: f2 }] : [{ name, levels: f1 }],
+      withinModelTerms: two ? [{ components: [name] }, { components: [name2] }, { components: [name, name2] }] : [{ components: [name] }],
       betweenModelTerms: between.map((b) => ({ components: [b] })),
       effectSizeEstimates: anyEffect,
-      postHocTerms: s.values.posthoc ? [name] : [],
+      postHocTerms: s.values.posthoc ? (two ? [name, name2] : [name]) : [],
       // Friedman com fator de agrupamento do JASP devolveria NaN no Conover: por isso o teste vale para todos os sujeitos juntos
-      friedmanWithinFactor: s.values.friedman ? [name] : [],
-      conoverTest: !!(s.values.friedman && s.values.conover),
+      friedmanWithinFactor: friedman ? [name] : [],
+      conoverTest: !!(friedman && s.values.conover),
     };
   },
   parse: (o) => {
-    const f = Array.isArray(o.repeatedMeasuresFactors) ? (o.repeatedMeasuresFactors[0] as { name?: unknown } | undefined) : undefined;
+    const fs = Array.isArray(o.repeatedMeasuresFactors) ? (o.repeatedMeasuresFactors as { name?: unknown; levels?: unknown }[]) : [];
+    const lv = (f?: { levels?: unknown }) => (Array.isArray(f?.levels) ? (f!.levels as unknown[]).filter((x): x is string => typeof x === "string").join(", ") : "");
     return {
-      factorName: typeof f?.name === "string" ? f.name : "tempo",
+      factorName: typeof fs[0]?.name === "string" ? fs[0].name : "tempo",
+      levels1: fs.length > 1 ? lv(fs[0]) : "",   // com um fator só, os níveis são os nomes das colunas
+      factor2Name: typeof fs[1]?.name === "string" ? fs[1].name : "",
+      levels2: fs.length > 1 ? lv(fs[1]) : "",
       posthoc: Array.isArray(o.postHocTerms) && o.postHocTerms.length > 0,
       friedman: Array.isArray(o.friedmanWithinFactor) && o.friedmanWithinFactor.length > 0,
       conover: o.conoverTest === true,
     };
   },
+  hint: (s) => {
+    const { f1, f2, two } = rmFactors(s);
+    const cells = s.vars.repeatedMeasuresCells ?? [];
+    if (!two || f1.length * f2.length !== cells.length || f1.length === 0) return null;
+    // 1º fator varia mais devagar: (n1 × n2) colunas em ordem = n1 blocos de n2 colunas (conferido contra o R)
+    return `Células: ${f1.flatMap((a, i) => f2.map((b, j) => `${a} · ${b} = ${cells[i * f2.length + j]}`)).join("; ")}.`;
+  },
   check: ({ state }) => {
-    const name = String(state.values.factorName ?? "").trim();
+    const { name, name2, f1, f2, two } = rmFactors(state);
+    const cells = state.vars.repeatedMeasuresCells, between = state.vars.betweenSubjectFactors;
     const out: string[] = [];
+    const taken = (n: string) => cells.includes(n) || between.includes(n);
     if (name === "") out.push("Dê um nome ao fator intra-sujeito (ex.: tempo).");
-    else if (state.vars.repeatedMeasuresCells.includes(name) || state.vars.betweenSubjectFactors.includes(name)) out.push(`O nome do fator (“${name}”) não pode ser igual ao de uma coluna escolhida.`);
+    else if (taken(name)) out.push(`O nome do fator (“${name}”) não pode ser igual ao de uma coluna escolhida.`);
+    if (!two) {
+      const given = splitLevels(state.values.levels1);
+      if (given.length > 0 && given.length !== cells.length) out.push(`${given.length} nível(is) informado(s) para ${cells.length} coluna(s): ou informe um nível por coluna ou deixe em branco.`);
+      if (new Set(f1).size !== f1.length) out.push("Os níveis do fator não podem se repetir.");
+      return out;
+    }
+    if (name2 === name) out.push("Os dois fatores intra-sujeito precisam de nomes diferentes.");
+    else if (taken(name2)) out.push(`O nome do 2º fator (“${name2}”) não pode ser igual ao de uma coluna escolhida.`);
+    if (f1.length < 2 || f2.length < 2) out.push("Cada fator intra-sujeito precisa de pelo menos 2 níveis (separe por vírgula).");
+    else if (f1.length * f2.length !== cells.length) out.push(`${f1.length} × ${f2.length} = ${f1.length * f2.length} células, mas há ${cells.length} coluna(s) marcada(s): marque uma coluna por combinação de níveis.`);
+    if (new Set(f1).size !== f1.length || new Set(f2).size !== f2.length) out.push("Os níveis de um mesmo fator não podem se repetir.");
     return out;
   },
 };

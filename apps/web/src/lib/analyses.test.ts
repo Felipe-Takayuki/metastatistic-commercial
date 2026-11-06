@@ -219,6 +219,42 @@ describe("toOptions — o contrato com o motor JASP", () => {
     const back = fromOptions(RM_ANOVA_DEF, toOptions(RM_ANOVA_DEF, st({ friedman: true, conover: true })));
     expect(back.values).toMatchObject({ friedman: true, conover: true });
   });
+  it("ANOVA de medidas repetidas com DOIS fatores intra-sujeito: níveis por fator, termos A, B e A×B, hint do mapeamento das células", () => {
+    const cols = ["a1b1", "a1b2", "a1b3", "a2b1", "a2b2", "a2b3"];
+    const d6 = ds(cols.map((c) => col(c, "scale")));
+    const st = (values = {}, cells = cols) => state({ repeatedMeasuresCells: cells, betweenSubjectFactors: [] }, { factorName: "A", levels1: "pre, pos", factor2Name: "B", levels2: "b1,b2, b3", ...values }, defaultState(RM_ANOVA_DEF));
+    const o = toOptions(RM_ANOVA_DEF, resolve(RM_ANOVA_DEF, d6, st()));
+    expect(o.repeatedMeasuresFactors).toEqual([{ name: "A", levels: ["pre", "pos"] }, { name: "B", levels: ["b1", "b2", "b3"] }]);
+    expect(o.withinModelTerms).toEqual([{ components: ["A"] }, { components: ["B"] }, { components: ["A", "B"] }]);
+    expect(o.postHocTerms).toEqual([]);
+    expect(toOptions(RM_ANOVA_DEF, resolve(RM_ANOVA_DEF, d6, st({ posthoc: true }))).postHocTerms).toEqual(["A", "B"]);
+    for (const k of ["factorName", "levels1", "factor2Name", "levels2"]) expect(o).not.toHaveProperty(k);
+    const r = resolve(RM_ANOVA_DEF, d6, st());
+    expect(problems(RM_ANOVA_DEF, d6, r)).toEqual([]);
+    expect(RM_ANOVA_DEF.hint!(r)).toBe("Células: pre · b1 = a1b1; pre · b2 = a1b2; pre · b3 = a1b3; pos · b1 = a2b1; pos · b2 = a2b2; pos · b3 = a2b3.");
+    // Friedman não vale com dois fatores (ignorado mesmo que marcado)
+    const fr = toOptions(RM_ANOVA_DEF, resolve(RM_ANOVA_DEF, d6, st({ friedman: true, conover: true })));
+    expect(fr.friedmanWithinFactor).toEqual([]);
+    expect(fr.conoverTest).toBe(false);
+    // ida e volta
+    const back = fromOptions(RM_ANOVA_DEF, o);
+    expect(back.values).toMatchObject({ factorName: "A", levels1: "pre, pos", factor2Name: "B", levels2: "b1, b2, b3" });
+    expect(toOptions(RM_ANOVA_DEF, back).repeatedMeasuresFactors).toEqual(o.repeatedMeasuresFactors);
+  });
+  it("dois fatores intra: o produto de níveis precisa bater com as colunas; nomes e níveis repetidos são recusados", () => {
+    const cols = ["a1b1", "a1b2", "a1b3", "a2b1", "a2b2", "a2b3"];
+    const d6 = ds(cols.map((c) => col(c, "scale")));
+    const pr = (values: Record<string, string>, cells = cols) => problems(RM_ANOVA_DEF, d6, resolveState(RM_ANOVA_DEF, d6, state({ repeatedMeasuresCells: cells, betweenSubjectFactors: [] }, { factorName: "A", levels1: "pre, pos", factor2Name: "B", levels2: "b1, b2, b3", ...values }, defaultState(RM_ANOVA_DEF))));
+    expect(pr({}, cols.slice(0, 5))[0]).toMatch(/2 × 3 = 6 células, mas há 5 coluna\(s\)/);
+    expect(pr({ levels2: "b1" })[0]).toMatch(/pelo menos 2 níveis/);
+    expect(pr({ factor2Name: "A" })[0]).toMatch(/nomes diferentes/);
+    expect(pr({ levels2: "b1, b1, b2" })[0]).toMatch(/não podem se repetir/);
+    expect(pr({ factor2Name: "a1b1" })[0]).toMatch(/não pode ser igual ao de uma coluna/);
+    // um fator só: níveis opcionais; se informados, um por coluna
+    expect(pr({ factor2Name: "", levels2: "", levels1: "" })).toEqual([]);
+    expect(pr({ factor2Name: "", levels2: "", levels1: "x, y" })[0]).toMatch(/2 nível\(is\) informado\(s\) para 6 coluna/);
+    expect(pr({ factor2Name: "", levels2: "", levels1: "p, q, r, s, t, u" })).toEqual([]);
+  });
   it("ANOVA de medidas repetidas: exige 2+ medidas, nome do fator preenchido e diferente das colunas; ida e volta preserva nome e post hoc", () => {
     const d3 = ds([col("t1", "scale"), col("t2", "scale"), col("grupo", "nominal", 2)]);
     const pr = (cells: string[], values = {}) => problems(RM_ANOVA_DEF, d3, resolveState(RM_ANOVA_DEF, d3, state({ repeatedMeasuresCells: cells, betweenSubjectFactors: [] }, values, defaultState(RM_ANOVA_DEF))));

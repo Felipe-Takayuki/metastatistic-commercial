@@ -2,13 +2,14 @@
 
 Pedidos do usuário: **teste z de duas amostras e de proporções — FEITOS na 6.12** (análises próprias da plataforma, ver abaixo; o z de UMA média continua sendo do JASP, 6.7).
 
+Resolvido na 6.17: ANOVA de medidas repetidas com dois fatores intra-sujeito.
 Resolvido na 6.16: ANCOVA com post hoc e médias marginais ajustadas; regressão logística com seleção de preditores por AIC.
 Resolvido na 6.15: correlação, regressão linear, ANCOVA e qui-quadrado bayesianos.
 Resolvido na 6.14: t pareado (e bayesiano) com vários pares.
 Resolvido na 6.13: pressupostos para correlação, regressão e qui-quadrado; notas automáticas em relatório/dashboard (opt-in por bloco); aviso de Likert na aba Dados.
 Resolvido na 6.11: dados ordinais numéricos (Likert) em papéis escalares, e regressão com um único preditor (bug do motor).
 
-Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9 e Friedman na 6.10; faltam vários fatores intra-sujeito); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
+Outros itens abertos: (ANOVA de medidas repetidas feita na 6.9 e Friedman na 6.10; vários fatores intra-sujeito: dois feitos na 6.17); correlação/regressão/ANCOVA/qui-quadrado bayesianos; Wilcoxon bayesiano e priors informativos; t pareado com vários pares; ANCOVA com post hoc e médias marginais; logística com seleção de método; estimativa de efeito a posteriori nos testes t bayesianos; pressupostos para correlação/regressão/qui-quadrado; avisos de pressupostos em relatório/dashboard.
 
 ---
 
@@ -398,4 +399,26 @@ Conferido com `step()` do R (`backward` a partir do modelo cheio; `forward` e `b
 ## Pendências
 - ANCOVA: sem contrastes, sem efeitos simples (interação fator × covariável) nem teste de homogeneidade das inclinações; post hoc só do tipo padrão (sem Dunnett/Games-Howell).
 - Logística: sem interações nem pesos; a dica de passos não destaca o modelo final na tabela.
+
+---
+
+# Fatia 6.17 — ANOVA de medidas repetidas com dois fatores intra-sujeito ✅ (sem mudança no motor)
+
+O JASP já aceita vários fatores em `repeatedMeasuresFactors`; só o formulário limitava a um.
+
+- **Formulário**: ao preencher o **"2º fator intra-sujeito"**, os campos de níveis passam a valer: "Níveis do fator" e "Níveis do 2º fator" (separados por vírgula). As colunas marcadas formam as células **na ordem em que foram marcadas, com o 1º fator variando mais devagar** (n₁ blocos de n₂ colunas). Um resumo mostra o mapeamento ("Células: pre · b1 = a1b1; pre · b2 = a1b2; …") para o usuário conferir a ordem. Com um fator só, tudo funciona como antes (níveis opcionais; se informados, um por coluna).
+- **Termos do modelo**: A, B e A × B; o post hoc ("Comparar os níveis dois a dois") vale para os dois fatores. **Friedman/Conover só com um fator** (ficam escondidos com dois).
+- **Validação**: nomes dos fatores diferentes e distintos das colunas; ao menos 2 níveis por fator, sem repetição; **n₁ × n₂ = número de colunas** ("2 × 2 = 4 células, mas há 6 coluna(s) marcada(s)").
+- Blocos salvos com um fator continuam idênticos; com dois, a ida e volta preserva nomes e níveis.
+
+## Conferido contra o R puro (`rm2.csv`: 20 sujeitos, A pre/pos × B b1/b2/b3)
+`aov(y ~ A * B + Error(id/(A*B)))`: gl, SQ, F e p de A, B e A × B (F = 1889,173; 97,653; 59,211); a ordem das células (tabela de descritivas na ordem pre·b1…pos·b3); post hoc de B = **t pareado sobre as médias marginais** (média de A para cada nível de B; gl = n − 1) com Holm/Bonferroni por `p.adjust`.
+
+## Verificado
+`vitest` 200 (2 novos), `pytest` 215 (2 novos), `e2e:all` 6 suítes verdes (mapeamento das células, F de A/B/A×B iguais ao R e bloqueio por produto de níveis errado).
+Armadilha de teste: a tabela intra do JASP só traz a coluna `correction` quando mais de uma correção de esfericidade é pedida (`r.get("correction", "None")`).
+
+## Pendências
+- Máximo de dois fatores intra-sujeito no formulário (o JASP aceita mais); post hoc apenas das médias marginais de cada fator (sem comparações das células da interação nem efeitos simples).
+- Sem teste de esfericidade verificado contra o R para A × B (o do fator único está conferido na 6.9).
 

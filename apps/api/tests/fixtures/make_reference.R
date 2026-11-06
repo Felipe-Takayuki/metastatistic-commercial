@@ -195,6 +195,16 @@ fullg <- glm(nivel_s ~ altura + diametro + altura2, data = d, family = binomial)
 stp <- function(m) list(terms = attr(terms(m), "term.labels"), aic = AIC(m), est = unname(coef(m)), se = unname(summary(m)$coefficients[, 2]))
 out$logit_steps <- list(backward = stp(step(fullg, direction = "backward", trace = 0)), forward = stp(step(nulg, scope = formula(fullg), direction = "forward", trace = 0)),
   stepwise = stp(step(nulg, scope = formula(fullg), direction = "both", trace = 0)))
+# --- catálogo 6.17: ANOVA de medidas repetidas com DOIS fatores intra-sujeito (rm2.csv: A pre/pos × B b1/b2/b3; 1º fator varia mais devagar) ---
+m2 <- read.csv(file.path(dir, "rm2.csv")); c2 <- c("a1b1", "a1b2", "a1b3", "a2b1", "a2b2", "a2b3"); n2 <- nrow(m2)
+long2 <- data.frame(y = unlist(m2[c2]), A = factor(rep(c("pre", "pos"), each = 3 * n2), levels = c("pre", "pos")), B = factor(rep(rep(c("b1", "b2", "b3"), each = n2), 2)), id = factor(rep(m2$sujeito, 6)))
+s2 <- summary(aov(y ~ A * B + Error(id / (A * B)), long2))
+st2 <- function(nm, row) { x <- s2[[nm]][[1]]; rownames(x) <- trimws(rownames(x)); list(df = x[row, "Df"], ss = x[row, "Sum Sq"], F = x[row, "F value"], p = x[row, "Pr(>F)"], df_res = x["Residuals", "Df"], ss_res = x["Residuals", "Sum Sq"]) }
+bavg <- list(b1 = (m2$a1b1 + m2$a2b1) / 2, b2 = (m2$a1b2 + m2$a2b2) / 2, b3 = (m2$a1b3 + m2$a2b3) / 2)
+bp <- combn(c("b1", "b2", "b3"), 2, simplify = FALSE); btt <- lapply(bp, function(v) t.test(bavg[[v[1]]], bavg[[v[2]]], paired = TRUE)); braw <- vapply(btt, function(x) x$p.value, numeric(1))
+out$rm2 <- list(n = n2, A = st2("Error: id:A", "A"), B = st2("Error: id:B", "B"), AB = st2("Error: id:A:B", "A:B"),
+  posthoc_B = lapply(seq_along(bp), function(i) list(a = bp[[i]][1], b = bp[[i]][2], est = unname(btt[[i]]$estimate), t = unname(btt[[i]]$statistic), df = unname(btt[[i]]$parameter),
+    holm = p.adjust(braw, "holm")[i], bonferroni = p.adjust(braw, "bonferroni")[i])))
 out$meta <- list(r = R.version.string)
 write(toJSON(out, auto_unbox = TRUE, digits = NA, pretty = TRUE), file.path(dir, "r_reference.json"))
 cat("r_reference.json gerado com", R.version.string, "\n")

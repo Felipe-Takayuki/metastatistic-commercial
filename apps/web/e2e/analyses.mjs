@@ -409,6 +409,25 @@ try {
   check("Likert: t e p do t de uma amostra sobre a coluna ordinal iguais ao R", has(t, f3(REF.ordinal.onesample.t), " 19 "), t.slice(0, 500));
   await shot("a3h-likert-t");
 
+  // --- ANOVA de medidas repetidas com DOIS fatores intra-sujeito (A pre/pos × B b1/b2/b3; 6 colunas) ---
+  await upload("e2e-rm2.csv", readFileSync(join(FIX, "rm2.csv"), "utf8"));
+  await page.getByRole("tab", { name: "Análise estatística" }).click();
+  await pickAnalysis("ANOVA de medidas repetidas");
+  for (const c of ["a1b1", "a1b2", "a1b3", "a2b1", "a2b2", "a2b3"]) await page.getByRole("group", { name: /^Medidas repetidas/ }).getByRole("checkbox", { name: new RegExp(`^${c}$`) }).check();
+  await page.getByLabel(/^Nome do fator/).fill("A");
+  await page.getByLabel(/^Níveis do fator/).fill("pre, pos");
+  await page.getByLabel(/^2º fator intra-sujeito/).fill("B");
+  await page.getByLabel(/^Níveis do 2º fator/).fill("b1, b2, b3");
+  check("2 fatores intra: o resumo mostra o mapeamento das células (1º fator varia mais devagar)", (await page.getByLabel("Resumo dos campos").innerText()).includes("pre · b1 = a1b1; pre · b2 = a1b2; pre · b3 = a1b3; pos · b1 = a2b1"));
+  await run();
+  await page.locator(".analysis-grid .card").nth(1).getByText(/A ✻ B|B ✻ A/).first().waitFor({ timeout: 90000 }).catch(() => {});
+  t = await resultText();
+  const R2 = REF.rm2;
+  check("2 fatores intra: F de A, de B e da interação A ✻ B iguais ao R (aov + Error)", has(t, f3(R2.A.F), f3(R2.B.F), f3(R2.AB.F)), t.slice(0, 900));
+  await shot("a2g-rm-dois-fatores");
+  await page.getByLabel(/^Níveis do 2º fator/).fill("b1, b2");
+  check("2 fatores intra: 2 × 2 células ≠ 6 colunas bloqueia a execução com mensagem", await page.getByRole("button", { name: "Executar análise" }).isDisabled() && (await page.getByText(/2 × 2 = 4 células, mas há 6 coluna/).count()) === 1);
+
   // --- Qui-quadrado: dataset derivado com CASE (faixa) ---
   await upload("e2e-faixa-src.csv", readFileSync(join(FIX, "ttest.csv"), "utf8"));
   // dados que cumprem os pressupostos (Levene p ≈ ,06; Shapiro p ≈ ,22): a nota informa que não há alerta
