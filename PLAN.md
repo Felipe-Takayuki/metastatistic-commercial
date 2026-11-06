@@ -1,141 +1,329 @@
-# Plano de Implementação — Metastatistic
+# Plano de Arquitetura e Implementação — Metastatistic Commercial (Enterprise & Microservices)
 
-Plataforma web de relatórios estatísticos que sintetiza as principais funcionalidades do [JASP](https://github.com/jasp-stats/jasp-desktop) e do [Metabase](https://github.com/metabase/metabase).
+Plataforma unificada corporativa e B2B SaaS de Business Intelligence, Data Preparation e Rigor Estatístico Avançado (Frequentista e Bayesiano), combinando o melhor do [JASP](https://github.com/jasp-stats/jasp-desktop) e do [Metabase](https://github.com/metabase/metabase).
 
-## 1. Visão do produto
+---
 
-O que cada ferramenta contribui:
+## 1. Visão Executiva e Posicionamento de Mercado
 
-| Vem do **Metabase** | Vem do **JASP** | Fica na interseção (o diferencial) |
-|---|---|---|
-| Conexão com bancos (Postgres, MySQL, BigQuery…) | Análises estatísticas por formulário, sem código | **Relatórios** que misturam texto, gráficos de BI e análises estatísticas |
-| Query builder visual e editor SQL | Abordagens frequentista e bayesiana | Filtros do relatório que reexecutam gráficos **e** análises |
-| Dashboards, filtros e cross-filter | Tabelas em formato APA | Interpretação automática dos resultados (opcional, com IA) |
-| Coleções, permissões, agendamento e embed | Gráficos estatísticos (QQ-plot, resíduos, posteriores) | Resultados reprodutíveis e versionados |
+### 1.1 Transformação do Produto: Do Monólito Experimental ao Enterprise SaaS
+O **Metastatistic Commercial** nasce da necessidade de transicionar um protótipo de análise local/monolítica para uma infraestrutura distribuída, altamente escalável, multi-inquilino (*multi-tenant*), segura e pronta para monetização comercial.
 
-## 2. Decisões estratégicas (tomar antes de codar)
-
-**Licença.** JASP e Metabase são AGPL-3.0. Se você copiar código de qualquer um, a plataforma inteira precisa ser AGPL, e isso vale também para SaaS. Há dois caminhos:
-
-- **A (recomendado):** reaproveitar os **módulos R do JASP** (`jaspDescriptives`, `jaspTTests`, `jaspAnova`, `jaspRegression` etc.) como motor estatístico num serviço separado, e escrever a parte de BI do zero, só com os *conceitos* do Metabase. Isso dá ganho enorme de tempo e validação estatística, mas implica aceitar a AGPL ou isolar bem o serviço e consultar um advogado.
-- **B:** motor estatístico próprio em Python (scipy, statsmodels, pingouin, PyMC/bambi). Você fica livre para escolher a licença, mas leva bem mais tempo para chegar à paridade com o JASP.
-
-> **Decisão (2026-11-04):** o usuário confirmou o **caminho A** — motor estatístico com módulos R reais do JASP; parte de BI escrita do zero (só conceitos do Metabase, nenhum código copiado). Escopo de BI limitado ao que o relatório precisa (CSV, SQL, gráficos, análises); drivers de banco e permissões pesadas ficam para depois.
-
-**Motor estatístico.** O pacote `jaspTools` roda as análises do JASP direto em R, sem a interface desktop: você passa um dataset e uma lista de opções e recebe a saída do `jaspResults` (tabelas e gráficos). É isso que torna o caminho A viável.
-
-## 3. Arquitetura proposta
+A proposta de valor central é eliminar o abismo existente entre ferramentas de **Business Intelligence corporativo** (rápidas, visuais, voltadas a métricas simples e dashboards operacionais) e softwares de **análise estatística especializada** (pesados, desktop-bound, focados em pesquisa acadêmica e inferência rigorosa).
 
 ```
-┌────────────── Frontend (React + TypeScript, Vite/Next.js) ──────────────┐
-│ Editor de relatório (TipTap/ProseMirror, blocos)  │ Dashboards (grid)  │
-│ Query builder + editor SQL (Monaco)               │ Gráficos: ECharts  │
-│ Formulários de análise gerados por JSON Schema    │ UI: shadcn/Tailwind│
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │ REST/WebSocket
-┌──────────────────────────────▼──────────────────────────────────────────┐
-│ API (Python FastAPI)                                                    │
-│ auth/RBAC · metadados · query engine (SQLGlot → SQL do dialeto)         │
-│ cache de resultados · agendamentos · exportação PDF (Playwright)       │
-└───────┬───────────────────┬──────────────────────┬──────────────────────┘
-        │                   │ fila (Redis)         │
-┌───────▼───────┐   ┌───────▼────────────┐   ┌─────▼─────────────────────┐
-│ Postgres      │   │ Workers R          │   │ Fontes de dados           │
-│ (app DB)      │   │ jaspTools + módulos│   │ Postgres/MySQL/BigQuery/  │
-│ MinIO/S3      │   │ dados via Arrow    │   │ CSV/Excel → DuckDB        │
-└───────────────┘   └────────────────────┘   └───────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                            METANASTATISTIC COMMERCIAL                        │
+│                                                                              │
+│    AGILIDADE E CONECTIVIDADE BI                 RIGOR E CIÊNCIA ESTATÍSTICA  │
+│         (DNA Metabase)                               (DNA JASP)              │
+│  - Conectores SQL heterogêneos             - Formato de publicação APA 7th   │
+│  - Query Builder visual (sem código)        - Inferência Frequentista & Bayes │
+│  - Cross-filtering & Dashboards            - Diagnósticos (QQ-plot, Resíduos)│
+│  - Governança, Metadados e Catálogo        - Relatórios reprodutíveis        │
+│                                      ▲                                       │
+│                                      │                                       │
+│                     DIFERENCIAIS COMPETITIVOS ÚNICOS                         │
+│   • Relatórios com Blocos Híbridos (Texto rico + BI interativo + Estatística)│
+│   • Filtros Dinâmicos Globais que recalculam gráficos E testes inferenciais   │
+│   • Interpretação Narrativa Automatizada de P-valor e Fatores de Bayes (BF) │
+│   • SDK de Incorporação (@metastatistic/react-embed) para outros SaaS        │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Pontos principais:
+### 1.2 Casos de Uso Comerciais e Setores-Alvo
+1. **Empresas de Pesquisa Clínica & Indústria Farmacêutica (CROs / Pharma)**:
+   - Validação de ensaios clínicos, bioequivalência, testes A/B farmacológicos e relatórios auditáveis compatíveis com FDA 21 CFR Part 11 e boas práticas de laboratório (GxP).
+2. **FinTechs, Risco, Crédito & Seguradoras**:
+   - Modelagem de escores de crédito, análise de sobrevivência para default, testes de hipóteses de risco de mercado e relatórios de compliance para bancos centrais.
+3. **Instituições de Ensino Superior, Centros de Pesquisa & Laboratórios**:
+   - Plataforma em nuvem colaborativa para estudantes, docentes e pesquisadores substituindo licenças legadas individuais de SPSS/SAS por uma solução web moderna e colaborativa.
+4. **Corporações & Escalas de Data Science / Product Analytics**:
+   - Times de experimentação (growth, marketing, produto) conduzindo testes A/B/n bayesianos com dashboards executivos integrados ao data warehouse (Snowflake/BigQuery/Postgres).
 
-- **DuckDB** guarda os uploads (CSV, Excel, SPSS `.sav` via `pyreadstat`) e serve de camada analítica rápida.
-- **Os dados vão para o R via Apache Arrow**, sem CSV no meio. Cada worker roda num container isolado, com timeout e limite de memória.
-- **Dois tipos de gráfico:**
-  - Gráficos de BI interativos no cliente, com ECharts.
-  - Gráficos estatísticos gerados no servidor pelo `jaspGraphs`/ggplot2 em SVG. Os mais usados podem migrar depois para ECharts interativo.
-- **Reprodutibilidade:** cada resultado guarda o hash dos dados, as opções e as versões dos pacotes (fixadas com `renv`).
+---
 
-## 4. Modelo de domínio
+## 2. Estratégia de Licenciamento, Compliance e Propriedade Intelectual (AGPL-3.0 vs Solução Proprietária)
 
-- `DataSource`: uma conexão ou um upload.
-- `Dataset/Model`: camada semântica com tipos das colunas, nível de medida (nominal, ordinal, escalar, como no JASP) e rótulos.
-- `Question`: uma query (visual ou SQL) mais a visualização.
-- `Analysis`: o tipo de análise, as opções (JSON), uma referência ao dataset e o resultado em cache.
-- `Report`: uma lista ordenada de blocos (texto, question, analysis, filtro, KPI), com versionamento.
-- `Dashboard`, `Collection`, `Permission`, `Schedule`, `Subscription`.
+### 2.1 O Desafio Jurídico do Copyleft AGPL
+Tanto o código-fonte original do **JASP Desktop** quanto o **Metabase** utilizam a licença **GNU Affero General Public License v3 (AGPL-3.0)**. 
+No modelo SaaS e em distribuições corporativas proprietárias (*On-Premise closed-source*), a AGPL impõe que qualquer modificação ou obra derivada disponibilizada pela rede tenha seu código-fonte integral aberto sob a mesma licença, representando risco de contaminação aos ativos intelectuais comerciais.
 
-## 5. Fases
+### 2.2 Arquitetura "Dual-Engine" e Isolamento de Rede
 
-### Fase 0: Fundação (2 semanas)
+Para neutralizar esse risco e permitir uma oferta comercial híbrida (Open Core + Enterprise Fechado), o sistema adota uma fronteira estrita por arquitetura distribuída:
 
-- Monorepo (`apps/web`, `apps/api`, `engines/r-worker`, `packages/schemas`), Docker Compose e CI.
-- Prova de conceito (spike): rodar `jaspTools::runAnalysis` para um teste t dentro de um container e mapear o JSON de saída do `jaspResults`.
-- Definir a licença e o design system.
+```
+                  ┌─────────────────────────────────────────────────────────┐
+                  │          Metastatistic Commercial Platform              │
+                  │   (Proprietária / Enterprise / B2B SaaS Closed Source)  │
+                  └────────────┬──────────────────────────────┬─────────────┘
+                               │                              │
+             Contrato IPC/gRPC │            Contrato Interno  │
+               via Rede Aberta │             Python / Native  │
+                               ▼                              ▼
+    ┌──────────────────────────────────────┐     ┌──────────────────────────────┐
+    │       ENGINE A (Open Engine)         │     │   ENGINE B (Enterprise Core) │
+    │ ------------------------------------ │     │ ---------------------------- │
+    │ • Licença: AGPL-3.0 / GPL Compliance │     │ • Licença: Proprietária      │
+    │ • Runtimes: R + jaspTools            │     │ • Runtimes: Python / Rust    │
+    │ • Módulos: jaspDescriptives,         │     │ • Stack: SciPy, Statsmodels, │
+    │   jaspTTests, jaspAnova,             │     │   Pingouin, PyMC, Polars,    │
+    │   jaspRegression, etc.               │     │   Apache Arrow Nativo        │
+    │ • Comunicação: gRPC / Arrow IPC      │     │ • Ideal para: On-Premise,    │
+    │ • Execução em Worker Containers      │     │   Air-Gapped, Finanças e     │
+    │   100% isolados de rede pública      │     │   Clientes estritos sem AGPL │
+    └──────────────────────────────────────┘     └──────────────────────────────┘
+```
 
-### Fase 1: Camada de dados, o "mini-Metabase" (5–6 semanas)
+1. **Engine A (Open Engine - Módulos JASP R)**:
+   - Opera como um microsserviço autônomo e desacoplado (`stat-worker-r`).
+   - Comunica-se exclusivamente através de chamadas IPC/gRPC serializadas em Apache Arrow sobre sockets de rede.
+   - Todo o código contido neste serviço é mantido em conformidade com a AGPL-3.0, mas não contamina os demais serviços da plataforma (Gateway, Auth, Billing, Data Engine e UI), que permanecem proprietários sob o princípio de agregação independente de rede (*independent network-separated services*).
+2. **Engine B (Enterprise Engine - Pure Python / Rust / Julia)**:
+   - Motor proprietário livre de código AGPL construído com bibliotecas licenciadas sob BSD, MIT e Apache 2.0 (SciPy, Statsmodels, Pingouin, Scikit-learn, PyMC, Polars, DuckDB).
+   - Replica com precisão os algoritmos matemáticos e tabelas APA 7th.
+   - Fornece garantia contratual de IP limpo (*indemnification*) para clientes corporativos de grande porte que proíbem qualquer componente AGPL em suas redes internas.
 
-- Upload de CSV/Excel e conexão com Postgres/MySQL.
-- Navegador de schema e editor SQL com autocomplete.
-- Query builder visual: filtro, agrupar, agregar, ordenar, join simples.
-- Visualizações básicas: tabela, barra, linha, área, pizza, dispersão, KPI e mapa de calor.
-- Segurança: usuário somente leitura no banco, timeout e limite de linhas por query.
+---
 
-### Fase 2: Motor estatístico, o "JASP web" (6–8 semanas)
+## 3. Topologia e Decomposição em Microsserviços
 
-- Fila de jobs, workers R, progresso via WebSocket e cache.
-- Formulários: converter os QML dos módulos JASP em **JSON Schema** e renderizar com um gerador de formulários, mantendo os nomes de opções que o R espera.
-- Primeiro lote de análises:
-  - Descritivas e frequências.
-  - Testes t (independente, pareado, uma amostra).
-  - ANOVA e ANCOVA (com post-hoc).
-  - Correlação.
-  - Regressão linear e logística.
-  - Tabelas de contingência (qui-quadrado).
-  - As versões **bayesianas** desses testes.
-- Renderizador de tabelas APA: notas de rodapé, sobrescritos e formatação numérica.
-- Verificação automática de pressupostos (normalidade, homogeneidade), com avisos na própria saída.
+A plataforma adota arquitetura orientada a serviços (*Microservices & Event-Driven Architecture*), orquestrada em Kubernetes com contratos estritos baseados em OpenAPI v3 e Protocol Buffers / gRPC.
 
-### Fase 3: Relatórios, o coração do produto (5–6 semanas)
+```mermaid
+flowchart TD
+    Client["Browser Web / Embedded SDK / Mobile"] -->|HTTPS / WSS| Gateway["1. API Gateway & Edge Router\n(Traefik / Envoy)"]
 
-- Editor em blocos: texto rico, question, análise, KPI e divisor de seção.
-- **Parâmetros globais do relatório**: um filtro de data ou segmento reexecuta queries e análises.
-- Templates de relatório e temas visuais (paleta, tipografia, logo).
-- Exportação em PDF (Chromium headless) e DOCX; link público com token.
-- Histórico de versões e comentários.
+    subgraph Core_Services["Plataforma Central (Enterprise Services)"]
+        Gateway --> Auth["2. Auth & Multi-Tenancy\n(auth-tenant-service)"]
+        Gateway --> Billing["3. Billing & Metering\n(billing-service)"]
+        Gateway --> DataEng["4. Data Engine & Query\n(data-engine-service)"]
+        Gateway --> StatOrch["5. Stat Orchestrator\n(stat-orchestrator)"]
+        Gateway --> BIReport["7. BI & Reports\n(bi-report-service)"]
+        Gateway --> Export["8. Export & Delivery\n(export-service)"]
+    end
 
-### Fase 4: Dashboards e colaboração (4–5 semanas)
+    subgraph Data_Storage["Camada de Dados & Mensageria"]
+        Postgres[(PostgreSQL 16 Multi-tenant)]
+        Redis[(Redis Cluster / Caching)]
+        RabbitMQ[[RabbitMQ / Kafka Queue]]
+        S3[(MinIO / S3 Object Storage)]
+    end
 
-- Grid arrastável (react-grid-layout), cross-filter e drill-down.
-- Coleções, RBAC (admin, editor, viewer) e permissões por fonte de dados.
-- Segurança por linha (*row-level security*) via atributos do usuário.
+    subgraph Workers["Cluster Elástico de Processamento"]
+        StatOrch -->|Jobs assíncronos| RabbitMQ
+        RabbitMQ --> WorkerR["6a. Stat Worker R\n(Engine A - JASP)"]
+        RabbitMQ --> WorkerPy["6b. Stat Worker Python\n(Engine B - Proprietary)"]
+    end
 
-### Fase 5: Automação e enterprise (4–6 semanas)
+    Auth --> Postgres
+    Billing --> Postgres
+    DataEng --> Postgres
+    BIReport --> Postgres
+    BIReport --> S3
+    Export --> S3
+    StatOrch --> Redis
+    WorkerR --> S3
+    WorkerPy --> S3
+```
 
-- Envio agendado de relatórios por e-mail e Slack, e alertas por limiar.
-- Embed via JWT assinado (como o *static embedding* do Metabase).
-- SSO (OIDC/SAML), log de auditoria, cache por fonte e observabilidade (OpenTelemetry).
+### 3.1 Detalhamento de Cada Microsserviço
 
-### Fase 6: Avançado (contínuo)
+#### 1. API Gateway & Edge Router (`apps/gateway`)
+- **Tecnologia**: Traefik Enterprise ou Envoy Proxy.
+- **Responsabilidades**:
+  - Roteamento inteligente baseado em subdomínios de inquilinos (`{org_slug}.metastatistic.com` e domínios personalizados).
+  - Terminação TLS automática (Let's Encrypt / Cert-Manager).
+  - Verificação prévia de JWT, validação de tokens de API corporativos e CORS dinâmico.
+  - Rate limiting adaptativo segregado por tier de assinatura (ex: Free: 60 req/min, Enterprise: 5.000 req/min).
+  - OpenTelemetry distributed tracing e correlação de `X-Correlation-ID`.
 
-- Mais módulos JASP: análise fatorial e PCA, SEM (lavaan), confiabilidade, meta-análise, machine learning, séries temporais.
-- **Assistente com IA**: pergunta em linguagem natural vira query ou análise, com interpretação textual dos resultados em estilo APA.
+#### 2. Identity, Multi-Tenancy & Access Management (`services/auth-tenant`)
+- **Tecnologia**: Go ou Python FastAPI com SQLAlchemy 2.0 / Pydantic.
+- **Responsabilidades**:
+  - Estrutura hierárquica multi-tenant: Organizações (*Tenants*), Espaços de Trabalho (*Workspaces*), Equipes e Usuários.
+  - Single Sign-On (SSO) corporativo: Integração com SAML 2.0 e OIDC (Okta, Azure Active Directory, PingFederate, Google Workspace).
+  - SCIM 2.0 (*System for Cross-domain Identity Management*) para provisionamento e desprovisionamento automatizado de usuários por equipes de TI.
+  - Controle de Acesso Baseado em Papéis e Atributos (RBAC/ABAC):
+    - `Owner`, `Org Admin`, `Workspace Admin`, `Data Engineer`, `Senior Statistician`, `Analyst`, `Viewer`.
+  - Trilha de Auditoria imutável (*Audit Logs*) para compliance com SOC 2 e HIPAA.
 
-**Estimativa:** um MVP útil (Fases 0–3) leva de 4 a 5 meses com uma equipe de 3–4 pessoas: frontend sênior, backend Python, pessoa de estatística/R, e DevOps em meio período.
+#### 3. Billing, Quotas & Usage Metering (`services/billing`)
+- **Tecnologia**: Python FastAPI / Node.js.
+- **Responsabilidades**:
+  - Integração com Stripe Billing e Paddle para gestão de assinaturas, faturas automáticas e pagamentos via cartão/invoice corporativo.
+  - Telemetria de consumo em tempo real:
+    - Segundos de computação de Workers R e Python.
+    - Armazenamento de datasets e snapshots no Object Storage (GBs/mês).
+    - Execuções de consultas em Data Warehouses externos.
+    - Contagem de assentos (*seats*) ativos.
+  - Motor de limites de cotas com *soft limits* (notificações por email/webhook aos 80% e 90%) e *hard limits* (bloqueio gracioso de novas análises com upgrade prompt).
 
-## 6. Riscos e mitigações
+#### 4. Data Query & Transformation Engine (`services/data-engine`)
+- **Tecnologia**: Python com DuckDB, Apache Arrow, Polars e SQLGlot.
+- **Responsabilidades**:
+  - Gerenciamento de Conexões Externas com pools seguros: PostgreSQL, MySQL, Snowflake, BigQuery, ClickHouse, Redshift, Amazon Athena, MariaDB e S3 Parquet/Delta Lake.
+  - Federação de Consultas com DuckDB em memória: execução de queries locais ultrarrápidas sobre arquivos e caches.
+  - Data Prep / Recipe Engine:
+    - Transformações sem código: filtragem, categorização, criação de colunas calculadas, substituição de nulos, pivot/unpivot, agregação e mescla (*joins*).
+    - Validação sintática e AST com SQLGlot para prevenção de SQL Injection e validação de dialetos.
+  - Mascaramento e Segurança de Dados:
+    - *Row-Level Security* (RLS) dinâmico baseado no perfil do usuário conectado.
+    - Mascaramento de colunas sensíveis (PII / LGPD / GDPR) antes da entrega aos estatísticos.
 
-| Risco | Mitigação |
-|---|---|
-| Acoplamento ao formato interno do `jaspResults` | Camada adaptadora que converte para um schema próprio (`packages/schemas`) |
-| R é lento para subir e escala mal | Pool de workers aquecidos e cache por hash de dados + opções |
-| Datasets grandes: estatística precisa de linhas, não de agregados | Limite configurável, amostragem explícita com aviso e, quando der, agregação no próprio banco |
-| Paridade com os formulários QML do JASP | Converter só as análises priorizadas e testar contra as saídas do JASP desktop (testes golden) |
-| SQL arbitrário contra bancos de produção | Credenciais somente leitura, timeout, `LIMIT` forçado e auditoria |
+#### 5. Statistical Orchestration Service (`services/stat-orchestrator`)
+- **Tecnologia**: Python FastAPI + Celery / RabbitMQ + Redis.
+- **Responsabilidades**:
+  - Ingestão de pedidos de análise via contratos estritos JSON Schema (especificação unificada de variáveis dependentes, fatores, hipóteses, testes post-hoc, etc.).
+  - Cache determinístico distribuído: cálculo do hash do dataset e do payload da análise:
+    $$\text{CacheKey} = \text{SHA256}(\text{DatasetFingerprint} \parallel \text{AnalysisSpecJson} \parallel \text{EngineVersion})$$
+    Evita reprocessamentos custosos de análises idênticas.
+  - Gerenciamento de filas de tarefas com priorização estrita por tier de cliente:
+    - Fila `vip-enterprise` (processamento prioritário e workers dedicados).
+    - Fila `standard-saas`.
+    - Fila `community-batch`.
+  - Servidor WebSocket para emissão de progresso passo a passo aos clientes web.
 
-## 7. Critério de sucesso do MVP
+#### 6. Stat Workers Cluster (`services/stat-worker-r` & `services/stat-worker-py`)
+- **Tecnologia**:
+  - Worker R: Debian/Ubuntu slim com R 4.3+, `jaspTools`, módulos R oficiais do JASP e `arrow`.
+  - Worker Python: Python 3.12 slim com `scipy`, `statsmodels`, `pingouin`, `pymc`, `polars`, `pyarrow`.
+- **Mecanismos de Segurança e Escalonamento**:
+  - Autoscaling Horizontal via **KEDA** (Kubernetes Event-driven Autoscaling) escalando de 0 a centenas de pods conforme a profundidade da fila RabbitMQ.
+  - Sandboxing com limites estritos de `cgroups` (CPU e RAM por container).
+  - Execução como usuário sem privilégios (`non-root`).
+  - Timeout forçado por análise (ex: 60s standard, 600s enterprise).
+  - Sistema de arquivos temporário efêmero em RAM (`tmpfs`), destruído imediatamente após o envio dos resultados para o Object Storage.
 
-Um usuário sobe um CSV ou conecta um Postgres e monta um gráfico de vendas por região. No mesmo relatório, roda uma ANOVA bayesiana comparando as regiões. Depois aplica um filtro de período que atualiza tudo e exporta um PDF com visual profissional.
+#### 7. BI, Reporting & Collaboration Service (`services/bi-report`)
+- **Tecnologia**: Node.js / TypeScript com NestJS ou Python FastAPI.
+- **Responsabilidades**:
+  - Gestão de Dashboards com layouts de grid dinâmico (React Grid Layout), cross-filtering interativo e parâmetros globais sincronizados.
+  - Editor de Relatórios em blocos:
+    - Integração com ProseMirror / TipTap para edição rica.
+    - Suporte a blocos dinâmicos de estatística: tabelas em padrão estrito APA 7th, equações LaTeX/KaTeX, gráficos ECharts responsivos e interpretações textuais com IA.
+  - Colaboração em Tempo Real utilizando CRDTs com **Yjs** e WebSockets (múltiplos estatísticos e analistas editando o mesmo relatório simultaneamente com presença de cursores).
+  - Versionamento de Relatórios: snapshots imutáveis arquivados no S3 com trilha de alterações (revisões históricas restauráveis).
 
-## 8. Próximo passo
+#### 8. Export & Delivery Service (`services/export`)
+- **Tecnologia**: Node.js com Playwright (Chromium Headless), Python com `python-docx` e LaTeX Compiler.
+- **Responsabilidades**:
+  - Geração de PDFs de alta fidelidade:
+    - Renderização do DOM do relatório em resolução vetorial para impressão.
+    - Quebras de página inteligentes (*page-break-inside: avoid* para tabelas APA e gráficos).
+    - Numeração dinâmica de páginas, cabeçalhos, rodapés e sumário executivo gerado automaticamente.
+  - Exportação nativa de relatórios editáveis para DOCX (Word), PPTX (PowerPoint) e arquivos `.tex` (LaTeX acadêmico).
+  - Motor de Agendamento (Cron Scheduler): disparo recorrente de relatórios por e-mail (SendGrid / AWS SES) ou canais corporativos (Slack, Microsoft Teams, Webhooks).
 
-Começar pela prova de conceito da Fase 0: worker R rodando um teste t via `jaspTools` dentro de um container, chamado pela API FastAPI. Ela valida a decisão mais arriscada do plano.
+#### 9. Frontend Enterprise (`apps/web-enterprise`)
+- **Tecnologia**: Next.js 15+ (App Router), React 19, TypeScript, Tailwind CSS, shadcn/ui, Apache ECharts, Monaco Editor.
+- **Responsabilidades**:
+  - Interface do usuário com padrão visual refinado e responsivo.
+  - Suporte a temas corporativos (White-labeling com logos, cores da marca e fontes customizadas para planos Enterprise).
+  - Pacote `@metastatistic/react-embed`:
+    - SDK JavaScript/React para incorporação (*iframe seguro* e *web component*) de dashboards e gráficos estatísticos em sistemas legados dos clientes com autenticação via JWT assinado.
+
+---
+
+## 4. Arquitetura de Dados e Persistência
+
+### 4.1 Transição do Armazenamento Monolítico para Nuvem Corporativa
+
+No protótipo inicial, utilizava-se SQLite (`meta.db`) e arquivos CSV locais em disco. Na solução comercial, a arquitetura de persistência é segregada em quatro camadas resilientes:
+
+| Camada | Tecnologia | Propósito | Estratégia de Isolamento Multi-Tenant |
+|---|---|---|---|
+| **Metadados & Transações** | PostgreSQL 16+ (Amazon RDS / Cloud SQL) | Usuários, organizações, permissões, definições de relatórios, dashboards, queries e conexões | **Pool compartilhado com Row-Level Security (RLS)** nativo para planos Standard; **Schema-per-tenant** ou **Database-per-tenant** para Enterprise VIP |
+| **Object Storage** | MinIO / AWS S3 / Cloudflare R2 | Datasets em formato Apache Parquet, snapshots de relatórios, PDFs exportados e artefatos de modelo | Chave de prefixo estruturada: `s3://metastatistic-{region}/{tenant_id}/{workspace_id}/{file_uuid}.parquet` com criptografia SSE-S3 / SSE-KMS |
+| **Cache & Sessões** | Redis Cluster 7+ | Cache de queries, sessões de usuário, locks distribuídos e pub/sub para websockets | Keysnamespacing: `tenant:{tenant_id}:cache:{hash}` |
+| **Fila de Mensageria** | RabbitMQ / Apache Kafka | Fila de análises estatísticas assíncronas, webhooks e pipelines de exportação | Filas separadas com prioridade por QoS e suporte a Dead-Letter Exchanges (DLX) |
+
+### 4.2 Estratégia de Isolamento Multi-Tenancy no PostgreSQL
+
+```sql
+-- Exemplo de isolamento por Row-Level Security (RLS) no PostgreSQL
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_policy ON reports
+    FOR ALL
+    USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+```
+
+Para clientes do tier **Enterprise On-Premise**, a persistência é completamente autônoma, operando dentro do cluster Kubernetes da própria empresa, sem nenhuma partilha com outros clientes.
+
+---
+
+## 5. Matriz de Planos Comerciais e Monetização
+
+O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precificação baseada em assentos e valor agregado de computação)**, complementado por licenças corporativas anuais para grandes empresas:
+
+| Recurso / Funcionalidade | Community (Open-Core) | Team (SaaS) | Enterprise SaaS | Enterprise On-Premise / Air-Gapped |
+|---|---|---|---|---|
+| **Público-Alvo** | Desenvolvedores & Estudantes | Pequenos times e consultorias | Médias e grandes empresas | CROs, Bancos, Defesa e Saúde |
+| **Modelo de Cobrança** | Gratuito (Auto-hospedado) | $49/usuário/mês | $149/usuário/mês (mín. 10) | Contrato Anual Customizado |
+| **Engine Estatístico** | Engine A (JASP R AGPL) | Engine A (JASP R) | Engine A ou Engine B (Dual) | **Engine B (100% Proprietário)** |
+| **Isolamento de Dados** | Local / SQLite | Multi-Tenant (RLS) | Multi-Tenant (Schema Dedicado) | **Single-Tenant Totalmente Privado** |
+| **SSO & Governança** | E-mail / Senha simples | E-mail / Google Auth | SAML 2.0, Okta, Azure AD, SCIM | SAML 2.0, SCIM, LDAP Local |
+| **Conectores de Banco** | CSV / SQLite / Postgres | Postgres, MySQL, BigQuery | Todos + Snowflake, Athena, Databricks | Conectores customizados e VPC Peering |
+| **Capacidade de Computação** | 1 Worker local | Fila compartilhada | **Workers dedicados (KEDA)** | **Cluster local autônomo** |
+| **Embeddable Analytics SDK** | ❌ Não disponível | ❌ Não disponível | ✅ Sim (com marca d'água) | ✅ Sim (White-label total) |
+| **Suporte & SLAs** | Fórum GitHub | Horário Comercial (e-mail) | 99.9% SLA + Gerente Dedicado | 99.99% SLA + Suporte 24/7/365 |
+| **Certificações & Compliance**| Nenhuma | Termos padrão | SOC 2 Tipo II, HIPAA BAA | 21 CFR Part 11, GxP, ISO 27001 |
+
+---
+
+## 6. Roteiro Fases de Implementação (Roadmap)
+
+### Fase 1: Preparação do Fork e Desacoplamento de Contratos (Semanas 1–2)
+- [ ] Inicialização da estrutura Monorepo (pnpm / Turborepo ou Nx) com:
+  - `packages/contracts`: Schemas TypeScript, Pydantic e JSON Schema unificados para análises estatísticas e queries.
+  - `packages/sdk`: SDK cliente em TypeScript para consumo da API.
+  - `packages/ui`: Componentes de design system reutilizáveis (shadcn/ui + Tailwind).
+- [ ] Refatoração da persistência:
+  - Adição de suporte ao PostgreSQL com migrações gerenciadas via Alembic / Prisma.
+  - Inclusão sistemática de `tenant_id` em todas as entidades relacionais.
+- [ ] Criação de abstração de armazenamento de objetos (`StorageProvider`) com suporte a S3 e MinIO local.
+
+### Fase 2: Gateway, Auth Multi-Tenant e Billing (Semanas 3–5)
+- [ ] Implementação do serviço `auth-tenant-service`:
+  - Criação de Organizações, Workspaces e Gestão de Convites.
+  - Sistema de permissões RBAC com middlewares de autorização.
+- [ ] Configuração do API Gateway com terminação TLS e roteamento baseado em subdomínio de inquilino.
+- [ ] Implementação do serviço `billing-service`:
+  - Integração com webhooks do Stripe para criação e cancelamento de planos.
+  - Middleware de medição de uso e enforcement de cotas.
+
+### Fase 3: Separação do Data Engine e Conectores SQL (Semanas 6–8)
+- [ ] Extração da lógica de consulta para o microsserviço `data-engine-service`:
+  - Pool de conexões assíncronas para PostgreSQL, MySQL, BigQuery e Snowflake.
+  - Integração do DuckDB em memória com conversão direta para Apache Arrow IPC.
+- [ ] Refatoração do Data Prep / Recipe Engine:
+  - Execução de etapas de transformação via AST do SQLGlot e Polars.
+  - Mascaramento dinâmico de PII para proteção de dados sensíveis.
+
+### Fase 4: Orquestração e Cluster de Workers com Autoscaling (Semanas 9–11)
+- [ ] Construção do microsserviço `stat-orchestrator`:
+  - Fila RabbitMQ com suporte a prioridade por tier (VIP Enterprise vs Standard).
+  - Implementação do cache distribuído de análises em Redis.
+  - Servidor WebSocket para emissão do streaming de status das análises aos clientes.
+- [ ] Construção e empacotamento dos containers de Workers:
+  - `stat-worker-r`: Container enxuto com módulos JASP R oficiais e troca de dados via Arrow.
+  - Configuração de autoscaling horizontal com KEDA no Kubernetes.
+- [ ] Início da implementação do **Engine B** em Python (`scipy`, `statsmodels`, `pingouin`) para independência total de AGPL.
+
+### Fase 5: Microsserviço de Relatórios, BI e Exportação (Semanas 12–14)
+- [ ] Implementação do serviço `bi-report-service`:
+  - Dashboards reativos com grade flexível e cross-filtering.
+  - Editor colaborativo de relatórios em tempo real baseado em Yjs e TipTap.
+- [ ] Desenvolvimento do serviço `export-service`:
+  - Cluster Playwright para exportação de PDFs em alta resolução com tabelas APA 7th paginadas.
+  - Gerador de exportação para DOCX e LaTeX.
+- [ ] Desenvolvimento e publicação do pacote `@metastatistic/react-embed` para incorporação em aplicações de terceiros.
+
+### Fase 6: Prontidão Enterprise, Segurança e Lançamento (Semanas 15–16)
+- [ ] Implementação de SSO corporativo (SAML 2.0 / Okta / Azure AD) e SCIM 2.0.
+- [ ] Implementação de Trilha de Auditoria imutável (*Audit Logs*) para conformidade com SOC 2 e FDA 21 CFR Part 11.
+- [ ] Criação de Helm Charts oficiais para implantação em clusters Kubernetes de clientes (*Enterprise On-Premise*).
+- [ ] Execução de testes de carga, testes de penetração (Pentest) e varredura de vulnerabilidades em dependências (SAST/DAST).
+- [ ] Lançamento comercial oficial e disponibilização dos ambientes SaaS de produção e staging.
