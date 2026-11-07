@@ -20,6 +20,7 @@ O repositório está organizado como um monorepo (`pnpm-workspace.yaml`):
 
 ### Pacotes Compartilhados e Frontend
 - **`packages/contracts`**: Contratos canônicos e interfaces TypeScript para entidades multi-tenant, tabelas APA 7th, especificações analíticas e metadados de armazenamento.
+- **`packages/react-embed`**: Componente React seguro (`@metastatistic/react-embed`) para incorporação de relatórios, dashboards, gráficos e tabelas APA em aplicações externas via iframe com sandbox e comunicação bidirecional via `postMessage`.
 - **`apps/web`**: Aplicação frontend (Vite + React 19 + TypeScript + ECharts) com suporte a análise estatística, construtor de dashboards interativos, editor de relatórios em blocos e visualizações com tema escuro/claro.
 
 ---
@@ -46,6 +47,11 @@ O progresso da evolução corporativa está documentado minuciosamente nas notas
   - Microsserviço `stat-orchestrator` com fila assíncrona, priorização VIP para planos Enterprise e cache determinístico LRU.
   - **Engine B comercial**: Cálculos estatísticos em Python puro/SciPy (100% livre de AGPL) para Descritivas, Testes t (Independente e Uma Amostra), ANOVA One-Way e Correlação de Pearson, com formatação estrita de tabelas e notas APA 7th.
   - Roteador Dual-Engine ('auto', 'py', 'r') garantindo conformidade e proteção de propriedade intelectual.
+- **[Fase Comercial 5 — Microsserviço de Relatórios, BI e Exportação ✅](docs/commercial-phase5-progress.md)**:
+  - Microsserviço `bi-report-service` com controle otimista de versão (conflito 409), histórico de snapshots com restauração instantânea, dashboards com tiles flexíveis e WebSockets para colaboração em tempo real.
+  - Microsserviço `export-service` com exportação multi-formato: HTML/PDF com CSS Paged Media (`@page { size: A4; margin: 2.5cm; }`), LaTeX com `booktabs` e `amsmath`, DOCX formatado via `python-docx` e Markdown GFM.
+  - Pacote `@metastatistic/react-embed` com `iframe` sandbox, postMessage bidirecional e `autoResize`.
+  - Integração total com o API Gateway (`gateway`) e orquestração Docker Compose.
 
 ---
 
@@ -76,12 +82,20 @@ Serviços disponíveis:
 - **Auth & Tenant Service**: `http://localhost:8002`
 - **Stat Orchestrator**: `http://localhost:8003`
 - **Data Engine Service**: `http://localhost:8014` (porta interna `8004`)
+- **BI Report Service**: `http://localhost:8015` (porta interna `8005`)
+- **Export Service**: `http://localhost:8016` (porta interna `8006`)
 - **Data API**: `http://localhost:8000`
 
 ### 2. Execução dos Testes Automatizados
 
 #### Microsserviços e Backend Python
 ```bash
+# Testes do BI Report Service (6 testes)
+uv run --directory services/bi-report-service pytest
+
+# Testes do Export Service (6 testes)
+uv run --directory services/export-service pytest
+
 # Testes do Data Engine Service (10 testes)
 uv run --directory services/data-engine-service pytest
 
@@ -91,18 +105,21 @@ uv run --directory services/stat-orchestrator pytest
 # Testes do Auth Tenant Service (6 testes)
 uv run --directory services/auth-tenant-service pytest
 
-# Testes do API Gateway (8 testes)
+# Testes do API Gateway (9 testes)
 uv run --directory services/gateway pytest
 
 # Testes da API de Dados (330 testes)
 uv run --directory apps/api pytest
 ```
 
-#### Frontend Web (TypeScript / React)
+#### Pacotes e Frontend (TypeScript / React)
 ```bash
+# Testes do pacote React Embed
+pnpm --filter @metastatistic/react-embed test
+
 # Testes unitários do frontend (259 testes)
 pnpm --filter web test --run
 
-# Validação de tipos e build de produção
-pnpm --filter web build
+# Validação de tipos e build do monorepo
+pnpm -r run build
 ```

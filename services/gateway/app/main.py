@@ -1,7 +1,9 @@
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
 import httpx
-from fastapi import FastAPI, Request, Response
+import websockets
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -79,7 +81,23 @@ async def health_check():
         downstream["data_engine"] = "unreachable"
         all_ok = False
 
-    # 4. Data API Service
+    # 4. BI Report Service
+    try:
+        resp = await client.get(f"{settings.bi_report_service_url.rstrip('/')}/health", timeout=2.0)
+        downstream["bi_report_service"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
+    except Exception:
+        downstream["bi_report_service"] = "unreachable"
+        all_ok = False
+
+    # 5. Export Service
+    try:
+        resp = await client.get(f"{settings.export_service_url.rstrip('/')}/health", timeout=2.0)
+        downstream["export_service"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
+    except Exception:
+        downstream["export_service"] = "unreachable"
+        all_ok = False
+
+    # 6. Data API Service
     try:
         resp = await client.get(f"{settings.data_api_url.rstrip('/')}/health", timeout=2.0)
         downstream["data_api"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
@@ -116,14 +134,40 @@ async def route_tenants(request: Request, path: str) -> Response:
     return await proxy_request(request, f"/tenants/{path}", client=http_client)
 
 
-# Proxy para rotas diretas de datasets, queries, analyses, reports, dashboards, transforms
+# Proxy para rotas diretas de datasets, queries, analyses, reports, dashboards, transforms, export
 @app.api_route("/{prefix}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def route_direct(request: Request, prefix: str, path: str) -> Response:
     global http_client
-    if prefix in {"datasets", "queries", "analyses", "reports", "dashboards", "transforms", "collections", "jobs", "connections"}:
+    if prefix in {"datasets", "queries", "analyses", "reports", "dashboards", "transforms", "collections", "jobs", "connections", "export"}:
         return await proxy_request(request, f"/{prefix}/{path}", client=http_client)
     return Response(
         content=b'{"error": "Not Found", "detail": "Route not mapped in gateway"}',
         status_code=404,
         media_type="application/json",
     )
+
+
+# Proxy para WebSocket de colaboração em tempo real
+@app.websocket("/ws/{path:path}")
+async def websocket_proxy(websocket: WebSocket, path: str):
+    await websocket.accept()
+    ws_target_base = settings.bi_report_service_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
+    query_str = str(websocket.query_params)
+    target_ws_url = f"{ws_target_base}/ws/{path}" + (f"?{query_str}" if query_str else "")
+    try:
+        async with websockets.connect(target_ws_url) as backend_ws:
+            async def client_to_backend():
+                while True:
+                    data = await websocket.receive_text()
+                    await backend_ws.send(data)
+
+            async def backend_to_client():
+                async for data in backend_ws:
+                    await websocket.send_text(data)
+
+            await asyncio.gather(client_to_backend(), backend_to_client())
+    except (WebSocketDisconnect, Exception):
+        try:
+            await websocket.close()
+        except Exception:
+            pass

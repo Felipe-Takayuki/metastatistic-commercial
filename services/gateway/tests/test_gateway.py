@@ -83,6 +83,18 @@ def test_determine_target_url():
     assert determine_target_url("/api/v1/datasets") == f"{settings.data_api_url}/datasets"
     assert determine_target_url("/datasets/123") == f"{settings.data_api_url}/datasets/123"
 
+    # BI Reports & Dashboards
+    assert determine_target_url("/api/v1/reports") == f"{settings.bi_report_service_url}/reports"
+    assert determine_target_url("/api/v1/reports/rep_1/snapshots") == f"{settings.bi_report_service_url}/reports/rep_1/snapshots"
+    assert determine_target_url("/reports/rep_1") == f"{settings.bi_report_service_url}/reports/rep_1"
+    assert determine_target_url("/api/v1/dashboards") == f"{settings.bi_report_service_url}/dashboards"
+    assert determine_target_url("/dashboards/dash_1") == f"{settings.bi_report_service_url}/dashboards/dash_1"
+    assert determine_target_url("/ws/reports/rep_1") == f"{settings.bi_report_service_url}/ws/reports/rep_1"
+
+    # Export Service
+    assert determine_target_url("/api/v1/export/generate") == f"{settings.export_service_url}/export/generate"
+    assert determine_target_url("/export/docx") == f"{settings.export_service_url}/export/docx"
+
 
 @pytest.mark.asyncio
 async def test_health_check_endpoint():
@@ -99,6 +111,12 @@ async def test_health_check_endpoint():
         respx_mock.get(f"{settings.data_api_url}/health").mock(
             return_value=httpx.Response(200, json={"status": "ok"})
         )
+        respx_mock.get(f"{settings.bi_report_service_url}/health").mock(
+            return_value=httpx.Response(200, json={"status": "healthy"})
+        )
+        respx_mock.get(f"{settings.export_service_url}/health").mock(
+            return_value=httpx.Response(200, json={"status": "healthy"})
+        )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
             resp = await client.get("/health")
@@ -108,6 +126,8 @@ async def test_health_check_endpoint():
             assert data["downstream"]["auth_tenant_service"] == "healthy"
             assert data["downstream"]["stat_orchestrator"] == "healthy"
             assert data["downstream"]["data_engine"] == "healthy"
+            assert data["downstream"]["bi_report_service"] == "healthy"
+            assert data["downstream"]["export_service"] == "healthy"
             assert data["downstream"]["data_api"] == "healthy"
 
 
@@ -229,3 +249,64 @@ async def test_proxy_routing_to_data_engine_service():
             assert resp_c.status_code == 200
             assert resp_c.json()[0]["id"] == "c1"
             assert connections_route.calls.last.request.headers.get("x-tenant-id") == "tenant_gamma"
+
+
+@pytest.mark.asyncio
+async def test_proxy_routing_to_bi_reports_and_export_service():
+    async with respx.mock(assert_all_called=True) as respx_mock:
+        # Mock de reports
+        report_route = respx_mock.post(f"{settings.bi_report_service_url}/reports").mock(
+            return_value=httpx.Response(
+                201,
+                json={"id": "rep_100", "title": "Trial 1", "version": 1, "blocks": []},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        # Mock de dashboards
+        dashboard_route = respx_mock.get(f"{settings.bi_report_service_url}/dashboards/dash_200").mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": "dash_200", "title": "KPIs", "version": 1, "tiles": []},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        # Mock de export
+        export_route = respx_mock.post(f"{settings.export_service_url}/export/generate").mock(
+            return_value=httpx.Response(
+                200,
+                json={"filename": "report.html", "format": "html", "content": "<html>APA</html>"},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+            # 1. /api/v1/reports
+            resp_rep = await client.post(
+                "/api/v1/reports",
+                json={"title": "Trial 1", "blocks": []},
+                headers={"X-Tenant-ID": "tenant_medical"},
+            )
+            assert resp_rep.status_code == 201
+            assert resp_rep.json()["id"] == "rep_100"
+            assert report_route.calls.last.request.headers.get("x-tenant-id") == "tenant_medical"
+
+            # 2. /api/v1/dashboards/dash_200
+            resp_dash = await client.get(
+                "/api/v1/dashboards/dash_200",
+                headers={"X-Tenant-ID": "tenant_medical"},
+            )
+            assert resp_dash.status_code == 200
+            assert resp_dash.json()["id"] == "dash_200"
+            assert dashboard_route.calls.last.request.headers.get("x-tenant-id") == "tenant_medical"
+
+            # 3. /api/v1/export/generate
+            resp_exp = await client.post(
+                "/api/v1/export/generate",
+                json={"title": "Report", "format": "html", "blocks": []},
+                headers={"X-Tenant-ID": "tenant_medical"},
+            )
+            assert resp_exp.status_code == 200
+            assert resp_exp.json()["format"] == "html"
+            assert export_route.calls.last.request.headers.get("x-tenant-id") == "tenant_medical"

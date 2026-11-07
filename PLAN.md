@@ -323,14 +323,24 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
   - Formatação rigorosa de tabelas e notas conforme APA 7th.
   - Roteamento Dual-Engine inteligente ('py', 'r', 'auto').
 
-### Fase 5: Microsserviço de Relatórios, BI e Exportação (Semanas 12–14)
-- [ ] Implementação do serviço `bi-report-service`:
-  - Dashboards reativos com grade flexível e cross-filtering.
-  - Editor colaborativo de relatórios em tempo real baseado em Yjs e TipTap.
-- [ ] Desenvolvimento do serviço `export-service`:
-  - Cluster Playwright para exportação de PDFs em alta resolução com tabelas APA 7th paginadas.
-  - Gerador de exportação para DOCX e LaTeX.
-- [ ] Desenvolvimento e publicação do pacote `@metastatistic/react-embed` para incorporação em aplicações de terceiros.
+### Fase 5: Microsserviço de Relatórios, BI e Exportação (Semanas 12–14) ✅ CONCLUÍDA (2026-11-07)
+- [x] Implementação do serviço `bi-report-service`:
+  - CRUD com bloqueio otimista de versão (conflito 409) para relatórios e dashboards.
+  - Snapshots imutáveis de versão com restauração instantânea.
+  - Dashboards reativos com grade flexível de tiles e suporte a filtros multi-dimensionais.
+  - Colaboração em tempo real via WebSockets (`/ws/reports/{report_id}`).
+  - Isolamento multi-tenant estrito via `X-Tenant-ID`.
+- [x] Desenvolvimento do serviço `export-service`:
+  - Exportação HTML editorial e PDF com CSS Paged Media (`@page { size: A4; margin: 2.5cm; }`) e tabelas APA 7th.
+  - Gerador de exportação para LaTeX acadêmico com pacotes `booktabs` e `amsmath`.
+  - Gerador de exportação para Microsoft Word DOCX via `python-docx` com estilos e tabelas APA.
+  - Gerador de exportação para Markdown GFM com blocos matemáticos KaTeX.
+  - Roteador polimórfico unificado em `POST /export/generate`.
+- [x] Desenvolvimento e publicação do pacote `@metastatistic/react-embed`:
+  - Componente React seguro embutível via iframe com sandbox restritivo.
+  - Sincronização bidirecional de eventos e comandos via `postMessage`.
+  - Redimensionamento automático dinâmico (`autoResize`), suporte a temas (`light`/`dark`) e filtros.
+- [x] Atualização do API Gateway e Docker Compose com proxy reverso e healthcheck integrado.
 
 ### Fase 6: Prontidão Enterprise, Segurança e Lançamento (Semanas 15–16)
 - [ ] Implementação de SSO corporativo (SAML 2.0 / Okta / Azure AD) e SCIM 2.0.

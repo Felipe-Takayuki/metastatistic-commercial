@@ -23,6 +23,8 @@ services:
       AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
       STAT_ORCHESTRATOR_URL: "http://stat-orchestrator:8003"
       DATA_ENGINE_SERVICE_URL: "http://data-engine-service:8004"
+      BI_REPORT_SERVICE_URL: "http://bi-report-service:8005"
+      EXPORT_SERVICE_URL: "http://export-service:8006"
       DATA_API_URL: "http://api:8000"
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
@@ -30,6 +32,8 @@ services:
       - auth-tenant-service
       - stat-orchestrator
       - data-engine-service
+      - bi-report-service
+      - export-service
       - api
     restart: unless-stopped
 
@@ -76,6 +80,28 @@ services:
       - datasets:/data:ro
     restart: unless-stopped
 
+  bi-report-service:
+    build: ./services/bi-report-service
+    image: metastatistic-bi-report-service:latest
+    ports:
+      - "8015:8005"
+    environment:
+      PORT: "8005"
+      DATABASE_URL: "sqlite:///./data/bi_reports.db"
+    volumes:
+      - bi_data:/service/data
+    restart: unless-stopped
+
+  export-service:
+    build: ./services/export-service
+    image: metastatistic-export-service:latest
+    ports:
+      - "8016:8006"
+    environment:
+      PORT: "8006"
+      TEMP_DIR: "/tmp/export"
+    restart: unless-stopped
+
   api:
     build: ./apps/api
     image: metastatistic-api:latest
@@ -110,3 +136,4 @@ services:
 volumes:
   datasets:
   auth_data:
+  bi_data:

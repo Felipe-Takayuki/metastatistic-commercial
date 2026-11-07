@@ -73,6 +73,29 @@ def determine_target_url(path: str) -> str:
     elif clean_path.startswith("/connections"):
         return f"{settings.data_engine_service_url.rstrip('/')}{clean_path}"
 
+    # Casos de BI & Relatórios (reports, dashboards, ws)
+    if clean_path.startswith("/api/v1/reports"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.bi_report_service_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/reports"):
+        return f"{settings.bi_report_service_url.rstrip('/')}{clean_path}"
+
+    if clean_path.startswith("/api/v1/dashboards"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.bi_report_service_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/dashboards"):
+        return f"{settings.bi_report_service_url.rstrip('/')}{clean_path}"
+
+    if clean_path.startswith("/ws/"):
+        return f"{settings.bi_report_service_url.rstrip('/')}{clean_path}"
+
+    # Casos de Exportação Multi-formato
+    if clean_path.startswith("/api/v1/export"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.export_service_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/export"):
+        return f"{settings.export_service_url.rstrip('/')}{clean_path}"
+
     # Casos de Data API
     if clean_path.startswith("/api/v1/"):
         target_path = clean_path.replace("/api/v1", "", 1)

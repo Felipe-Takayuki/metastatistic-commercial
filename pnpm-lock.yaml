@@ -228,6 +228,25 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/react-embed:
+    dependencies:
+      react:
+        specifier: '>=18.0.0'
+        version: 19.3.1
+      react-dom:
+        specifier: '>=18.0.0'
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
 packages:
 
   '@babel/runtime@8.1.0':
