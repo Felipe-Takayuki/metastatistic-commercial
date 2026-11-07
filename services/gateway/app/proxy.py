@@ -54,6 +54,25 @@ def determine_target_url(path: str) -> str:
     elif clean_path.startswith("/jobs"):
         return f"{settings.stat_orchestrator_url.rstrip('/')}{clean_path}"
 
+    # Casos de Data Engine (queries, transforms, connections)
+    if clean_path.startswith("/api/v1/queries"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.data_engine_service_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/queries"):
+        return f"{settings.data_engine_service_url.rstrip('/')}{clean_path}"
+
+    if clean_path.startswith("/api/v1/transforms"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.data_engine_service_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/transforms"):
+        return f"{settings.data_engine_service_url.rstrip('/')}{clean_path}"
+
+    if clean_path.startswith("/api/v1/connections"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.data_engine_service_url.rstrip('/')}{target_path}"
+    elif clean_path.startswith("/connections"):
+        return f"{settings.data_engine_service_url.rstrip('/')}{clean_path}"
+
     # Casos de Data API
     if clean_path.startswith("/api/v1/"):
         target_path = clean_path.replace("/api/v1", "", 1)

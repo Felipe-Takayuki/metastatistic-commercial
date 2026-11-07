@@ -63,7 +63,23 @@ async def health_check():
         downstream["auth_tenant_service"] = "unreachable"
         all_ok = False
 
-    # 2. Data API Service
+    # 2. Stat Orchestrator Service
+    try:
+        resp = await client.get(f"{settings.stat_orchestrator_url.rstrip('/')}/health", timeout=2.0)
+        downstream["stat_orchestrator"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
+    except Exception:
+        downstream["stat_orchestrator"] = "unreachable"
+        all_ok = False
+
+    # 3. Data Engine Service
+    try:
+        resp = await client.get(f"{settings.data_engine_service_url.rstrip('/')}/health", timeout=2.0)
+        downstream["data_engine"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
+    except Exception:
+        downstream["data_engine"] = "unreachable"
+        all_ok = False
+
+    # 4. Data API Service
     try:
         resp = await client.get(f"{settings.data_api_url.rstrip('/')}/health", timeout=2.0)
         downstream["data_api"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
@@ -104,7 +120,7 @@ async def route_tenants(request: Request, path: str) -> Response:
 @app.api_route("/{prefix}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def route_direct(request: Request, prefix: str, path: str) -> Response:
     global http_client
-    if prefix in {"datasets", "queries", "analyses", "reports", "dashboards", "transforms", "collections", "jobs"}:
+    if prefix in {"datasets", "queries", "analyses", "reports", "dashboards", "transforms", "collections", "jobs", "connections"}:
         return await proxy_request(request, f"/{prefix}/{path}", client=http_client)
     return Response(
         content=b'{"error": "Not Found", "detail": "Route not mapped in gateway"}',

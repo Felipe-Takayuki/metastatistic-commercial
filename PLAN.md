@@ -294,13 +294,18 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
   - Integração com webhooks do Stripe para criação e cancelamento de planos.
   - Middleware de medição de uso e enforcement de cotas.
 
-### Fase 3: Separação do Data Engine e Conectores SQL (Semanas 6–8)
-- [ ] Extração da lógica de consulta para o microsserviço `data-engine-service`:
-  - Pool de conexões assíncronas para PostgreSQL, MySQL, BigQuery e Snowflake.
-  - Integração do DuckDB em memória com conversão direta para Apache Arrow IPC.
-- [ ] Refatoração do Data Prep / Recipe Engine:
-  - Execução de etapas de transformação via AST do SQLGlot e Polars.
-  - Mascaramento dinâmico de PII para proteção de dados sensíveis.
+### Fase 3: Separação do Data Engine e Conectores SQL (Semanas 6–8) ✅ CONCLUÍDA (2026-11-07)
+- [x] Extração da lógica de consulta para o microsserviço `data-engine-service`:
+  - Conectores externos para SQLite, DuckDB, PostgreSQL e MySQL com verificação de conectividade e latência.
+  - Integração do DuckDB em memória com conversão zero-copy para streaming Apache Arrow IPC (`POST /queries/arrow`).
+  - Execução de queries em sandbox confinada com validação AST via SQLGlot e bloqueio de DDL/DML.
+- [x] Refatoração do Data Prep / Recipe Engine:
+  - Execução de etapas de transformação via AST do SQLGlot e DuckDB (`POST /transforms/preview`).
+  - Mascaramento dinâmico de PII (email, CPF, telefone, redaction e SHA-256 salgado com isolamento de tenant).
+- [x] Integração no API Gateway e Docker Compose:
+  - Roteamento de `/api/v1/queries/*`, `/api/v1/transforms/*` e `/api/v1/connections/*` no Gateway.
+  - Healthcheck unificado agregando `data-engine-service`.
+  - Serviço `data-engine-service` configurado no `docker-compose.microservices.yml` (porta 8014:8004).
 
 ### Fase 4: Orquestração e Cluster de Workers com Autoscaling (Semanas 9–11)
 - [x] Construção do microsserviço `stat-orchestrator`:

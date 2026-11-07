@@ -14,7 +14,8 @@ O repositório está organizado como um monorepo (`pnpm-workspace.yaml`):
 - **`services/gateway`** (porta `8080`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
 - **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados e emissão de tokens JWT (HS256).
 - **`services/stat-orchestrator`** (porta `8003`): Orquestrador de computação analítica com fila assíncrona priorizada por QoS (clientes VIP furam fila), cache determinístico LRU por hash SHA-256 e roteador inteligente Dual-Engine.
-- **`apps/api`** (porta `8000`): Camada de dados, ingestão de CSV/Parquet via DuckDB, consultas SQL em sandbox, catálogo de datasets, relatórios, dashboards, data prep (receitas de transformação) e abstração de storage (`StorageProvider` Local/S3).
+- **`services/data-engine-service`** (porta `8004` / exposta `8014`): Motor de consulta analítica em DuckDB Sandbox confinada, streaming binário Apache Arrow IPC (`application/vnd.apache.arrow.stream`), anonimização e mascaramento de PII (LGPD/GDPR), conectores externos (SQLite, DuckDB, PostgreSQL, MySQL) e Data Prep.
+- **`apps/api`** (porta `8000`): Camada de dados, ingestão de CSV/Parquet via DuckDB, catálogo de datasets, relatórios, dashboards e abstração de storage (`StorageProvider` Local/S3).
 - **`engines/r-worker`**: **Engine A (Open Engine)** — Worker R isolado em container com supervisor leve e runtime JASP (tempo limite, recuperação automática, AGPL-compliant).
 
 ### Pacotes Compartilhados e Frontend
@@ -35,6 +36,12 @@ O progresso da evolução corporativa está documentado minuciosamente nas notas
   - Microsserviço `auth-tenant-service` com cotas por plano, convites e tokens JWT.
   - Microsserviço `gateway` com resolução de inquilinos em cascata (subdomínio, cabeçalho, JWT), proxy reverso assíncrono e healthcheck agregador unificado.
   - Orquestração distribuída via `docker-compose.microservices.yml`.
+- **[Fase Comercial 3 — Microsserviço de Consulta, Conectores e Data Prep ✅](docs/commercial-phase3-progress.md)**:
+  - Microsserviço `data-engine-service` com DuckDB sandbox e validação AST via SQLGlot.
+  - Streaming binário Apache Arrow IPC de alta velocidade (`application/vnd.apache.arrow.stream`).
+  - Motor de mascaramento de PII (email, CPF, telefone, redaction e SHA-256 com salt isolado por tenant).
+  - Conectores externos (SQLite, DuckDB, PostgreSQL, MySQL) e engine de preview de transformações.
+  - Roteamento e healthcheck integrados no Gateway e orquestração Docker Compose.
 - **[Fase Comercial 4 — Orquestrador Estatístico e Engine B (Pure Python) ✅](docs/commercial-phase4-progress.md)**:
   - Microsserviço `stat-orchestrator` com fila assíncrona, priorização VIP para planos Enterprise e cache determinístico LRU.
   - **Engine B comercial**: Cálculos estatísticos em Python puro/SciPy (100% livre de AGPL) para Descritivas, Testes t (Independente e Uma Amostra), ANOVA One-Way e Correlação de Pearson, com formatação estrita de tabelas e notas APA 7th.
@@ -68,19 +75,23 @@ Serviços disponíveis:
 - **Frontend Web**: `http://localhost:8080`
 - **Auth & Tenant Service**: `http://localhost:8002`
 - **Stat Orchestrator**: `http://localhost:8003`
+- **Data Engine Service**: `http://localhost:8014` (porta interna `8004`)
 - **Data API**: `http://localhost:8000`
 
 ### 2. Execução dos Testes Automatizados
 
 #### Microsserviços e Backend Python
 ```bash
+# Testes do Data Engine Service (10 testes)
+uv run --directory services/data-engine-service pytest
+
 # Testes do Stat Orchestrator (13 testes)
 uv run --directory services/stat-orchestrator pytest
 
 # Testes do Auth Tenant Service (6 testes)
 uv run --directory services/auth-tenant-service pytest
 
-# Testes do API Gateway (7 testes)
+# Testes do API Gateway (8 testes)
 uv run --directory services/gateway pytest
 
 # Testes da API de Dados (330 testes)

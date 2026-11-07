@@ -22,12 +22,14 @@ services:
       PORT: "8080"
       AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
       STAT_ORCHESTRATOR_URL: "http://stat-orchestrator:8003"
+      DATA_ENGINE_SERVICE_URL: "http://data-engine-service:8004"
       DATA_API_URL: "http://api:8000"
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
     depends_on:
       - auth-tenant-service
       - stat-orchestrator
+      - data-engine-service
       - api
     restart: unless-stopped
 
@@ -60,6 +62,18 @@ services:
       - datasets:/data:ro
     depends_on:
       - r-worker-1
+    restart: unless-stopped
+
+  data-engine-service:
+    build: ./services/data-engine-service
+    image: metastatistic-data-engine-service:latest
+    ports:
+      - "8014:8004"
+    environment:
+      PORT: "8004"
+      DATA_DIR: "/data"
+    volumes:
+      - datasets:/data:ro
     restart: unless-stopped
 
   api:
