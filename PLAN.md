@@ -305,7 +305,7 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
 - [x] Integração no API Gateway e Docker Compose:
   - Roteamento de `/api/v1/queries/*`, `/api/v1/transforms/*` e `/api/v1/connections/*` no Gateway.
   - Healthcheck unificado agregando `data-engine-service`.
-  - Serviço `data-engine-service` configurado no `docker-compose.microservices.yml` (porta 8014:8004).
+  - Serviço `data-engine-service` configurado no `docker-compose.yml` (porta 8014:8004).
 
 ### Fase 4: Orquestração e Cluster de Workers com Autoscaling (Semanas 9–11)
 - [x] Construção do microsserviço `stat-orchestrator`:
@@ -314,7 +314,7 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
   - API com endpoints `/health`, `/analyses/status`, `/jobs/submit`, `/jobs/{job_id}` e `/analyses/run`.
 - [x] Construção e empacotamento dos containers de Workers e Orquestração:
   - R Engine Adapter com forward para workers R e healthcheck ativo.
-  - Integração no API Gateway e orquestração Docker Compose (`docker-compose.microservices.yml`).
+  - Integração no API Gateway e orquestração Docker Compose (`docker-compose.yml`).
 - [x] Início e implementação do **Engine B** em Python (`scipy`, `numpy`) para independência total de AGPL:
   - Estatísticas Descritivas (`descriptives`).
   - Teste t Independente (`ttest_independent`) e Teste t de Uma Amostra (`ttest_onesample`).

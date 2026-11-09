@@ -195,7 +195,7 @@ O repositório está organizado como um monorepo moderno gerenciado via `pnpm-wo
 ### Execução Completa via Docker Compose
 Para subir todo o ecossistema distribuído de microsserviços:
 ```bash
-docker compose -f docker-compose.microservices.yml up -d --build
+docker compose up -d --build
 ```
 
 Serviços acessíveis:

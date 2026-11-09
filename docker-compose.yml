@@ -1,41 +1,154 @@
-# Workers R: cada contêiner = um supervisor leve + um motor JASP filho; atende UMA análise por vez.
-# Para mais paralelismo, copie o serviço (r-worker-3…) e acrescente a URL em R_WORKER_URLS da API.
 x-r-worker: &r-worker
   build: ./engines/r-worker
   image: metastatistic-r-worker:spike
-  init: true                  # tini como PID 1: repassa sinais e recolhe processos órfãos
-  restart: unless-stopped     # se o supervisor morrer, o contêiner volta
-  mem_limit: 1536m            # o motor com 4 módulos JASP usa ~560 MB em repouso; estouro mata o motor (detectado e recriado), não a máquina
+  init: true
+  restart: unless-stopped
+  mem_limit: 1536m
   cpus: 2
   environment:
     ANALYSIS_TIMEOUT_S: "60"
   volumes:
-    - datasets:/data:ro       # os workers só leem os Parquets
+    - datasets:/data:ro
 
 services:
-  r-worker-1:
-    <<: *r-worker
-    ports: ["8001:8000"]      # exposto só para os testes de integração falarem direto com um worker
-  r-worker-2:
-    <<: *r-worker
+  gateway:
+    build: ./services/gateway
+    image: metastatistic-gateway:latest
+    ports:
+      - "8080:8080"
+      - "3000:8080"
+    environment:
+      PORT: "8080"
+      AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
+      STAT_ORCHESTRATOR_URL: "http://stat-orchestrator:8003"
+      DATA_ENGINE_SERVICE_URL: "http://data-engine-service:8004"
+      BI_REPORT_SERVICE_URL: "http://bi-report-service:8005"
+      EXPORT_SERVICE_URL: "http://export-service:8006"
+      BILLING_SERVICE_URL: "http://billing-service:8007"
+      DATA_API_URL: "http://api:8000"
+      WEB_URL: "http://web:80"
+      DEFAULT_TENANT_ID: "default"
+    depends_on:
+      - auth-tenant-service
+      - stat-orchestrator
+      - data-engine-service
+      - bi-report-service
+      - export-service
+      - billing-service
+      - api
+      - web
+    restart: unless-stopped
+
+  auth-tenant-service:
+    build: ./services/auth-tenant-service
+    image: metastatistic-auth-tenant-service:latest
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: "8002"
+      DATABASE_URL: "sqlite:///./data/auth_tenant.db"
+    volumes:
+      - auth_data:/service/data
+    restart: unless-stopped
+
+  stat-orchestrator:
+    build: ./services/stat-orchestrator
+    image: metastatistic-stat-orchestrator:latest
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: "8003"
+      R_WORKER_URLS: "http://r-worker-1:8000"
+      DATA_DIR: "/data"
+      CACHE_SIZE_MB: "64"
+      CACHE_MAX_ENTRIES: "256"
+      DEFAULT_ENGINE: "auto"
+      ANALYSIS_TIMEOUT_S: "60"
+    volumes:
+      - datasets:/data:ro
+    depends_on:
+      - r-worker-1
+    restart: unless-stopped
+
+  data-engine-service:
+    build: ./services/data-engine-service
+    image: metastatistic-data-engine-service:latest
+    ports:
+      - "8014:8004"
+    environment:
+      PORT: "8004"
+      DATA_DIR: "/data"
+    volumes:
+      - datasets:/data:ro
+    restart: unless-stopped
+
+  bi-report-service:
+    build: ./services/bi-report-service
+    image: metastatistic-bi-report-service:latest
+    ports:
+      - "8015:8005"
+    environment:
+      PORT: "8005"
+      DATABASE_URL: "sqlite:///./data/bi_reports.db"
+    volumes:
+      - bi_data:/service/data
+    restart: unless-stopped
+
+  export-service:
+    build: ./services/export-service
+    image: metastatistic-export-service:latest
+    ports:
+      - "8016:8006"
+    environment:
+      PORT: "8006"
+      TEMP_DIR: "/tmp/export"
+    restart: unless-stopped
+
+  billing-service:
+    build: ./services/billing-service
+    image: metastatistic-billing-service:latest
+    ports:
+      - "8017:8007"
+    environment:
+      PORT: "8007"
+      AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
+      DATABASE_URL: "sqlite:///./data/billing.db"
+      STRIPE_MOCK_MODE: "true"
+    volumes:
+      - billing_data:/service/data
+    restart: unless-stopped
 
   api:
     build: ./apps/api
+    image: metastatistic-api:latest
+    ports:
+      - "8010:8000"
     environment:
-      R_WORKER_URLS: http://r-worker-1:8000,http://r-worker-2:8000
+      R_WORKER_URLS: "http://r-worker-1:8000"
       ANALYSIS_TIMEOUT_S: "60"
-      DATA_DIR: /data
-      AUTH_ENABLED: ${AUTH_ENABLED:-false}   # true: exige login; o primeiro acesso cria o administrador
-      COOKIE_SECURE: ${COOKIE_SECURE:-false} # true atrás de HTTPS
-    ports: ["8000:8000"]
+      DATA_DIR: "/data"
+      AUTH_ENABLED: "${AUTH_ENABLED:-true}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     volumes:
       - datasets:/data
-    depends_on: [r-worker-1, r-worker-2]
+    depends_on:
+      - r-worker-1
+    restart: unless-stopped
+
+  r-worker-1:
+    <<: *r-worker
+    ports:
+      - "8011:8000"
 
   web:
     build: ./apps/web
-    ports: ["8080:80"]
-    depends_on: [api]
+    image: metastatistic-web:latest
+    depends_on:
+      - api
+    restart: unless-stopped
 
 volumes:
   datasets:
+  auth_data:
+  bi_data:
+  billing_data:

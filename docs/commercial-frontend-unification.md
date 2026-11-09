@@ -86,7 +86,7 @@ Para iniciar todo o ecossistema com o Gateway como único ponto de entrada:
 
 ```bash
 # 1. Subir a infraestrutura de microsserviços
-docker compose -f docker-compose.microservices.yml up -d --build
+docker compose up -d --build
 
 # 2. Acessar a aplicação unificada no navegador
 http://localhost:8080
