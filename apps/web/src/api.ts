@@ -70,6 +70,56 @@ export interface AnalysisStatus {
 export interface TransformPreview extends QueryResult { total_rows: number; sql: string; schemas: { name: string; dtype: string }[][] }
 export interface SavedRecipe { recipe: Recipe; sql: string; created_at: string }
 
+export type PlanTier = "community" | "team" | "enterprise";
+export type BillingCycle = "monthly" | "yearly";
+
+export interface PlanInfo {
+  id: string;
+  name: string;
+  description: string;
+  tier: PlanTier;
+  price_monthly: number;
+  price_yearly: number;
+  currency: string;
+  features: string[];
+  quotas: {
+    max_users?: number;
+    max_datasets?: number;
+    max_storage_mb?: number;
+    export_formats?: string[];
+    [key: string]: unknown;
+  };
+}
+
+export interface SubscriptionInfo {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  stripe_subscription_id?: string | null;
+  plan_id: string;
+  tier: PlanTier;
+  status: "active" | "canceled" | "past_due" | "trialing" | "incomplete" | "unpaid";
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CheckoutSession {
+  session_id: string;
+  url: string;
+  checkout_url?: string;
+  customer_id?: string;
+  plan_id: string;
+  tier: PlanTier;
+}
+
+export interface CustomerPortalSession {
+  url: string;
+  portal_url?: string;
+}
+
 export type Role = "viewer" | "editor" | "admin";
 export interface User { id: string; username: string; display_name: string; role: Role; active: boolean; attributes?: Record<string, string> }
 export interface DirectoryUser { id: string; username: string; display_name: string }
@@ -164,4 +214,10 @@ export const api = {
   analysisStatus: () => request<AnalysisStatus>("/analyses/status"),
   runAnalysis: (analysis: string, dataset_id: string, options: Record<string, unknown>) =>
     request<AnalysisResponse>("/analyses/run", json("POST", { analysis, dataset_id, options })),
+  getBillingPlans: () => request<PlanInfo[]>("/billing/plans"),
+  getSubscription: () => request<SubscriptionInfo>("/billing/subscription"),
+  createCheckoutSession: (planId: string, billingCycle: BillingCycle = "monthly") =>
+    request<CheckoutSession>("/billing/checkout", json("POST", { plan_id: planId, billing_cycle: billingCycle })),
+  createPortalSession: (returnUrl?: string) =>
+    request<CustomerPortalSession>("/billing/portal", json("POST", { return_url: returnUrl })),
 };

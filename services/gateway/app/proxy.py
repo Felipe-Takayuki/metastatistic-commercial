@@ -18,15 +18,48 @@ HOP_BY_HOP_HEADERS = {
     "content-length",
 }
 
+API_DIRECT_PREFIXES = {
+    "api",
+    "auth",
+    "tenants",
+    "datasets",
+    "queries",
+    "analyses",
+    "reports",
+    "dashboards",
+    "transforms",
+    "collections",
+    "jobs",
+    "connections",
+    "export",
+    "scim",
+    "sso",
+    "audit",
+    "billing",
+    "users",
+}
+
 
 def determine_target_url(path: str) -> str:
     """
     Roteia o caminho da requisição para o serviço downstream apropriado:
+    - /, /assets/*, /favicon.ico, /index.html e rotas não-API -> WEB_URL
     - /api/v1/auth/* e /api/v1/tenants/* -> AUTH_SERVICE_URL
     - /api/v1/analyses/* e /api/v1/jobs/* -> STAT_ORCHESTRATOR_URL
     - /api/v1/* (datasets, queries, reports, dashboards, etc.) -> DATA_API_URL
     """
     clean_path = "/" + path.lstrip("/")
+
+    # Casos de Web Frontend e Assets estáticos
+    if (
+        clean_path in {"/", "", "/favicon.ico", "/robots.txt", "/vite.svg", "/index.html"}
+        or clean_path.startswith("/assets/")
+    ):
+        return f"{settings.web_url.rstrip('/')}{clean_path if clean_path else '/'}"
+
+    # Normaliza rotas /api/* legadas sem prefixo /v1 para /api/v1/*
+    if clean_path.startswith("/api/") and not clean_path.startswith("/api/v1/"):
+        clean_path = "/api/v1" + clean_path[4:]
 
     # Casos de Auth e Tenants
     if clean_path.startswith("/api/v1/auth/"):
@@ -130,12 +163,29 @@ def determine_target_url(path: str) -> str:
         return f"{settings.billing_service_url.rstrip('/')}{clean_path}"
 
     # Casos de Data API
+    if clean_path.startswith("/api/v1/datasets") or clean_path.startswith("/datasets"):
+        target_path = clean_path.replace("/api/v1", "", 1) if clean_path.startswith("/api/v1") else clean_path
+        return f"{settings.data_api_url.rstrip('/')}{target_path}"
+
+    if clean_path.startswith("/api/v1/collections") or clean_path.startswith("/collections"):
+        target_path = clean_path.replace("/api/v1", "", 1) if clean_path.startswith("/api/v1") else clean_path
+        return f"{settings.data_api_url.rstrip('/')}{target_path}"
+
+    if clean_path.startswith("/api/v1/users") or clean_path.startswith("/users"):
+        target_path = clean_path.replace("/api/v1", "", 1) if clean_path.startswith("/api/v1") else clean_path
+        return f"{settings.data_api_url.rstrip('/')}{target_path}"
+
     if clean_path.startswith("/api/v1/"):
         target_path = clean_path.replace("/api/v1", "", 1)
         return f"{settings.data_api_url.rstrip('/')}{target_path}"
 
-    # Outros endpoints de dados diretos (/datasets, /queries, etc.)
-    return f"{settings.data_api_url.rstrip('/')}{clean_path}"
+    # Se a rota for um prefixo de API conhecido direto, encaminha para data_api_url
+    first_segment = clean_path.lstrip("/").split("/")[0]
+    if first_segment in API_DIRECT_PREFIXES:
+        return f"{settings.data_api_url.rstrip('/')}{clean_path}"
+
+    # Qualquer rota não-API (SPA, assets, páginas do frontend) vai para o Frontend
+    return f"{settings.web_url.rstrip('/')}{clean_path}"
 
 
 async def proxy_request(request: Request, path: str, client: Optional[httpx.AsyncClient] = None) -> Response:

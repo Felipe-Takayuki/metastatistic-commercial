@@ -67,6 +67,11 @@ O progresso da evolução corporativa está documentado minuciosamente nas notas
   - **Processamento de Webhooks Stripe** (`checkout.session.completed`, `customer.subscription.deleted`, `invoice.*`) com verificação criptográfica de assinatura e atualização automática de planos no `auth-tenant-service`.
   - **Isolamento multi-tenant** completo para histórico de faturas e assinaturas.
   - **Suporte completo no Gateway, Docker Compose e Helm Charts Kubernetes**.
+- **[Fase Comercial 8 — Unificação do Frontend e Ponto Único de Entrada via Gateway ✅](docs/commercial-frontend-unification.md)**:
+  - **API Gateway como Entrada Única**: Roteamento transparente da raiz (`GET /`), assets estáticos (`/assets/*`), favicon (`/favicon.ico`) e rotas SPA para o container web (`web:80`).
+  - **Normalização de Rotas de API**: Encaminhamento automático e retrocompatível de `/api/*` e `/api/v1/*` para todos os 7 microsserviços.
+  - **Componente de Planos & Assinaturas (`PricingModal.tsx`)**: Gestão de planos Community, Team e Enterprise com alternância de ciclo (Mensal/Anual) e integração direta com Stripe Checkout e Customer Portal.
+  - **Orquestração Docker Compose Unificada**: Gateway escutando exclusivamente nas portas principais (`8080` e `3000`), sem exposição de portas secundárias fragmentadas para a web.
 
 ---
 

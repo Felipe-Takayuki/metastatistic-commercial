@@ -121,11 +121,26 @@ async def health_check():
     }
 
 
+# Proxy para rota raiz (Frontend)
+@app.api_route("/", methods=["GET", "HEAD"])
+async def route_root(request: Request) -> Response:
+    global http_client
+    return await proxy_request(request, "/", client=http_client)
+
+
 # Proxy para todos os caminhos /api/v1/*
 @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def route_api_v1(request: Request, path: str) -> Response:
     global http_client
     full_path = f"/api/v1/{path}"
+    return await proxy_request(request, full_path, client=http_client)
+
+
+# Proxy para compatibilidade com rotas /api/*
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+async def route_api(request: Request, path: str) -> Response:
+    global http_client
+    full_path = f"/api/{path}"
     return await proxy_request(request, full_path, client=http_client)
 
 
@@ -142,32 +157,25 @@ async def route_tenants(request: Request, path: str) -> Response:
     return await proxy_request(request, f"/tenants/{path}", client=http_client)
 
 
-# Proxy para rotas diretas de datasets, queries, analyses, reports, dashboards, transforms, export, scim, sso, audit
+# Proxy para assets estáticos do frontend (/assets/*)
+@app.api_route("/assets/{path:path}", methods=["GET", "HEAD"])
+async def route_assets(request: Request, path: str) -> Response:
+    global http_client
+    return await proxy_request(request, f"/assets/{path}", client=http_client)
+
+
+# Proxy para rotas diretas de microserviços e rotas SPA do frontend
 @app.api_route("/{prefix}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def route_direct(request: Request, prefix: str, path: str) -> Response:
     global http_client
-    if prefix in {
-        "datasets",
-        "queries",
-        "analyses",
-        "reports",
-        "dashboards",
-        "transforms",
-        "collections",
-        "jobs",
-        "connections",
-        "export",
-        "scim",
-        "sso",
-        "audit",
-        "billing",
-    }:
-        return await proxy_request(request, f"/{prefix}/{path}", client=http_client)
-    return Response(
-        content=b'{"error": "Not Found", "detail": "Route not mapped in gateway"}',
-        status_code=404,
-        media_type="application/json",
-    )
+    return await proxy_request(request, f"/{prefix}/{path}", client=http_client)
+
+
+# Proxy para arquivos estáticos na raiz (favicon.ico, vite.svg, robots.txt, etc.)
+@app.api_route("/{filename:str}", methods=["GET", "HEAD"])
+async def route_root_files(request: Request, filename: str) -> Response:
+    global http_client
+    return await proxy_request(request, f"/{filename}", client=http_client)
 
 
 # Proxy para WebSocket de colaboração em tempo real

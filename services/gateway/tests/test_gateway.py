@@ -108,6 +108,17 @@ def test_determine_target_url():
     assert determine_target_url("/api/v1/audit/events") == f"{settings.auth_service_url}/audit/events"
     assert determine_target_url("/audit/verify") == f"{settings.auth_service_url}/audit/verify"
 
+    # Web Frontend & Static Assets (Unificação de acesso único via Gateway)
+    assert determine_target_url("/") == f"{settings.web_url}/"
+    assert determine_target_url("/assets/index.js") == f"{settings.web_url}/assets/index.js"
+    assert determine_target_url("/assets/style.css") == f"{settings.web_url}/assets/style.css"
+    assert determine_target_url("/favicon.ico") == f"{settings.web_url}/favicon.ico"
+    assert determine_target_url("/vite.svg") == f"{settings.web_url}/vite.svg"
+    assert determine_target_url("/index.html") == f"{settings.web_url}/index.html"
+    assert determine_target_url("/app-route") == f"{settings.web_url}/app-route"
+    assert determine_target_url("/api/billing/plans") == f"{settings.billing_service_url}/billing/plans"
+    assert determine_target_url("/api/datasets") == f"{settings.data_api_url}/datasets"
+
 
 @pytest.mark.asyncio
 async def test_health_check_endpoint():
@@ -443,3 +454,68 @@ async def test_proxy_routing_to_billing_service():
             assert resp_sub.status_code == 200
             assert resp_sub.json()["tier"] == "team"
             assert sub_route.calls.last.request.headers.get("x-tenant-id") == "tenant_gw"
+
+
+@pytest.mark.asyncio
+async def test_proxy_routing_to_web_frontend():
+    async with respx.mock(assert_all_called=True) as respx_mock:
+        # Mock raiz /
+        root_route = respx_mock.get(f"{settings.web_url}/").mock(
+            return_value=httpx.Response(
+                200,
+                text="<!DOCTYPE html><html><head><title>MetaStatistic</title></head><body><div id='root'></div></body></html>",
+                headers={"Content-Type": "text/html; charset=utf-8"},
+            )
+        )
+
+        # Mock /assets/index.js
+        asset_route = respx_mock.get(f"{settings.web_url}/assets/index.js").mock(
+            return_value=httpx.Response(
+                200,
+                text="console.log('metastatistic web');",
+                headers={"Content-Type": "application/javascript"},
+            )
+        )
+
+        # Mock /favicon.ico
+        favicon_route = respx_mock.get(f"{settings.web_url}/favicon.ico").mock(
+            return_value=httpx.Response(
+                200,
+                content=b"\x00\x00\x01\x00",
+                headers={"Content-Type": "image/x-icon"},
+            )
+        )
+
+        # Mock rota SPA arbitrária (/explore-view)
+        spa_route = respx_mock.get(f"{settings.web_url}/explore-view").mock(
+            return_value=httpx.Response(
+                200,
+                text="<!DOCTYPE html><html><body>SPA Fallback</body></html>",
+                headers={"Content-Type": "text/html; charset=utf-8"},
+            )
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+            # 1. GET /
+            resp_root = await client.get("/")
+            assert resp_root.status_code == 200
+            assert "MetaStatistic" in resp_root.text
+            assert root_route.called
+
+            # 2. GET /assets/index.js
+            resp_asset = await client.get("/assets/index.js")
+            assert resp_asset.status_code == 200
+            assert "metastatistic web" in resp_asset.text
+            assert asset_route.called
+
+            # 3. GET /favicon.ico
+            resp_favicon = await client.get("/favicon.ico")
+            assert resp_favicon.status_code == 200
+            assert resp_favicon.content == b"\x00\x00\x01\x00"
+            assert favicon_route.called
+
+            # 4. GET /explore-view (SPA client route proxying)
+            resp_spa = await client.get("/explore-view")
+            assert resp_spa.status_code == 200
+            assert "SPA Fallback" in resp_spa.text
+            assert spa_route.called

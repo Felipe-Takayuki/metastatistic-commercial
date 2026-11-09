@@ -10,6 +10,7 @@ import { DashboardsPage } from "./components/DashboardsPage";
 import { ReportsPage } from "./components/ReportsPage";
 import { newSession, type AnalysisSession } from "./lib/analyses";
 import { newDraft, type TransformDraft } from "./components/TransformTab";
+import { PricingModal } from "./components/PricingModal";
 import { clearRemoteCache } from "./lib/remote";
 import { routeHref, useRoute } from "./lib/route";
 import { sampleCsv } from "./lib/sample";
@@ -50,6 +51,7 @@ export default function App() {
   const route = useRoute();
   const canEdit = useCan("editor");
   const [accessOpen, setAccessOpen] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
 
   useEffect(() => applyThemeMode(theme), [theme]);
 
@@ -117,9 +119,12 @@ export default function App() {
           <UsersLink current={route.name === "users"} />
         </nav>
         <span className="spacer" />
+        <button className="btn sm" onClick={() => setPricingOpen(true)} title="Ver planos comerciais e fazer upgrade">Planos</button>
         <button className="btn ghost sm" onClick={() => setTheme(NEXT_THEME[theme])} title="Alternar tema">{THEME_LABEL[theme]}</button>
         <UserMenu />
       </header>
+
+      {pricingOpen && <PricingModal onClose={() => setPricingOpen(false)} />}
 
       {route.name === "explore" && <Sidebar datasets={datasets} selectedId={selectedId} busy={busy} onSelect={(id) => { setSelectedId(id); remember("dataset", id); }} onUpload={upload} onDelete={remove} canEdit={canEdit} />}
 
