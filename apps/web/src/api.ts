@@ -288,6 +288,7 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const api = {
   authStatus: () => request<AuthStatus>("/auth/status"),
   setup: (username: string, password: string, display_name: string) => request<User>("/auth/setup", json("POST", { username, password, display_name })),
+  register: (username: string, password: string, displayName?: string) => request<User>("/auth/register", json("POST", { username, password, display_name: displayName })),
   login: (username: string, password: string) => request<User>("/auth/login", json("POST", { username, password })),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   changePassword: (current: string, next: string) => request<void>("/auth/password", json("POST", { current, new: next })),

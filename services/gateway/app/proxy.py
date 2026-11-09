@@ -67,6 +67,7 @@ def determine_target_url(path: str) -> str:
         "/auth/login",
         "/auth/logout",
         "/auth/setup",
+        "/auth/register",
         "/auth/password",
         "/auth/directory",
         "/auth/me",

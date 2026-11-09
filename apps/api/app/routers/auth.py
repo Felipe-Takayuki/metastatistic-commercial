@@ -70,6 +70,23 @@ def setup(body: SetupIn, response: Response) -> dict:
     return user.public()
 
 
+@router.post("/register", status_code=201)
+def register(body: SetupIn, response: Response) -> dict:
+    """Cadastro público: primeiro usuário vira admin; subsequentes viram editor."""
+    if not settings.auth_enabled:
+        raise HTTPException(409, "authentication is disabled")
+    role = "admin" if auth.user_count() == 0 else "editor"
+    try:
+        user = auth.create_user(body.username, body.password, body.display_name, role=role)
+    except auth.UserConflict:
+        raise HTTPException(409, "usuário já existe")
+    except auth.AuthError as exc:
+        raise _http(exc) from exc
+    _start_session(response, user)
+    audit.log(user, "register", "user", user.id, f"novo cadastro ({role})")
+    return user.public()
+
+
 @router.post("/login")
 def login(body: Credentials, response: Response) -> dict:
     if not settings.auth_enabled:

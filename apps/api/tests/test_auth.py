@@ -66,6 +66,36 @@ async def test_setup_creates_admin_once_and_logs_in(client, auth_on):
     assert again.status_code == 409  # ninguém "assume" um sistema já configurado
 
 
+async def test_register_creates_admin_first_then_editor(client, auth_on):
+    # Primeiro cadastro: vira admin
+    r1 = await client.post("/auth/register", json={"username": "carlos", "password": "senha-forte-1", "display_name": "Carlos"})
+    assert r1.status_code == 201, r1.text
+    u1 = r1.json()
+    assert u1["role"] == "admin"
+    assert u1["username"] == "carlos"
+    assert (await client.get("/auth/me")).json()["username"] == "carlos"
+
+    # Segundo cadastro: vira editor
+    c2 = new_client()
+    r2 = await c2.post("/auth/register", json={"username": "mariana", "password": "senha-forte-2", "display_name": "Mariana"})
+    assert r2.status_code == 201, r2.text
+    u2 = r2.json()
+    assert u2["role"] == "editor"
+    assert u2["username"] == "mariana"
+    assert (await c2.get("/auth/me")).json()["username"] == "mariana"
+
+    # Conflito de username: 409
+    c3 = new_client()
+    r3 = await c3.post("/auth/register", json={"username": "carlos", "password": "senha-forte-3"})
+    assert r3.status_code == 409
+    assert "já existe" in r3.json()["detail"].lower()
+
+
+async def test_register_disabled_auth_fails(client):
+    r = await client.post("/auth/register", json={"username": "novo", "password": "senha-forte-1"})
+    assert r.status_code == 409
+
+
 async def test_setup_validates_username_and_password(client, auth_on):
     assert (await client.post("/auth/setup", json={"username": "ab", "password": "senha-forte-1"})).status_code == 422
     assert (await client.post("/auth/setup", json={"username": "ana", "password": "curta"})).status_code == 422

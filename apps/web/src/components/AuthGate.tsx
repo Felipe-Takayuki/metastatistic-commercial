@@ -37,6 +37,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function CredentialsForm({ setup, onDone }: { setup: boolean; onDone: (u: User) => void }) {
+  const [tab, setTab] = useState<"login" | "register">(setup ? "register" : "login");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -44,14 +45,27 @@ function CredentialsForm({ setup, onDone }: { setup: boolean; onDone: (u: User) 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const switchTab = (nextTab: "login" | "register") => {
+    setTab(nextTab);
+    setError(null);
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const problem = setup ? credentialProblem(username, password) ?? (password !== confirm ? "As senhas não são iguais." : null) : null;
-    if (problem) return setError(problem);
+    if (tab === "register") {
+      const problem = credentialProblem(username, password) ?? (password !== confirm ? "As senhas não são iguais." : null);
+      if (problem) return setError(problem);
+    }
     setBusy(true);
     setError(null);
     try {
-      onDone(setup ? await api.setup(username, password, displayName) : await api.login(username, password));
+      if (tab === "register") {
+        const user = await api.register(username, password, displayName.trim() || undefined);
+        onDone(user);
+      } else {
+        const user = await api.login(username, password);
+        onDone(user);
+      }
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -60,30 +74,114 @@ function CredentialsForm({ setup, onDone }: { setup: boolean; onDone: (u: User) 
 
   return (
     <div className="auth-page">
-      <form className="card auth-card" onSubmit={submit}>
-        <h1>{setup ? "Criar o administrador" : "Entrar"}</h1>
-        <p className="muted small" style={{ marginTop: 0 }}>
-          {setup ? "Primeiro acesso: esta conta gerencia os demais usuários." : "Metastatistic"}
-        </p>
-        {error && <div className="alert" role="alert">{error}</div>}
-        <label className="field">Usuário
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required />
-        </label>
-        {setup && (
-          <label className="field">Nome exibido (opcional)
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" />
+      <div className="card auth-card">
+        <div className="tabs auth-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "login"}
+            className="tab"
+            onClick={() => switchTab("login")}
+          >
+            Entrar
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "register"}
+            className="tab"
+            onClick={() => switchTab("register")}
+          >
+            {setup ? "Criar Administrador" : "Criar Conta"}
+          </button>
+        </div>
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <h1>{tab === "login" ? "Entrar" : (setup ? "Criar o administrador" : "Criar Conta")}</h1>
+          <p className="muted small" style={{ marginTop: -4, marginBottom: 4 }}>
+            {tab === "login"
+              ? "Metastatistic"
+              : (setup
+                ? "Primeiro acesso: esta conta gerencia os demais usuários."
+                : "Preencha seus dados para criar sua conta no Metastatistic")}
+          </p>
+
+          {error && <div className="alert" role="alert">{error}</div>}
+
+          {tab === "register" && (
+            <label className="field">
+              Nome Completo
+              <input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                autoComplete="name"
+                placeholder="Ex: Maria Silva"
+              />
+            </label>
+          )}
+
+          <label className="field">
+            Usuário / E-mail
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              placeholder={tab === "register" ? "Ex: maria.silva" : "Seu usuário"}
+              autoFocus
+              required
+            />
           </label>
-        )}
-        <label className="field">Senha
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={setup ? "new-password" : "current-password"} required />
-        </label>
-        {setup && (
-          <label className="field">Repita a senha
-            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
+
+          <label className="field">
+            Senha
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={tab === "register" ? "new-password" : "current-password"}
+              placeholder={tab === "register" ? "Mínimo 8 caracteres" : "Sua senha"}
+              required
+            />
           </label>
-        )}
-        <button className="btn primary" type="submit" disabled={busy}>{busy ? <span className="spinner" /> : null} {setup ? "Criar e entrar" : "Entrar"}</button>
-      </form>
+
+          {tab === "register" && (
+            <label className="field">
+              Confirmar Senha
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                autoComplete="new-password"
+                placeholder="Repita a mesma senha"
+                required
+              />
+            </label>
+          )}
+
+          <button className="btn primary" type="submit" disabled={busy} style={{ marginTop: 4 }}>
+            {busy ? <span className="spinner" /> : null}{" "}
+            {tab === "login" ? "Entrar" : (setup ? "Criar administrador e entrar" : "Criar minha conta")}
+          </button>
+        </form>
+
+        <div className="auth-switch">
+          {tab === "login" ? (
+            <>
+              Não tem uma conta?{" "}
+              <button type="button" className="btn-link" onClick={() => switchTab("register")}>
+                Criar conta
+              </button>
+            </>
+          ) : (
+            <>
+              Já tem uma conta?{" "}
+              <button type="button" className="btn-link" onClick={() => switchTab("login")}>
+                Fazer login
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
