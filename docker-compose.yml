@@ -15,8 +15,7 @@ services:
     build: ./services/gateway
     image: metastatistic-gateway:latest
     ports:
-      - "8080:8080"
-      - "3000:8080"
+      - "${GATEWAY_PORT:-8085}:8080"
     environment:
       PORT: "8080"
       AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
@@ -122,7 +121,7 @@ services:
     build: ./apps/api
     image: metastatistic-api:latest
     ports:
-      - "8010:8000"
+      - "${API_PORT:-8020}:8000"
     environment:
       R_WORKER_URLS: "http://r-worker-1:8000"
       ANALYSIS_TIMEOUT_S: "60"
@@ -138,7 +137,7 @@ services:
   r-worker-1:
     <<: *r-worker
     ports:
-      - "8011:8000"
+      - "${R_WORKER_PORT:-8011}:8000"
 
   web:
     build: ./apps/web
