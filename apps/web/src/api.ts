@@ -106,6 +106,118 @@ export interface SubscriptionInfo {
   updated_at: string;
 }
 
+export interface TenantInfo {
+  id: string;
+  name: string;
+  slug: string;
+  tier: PlanTier;
+  status: string;
+  created_at: string;
+  quotas: {
+    max_users?: number;
+    max_datasets?: number;
+    max_storage_mb?: number;
+    features?: string[];
+    rate_limit_per_min?: number;
+    [key: string]: unknown;
+  };
+  members_count?: number;
+}
+
+export interface TenantMember {
+  user_id: string;
+  email?: string | null;
+  role: "owner" | "admin" | "statistician" | "analyst" | "viewer" | string;
+  joined_at: string;
+}
+
+export interface InvitationResponse {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role: string;
+  token: string;
+  created_at: string;
+  expires_at: string;
+  accepted: boolean;
+}
+
+export interface CreateTenantPayload {
+  name: string;
+  slug?: string;
+  tier?: PlanTier;
+  owner_id: string;
+  owner_email?: string;
+}
+
+export interface ActiveTenant {
+  id: string;
+  name: string;
+  slug?: string;
+  tier?: PlanTier;
+}
+
+export const ACTIVE_TENANT_STORAGE_KEY = "ms:active_tenant";
+export const RECENT_TENANTS_STORAGE_KEY = "ms:recent_tenants";
+export const TENANT_CHANGED_EVENT = "ms:tenant-changed";
+
+export function getActiveTenant(): ActiveTenant {
+  try {
+    const raw = localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY);
+    if (raw) {
+      if (raw.startsWith("{")) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.id === "string") {
+          return {
+            id: parsed.id,
+            name: parsed.name || parsed.id,
+            slug: parsed.slug || parsed.id,
+            tier: parsed.tier || "community",
+          };
+        }
+      }
+      return { id: raw, name: raw === "default" ? "Metastatistic" : raw, slug: raw, tier: "community" };
+    }
+  } catch {
+    // fallback
+  }
+  return { id: "default", name: "Metastatistic", slug: "default", tier: "community" };
+}
+
+export function getActiveTenantId(): string {
+  return getActiveTenant().id;
+}
+
+export function setActiveTenant(tenant: ActiveTenant | string): void {
+  try {
+    const obj: ActiveTenant = typeof tenant === "string"
+      ? { id: tenant, name: tenant === "default" ? "Metastatistic" : tenant, slug: tenant, tier: "community" }
+      : tenant;
+    localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, JSON.stringify(obj));
+
+    const recents = getRecentTenants();
+    const updated = [obj, ...recents.filter((t) => t.id !== obj.id)].slice(0, 5);
+    localStorage.setItem(RECENT_TENANTS_STORAGE_KEY, JSON.stringify(updated));
+
+    window.dispatchEvent(new CustomEvent(TENANT_CHANGED_EVENT, { detail: obj }));
+  } catch {
+    // sem localStorage
+  }
+}
+
+export function getRecentTenants(): ActiveTenant[] {
+  try {
+    const raw = localStorage.getItem(RECENT_TENANTS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
 export interface CheckoutSession {
   session_id: string;
   url: string;
@@ -146,8 +258,17 @@ function detailMessage(body: unknown, fallback: string): string {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const targetUrl = path.startsWith("/api") ? path : `/api${path}`;
+  const headers = new Headers(init?.headers);
+  if (!headers.has("X-Tenant-ID")) {
+    headers.set("X-Tenant-ID", getActiveTenantId());
+  }
+  const mergedInit: RequestInit = {
+    ...init,
+    headers,
+  };
   try {
-    res = await fetch(`/api${path}`, init);
+    res = await fetch(targetUrl, mergedInit);
   } catch {
     throw new ApiError("Não foi possível conectar à API. Ela está no ar?", 0);
   }
@@ -220,4 +341,14 @@ export const api = {
     request<CheckoutSession>("/billing/checkout", json("POST", { plan_id: planId, billing_cycle: billingCycle })),
   createPortalSession: (returnUrl?: string) =>
     request<CustomerPortalSession>("/billing/portal", json("POST", { return_url: returnUrl })),
+  createTenant: (payload: CreateTenantPayload) =>
+    request<TenantInfo>("/v1/tenants", json("POST", payload)),
+  getTenant: (tenantId: string) =>
+    request<TenantInfo>(`/v1/tenants/${tenantId}`),
+  getTenantBySlug: (slug: string) =>
+    request<TenantInfo>(`/v1/tenants/by-slug/${slug}`),
+  listTenantMembers: (tenantId: string) =>
+    request<TenantMember[]>(`/v1/tenants/${tenantId}/members`),
+  createTenantInvitation: (tenantId: string, email: string, role: string) =>
+    request<InvitationResponse>(`/v1/tenants/${tenantId}/invitations`, json("POST", { email, role })),
 };

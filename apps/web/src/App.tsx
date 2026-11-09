@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { api, type Dataset } from "./api";
+import { api, TENANT_CHANGED_EVENT, type Dataset } from "./api";
 import { DataTab } from "./components/DataTab";
 import { useCan } from "./components/AuthGate";
 import { Sidebar } from "./components/Sidebar";
@@ -11,6 +11,7 @@ import { ReportsPage } from "./components/ReportsPage";
 import { newSession, type AnalysisSession } from "./lib/analyses";
 import { newDraft, type TransformDraft } from "./components/TransformTab";
 import { PricingModal } from "./components/PricingModal";
+import { WorkspaceSelector } from "./components/WorkspaceSelector";
 import { clearRemoteCache } from "./lib/remote";
 import { routeHref, useRoute } from "./lib/route";
 import { sampleCsv } from "./lib/sample";
@@ -73,6 +74,14 @@ export default function App() {
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    const onTenantChange = () => {
+      void refresh();
+    };
+    window.addEventListener(TENANT_CHANGED_EVENT, onTenantChange);
+    return () => window.removeEventListener(TENANT_CHANGED_EVENT, onTenantChange);
+  }, [refresh]);
+
   const upload = async (files: File[]) => {
     setBusy(true);
     setError(null);
@@ -112,6 +121,7 @@ export default function App() {
           </svg>
           Metastatistic
         </div>
+        <WorkspaceSelector />
         <nav className="topnav" aria-label="Seções">
           <a href={routeHref({ name: "explore" })} aria-current={route.name === "explore" ? "page" : undefined}>Explorar</a>
           <a href={routeHref({ name: "reports" })} aria-current={route.name === "reports" || route.name === "report" ? "page" : undefined}>Relatórios</a>
