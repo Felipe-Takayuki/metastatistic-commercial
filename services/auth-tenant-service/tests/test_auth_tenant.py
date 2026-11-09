@@ -28,6 +28,18 @@ async def test_health_check(memory_store):
 
 
 @pytest.mark.asyncio
+async def test_auth_status():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/auth/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["auth_enabled"] is False
+        assert data["needs_setup"] is False
+        assert data["user"]["role"] == "admin"
+        assert data["user"]["username"] == "anonymous"
+
+
+@pytest.mark.asyncio
 async def test_create_and_get_tenant(memory_store):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Cria tenant

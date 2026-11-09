@@ -61,8 +61,28 @@ def test_tenant_resolution_precedence():
 
 
 def test_determine_target_url():
-    # Auth e Tenants
+    # Frontend Auth (Data API: cookies, sessão e gestão)
+    assert determine_target_url("/api/v1/auth/status") == f"{settings.data_api_url}/auth/status"
+    assert determine_target_url("/api/auth/status") == f"{settings.data_api_url}/auth/status"
+    assert determine_target_url("/auth/status") == f"{settings.data_api_url}/auth/status"
+    assert determine_target_url("/api/v1/auth/login") == f"{settings.data_api_url}/auth/login"
+    assert determine_target_url("/auth/login") == f"{settings.data_api_url}/auth/login"
+    assert determine_target_url("/api/v1/auth/logout") == f"{settings.data_api_url}/auth/logout"
+    assert determine_target_url("/auth/logout") == f"{settings.data_api_url}/auth/logout"
+    assert determine_target_url("/api/v1/auth/setup") == f"{settings.data_api_url}/auth/setup"
+    assert determine_target_url("/auth/setup") == f"{settings.data_api_url}/auth/setup"
+    assert determine_target_url("/api/v1/auth/password") == f"{settings.data_api_url}/auth/password"
+    assert determine_target_url("/auth/password") == f"{settings.data_api_url}/auth/password"
+    assert determine_target_url("/api/v1/auth/directory") == f"{settings.data_api_url}/auth/directory"
+    assert determine_target_url("/auth/directory") == f"{settings.data_api_url}/auth/directory"
+    assert determine_target_url("/api/v1/auth/me") == f"{settings.data_api_url}/auth/me"
+    assert determine_target_url("/auth/me") == f"{settings.data_api_url}/auth/me"
+
+    # Auth e Tenants (Auth Service: tokens JWT, SSO, SCIM)
     assert determine_target_url("/api/v1/auth/token") == f"{settings.auth_service_url}/auth/token"
+    assert determine_target_url("/auth/token") == f"{settings.auth_service_url}/auth/token"
+    assert determine_target_url("/api/v1/auth/verify") == f"{settings.auth_service_url}/auth/verify"
+    assert determine_target_url("/auth/verify") == f"{settings.auth_service_url}/auth/verify"
     assert determine_target_url("/api/v1/tenants/t123") == f"{settings.auth_service_url}/tenants/t123"
     assert determine_target_url("/tenants/t123") == f"{settings.auth_service_url}/tenants/t123"
 

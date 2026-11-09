@@ -61,6 +61,24 @@ def determine_target_url(path: str) -> str:
     if clean_path.startswith("/api/") and not clean_path.startswith("/api/v1/"):
         clean_path = "/api/v1" + clean_path[4:]
 
+    # Rotas de autenticação do Frontend (Data API: cookies, sessão e gestão de usuários)
+    frontend_auth_endpoints = (
+        "/auth/status",
+        "/auth/login",
+        "/auth/logout",
+        "/auth/setup",
+        "/auth/password",
+        "/auth/directory",
+        "/auth/me",
+    )
+    for endpoint in frontend_auth_endpoints:
+        if clean_path == endpoint or clean_path.startswith(endpoint + "/"):
+            return f"{settings.data_api_url.rstrip('/')}{clean_path}"
+        v1_endpoint = f"/api/v1{endpoint}"
+        if clean_path == v1_endpoint or clean_path.startswith(v1_endpoint + "/"):
+            target_path = clean_path.replace("/api/v1", "", 1)
+            return f"{settings.data_api_url.rstrip('/')}{target_path}"
+
     # Casos de Auth e Tenants
     if clean_path.startswith("/api/v1/auth/"):
         target_path = clean_path.replace("/api/v1/auth", "/auth", 1)

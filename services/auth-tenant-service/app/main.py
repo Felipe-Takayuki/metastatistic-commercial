@@ -339,6 +339,23 @@ def remove_member(
 # ==========================================
 
 
+@app.get("/auth/status")
+def auth_status() -> Dict[str, Any]:
+    """
+    Retorna o status de autenticação padrão para compatibilidade com o frontend.
+    """
+    return {
+        "auth_enabled": False,
+        "needs_setup": False,
+        "user": {
+            "id": "anonymous",
+            "username": "anonymous",
+            "display_name": "Administrador",
+            "role": "admin",
+        },
+    }
+
+
 @app.post("/auth/token", response_model=TokenResponse)
 def issue_token(
     payload: LoginRequest,
