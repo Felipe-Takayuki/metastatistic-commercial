@@ -25,6 +25,7 @@ services:
       DATA_ENGINE_SERVICE_URL: "http://data-engine-service:8004"
       BI_REPORT_SERVICE_URL: "http://bi-report-service:8005"
       EXPORT_SERVICE_URL: "http://export-service:8006"
+      BILLING_SERVICE_URL: "http://billing-service:8007"
       DATA_API_URL: "http://api:8000"
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
@@ -34,6 +35,7 @@ services:
       - data-engine-service
       - bi-report-service
       - export-service
+      - billing-service
       - api
     restart: unless-stopped
 
@@ -102,6 +104,20 @@ services:
       TEMP_DIR: "/tmp/export"
     restart: unless-stopped
 
+  billing-service:
+    build: ./services/billing-service
+    image: metastatistic-billing-service:latest
+    ports:
+      - "8017:8007"
+    environment:
+      PORT: "8007"
+      AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
+      DATABASE_URL: "sqlite:///./data/billing.db"
+      STRIPE_MOCK_MODE: "true"
+    volumes:
+      - billing_data:/service/data
+    restart: unless-stopped
+
   api:
     build: ./apps/api
     image: metastatistic-api:latest
@@ -137,3 +153,4 @@ volumes:
   datasets:
   auth_data:
   bi_data:
+  billing_data:

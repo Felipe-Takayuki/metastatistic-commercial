@@ -20,6 +20,7 @@ from app.models import (
     TenantCreate,
     TenantMemberResponse,
     TenantResponse,
+    TenantTierUpdate,
     TokenPayload,
     TokenResponse,
     VerifyTokenRequest,
@@ -162,6 +163,39 @@ def get_tenant_by_slug(slug: str, tenant_store: TenantStore = Depends(get_store)
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Tenant with slug '{slug}' not found",
         )
+    return tenant
+
+
+@app.patch("/tenants/{tenant_id}/tier", response_model=TenantResponse)
+def update_tenant_tier(
+    tenant_id: str,
+    payload: TenantTierUpdate,
+    tenant_store: TenantStore = Depends(get_store),
+    audit: AuditTrailManager = Depends(get_audit_manager),
+):
+    try:
+        tenant = tenant_store.update_tenant_tier(tenant_id, payload.tier)
+    except TenantNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tenant {tenant_id} not found",
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    audit.record_event(
+        AuditEventCreate(
+            tenant_id=tenant.id,
+            user_id="system:billing",
+            action="tenant.tier_updated",
+            resource_type="tenant",
+            resource_id=tenant.id,
+            details={"new_tier": tenant.tier, "quotas": tenant.quotas},
+        )
+    )
     return tenant
 
 

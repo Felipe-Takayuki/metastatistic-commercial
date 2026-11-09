@@ -1,7 +1,7 @@
 {{- if .Values.autoscaling.enabled -}}
 {{- $root := . -}}
-{{- range $component := list "gateway" "auth-tenant-service" "stat-orchestrator" "data-engine-service" "bi-report-service" "export-service" "r-worker" }}
-{{- $cfg := index $root.Values (hasPrefix "auth" $component | ternary "authTenantService" (hasPrefix "stat" $component | ternary "statOrchestrator" (hasPrefix "data" $component | ternary "dataEngineService" (hasPrefix "bi" $component | ternary "biReportService" (hasPrefix "export" $component | ternary "exportService" (hasPrefix "r-" $component | ternary "rWorker" "gateway")))))) }}
+{{- range $component := list "gateway" "auth-tenant-service" "stat-orchestrator" "data-engine-service" "bi-report-service" "export-service" "billing-service" "r-worker" }}
+{{- $cfg := index $root.Values (hasPrefix "auth" $component | ternary "authTenantService" (hasPrefix "stat" $component | ternary "statOrchestrator" (hasPrefix "data" $component | ternary "dataEngineService" (hasPrefix "bi" $component | ternary "biReportService" (hasPrefix "export" $component | ternary "exportService" (hasPrefix "billing" $component | ternary "billingService" (hasPrefix "r-" $component | ternary "rWorker" "gateway"))))))) }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

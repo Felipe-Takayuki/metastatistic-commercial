@@ -95,6 +95,11 @@ def test_determine_target_url():
     assert determine_target_url("/api/v1/export/generate") == f"{settings.export_service_url}/export/generate"
     assert determine_target_url("/export/docx") == f"{settings.export_service_url}/export/docx"
 
+    # Billing Service (Stripe)
+    assert determine_target_url("/api/v1/billing/plans") == f"{settings.billing_service_url}/billing/plans"
+    assert determine_target_url("/billing/checkout") == f"{settings.billing_service_url}/billing/checkout"
+    assert determine_target_url("/billing/subscription") == f"{settings.billing_service_url}/billing/subscription"
+
     # Enterprise: SSO, SCIM 2.0 e Trilha de Auditoria Imutável
     assert determine_target_url("/api/v1/sso/login") == f"{settings.auth_service_url}/auth/sso/login"
     assert determine_target_url("/sso/saml/acs") == f"{settings.auth_service_url}/auth/sso/saml/acs"
@@ -125,6 +130,9 @@ async def test_health_check_endpoint():
         respx_mock.get(f"{settings.export_service_url}/health").mock(
             return_value=httpx.Response(200, json={"status": "healthy"})
         )
+        respx_mock.get(f"{settings.billing_service_url}/health").mock(
+            return_value=httpx.Response(200, json={"status": "healthy"})
+        )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
             resp = await client.get("/health")
@@ -136,6 +144,7 @@ async def test_health_check_endpoint():
             assert data["downstream"]["data_engine"] == "healthy"
             assert data["downstream"]["bi_report_service"] == "healthy"
             assert data["downstream"]["export_service"] == "healthy"
+            assert data["downstream"]["billing_service"] == "healthy"
             assert data["downstream"]["data_api"] == "healthy"
 
 
@@ -378,3 +387,59 @@ async def test_proxy_routing_to_enterprise_sso_scim_audit():
             assert resp_audit.status_code == 200
             assert resp_audit.json()["valid"] is True
             assert audit_route.calls.last.request.headers.get("x-tenant-id") == "t_corp"
+
+
+@pytest.mark.asyncio
+async def test_proxy_routing_to_billing_service():
+    async with respx.mock(assert_all_called=True) as respx_mock:
+        # Mock /billing/plans
+        plans_route = respx_mock.get(f"{settings.billing_service_url}/billing/plans").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": "team", "price_monthly": 4900}],
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        # Mock /billing/checkout
+        checkout_route = respx_mock.post(f"{settings.billing_service_url}/billing/checkout").mock(
+            return_value=httpx.Response(
+                200,
+                json={"session_id": "cs_test_gw", "url": "https://checkout.stripe.com/c/pay/cs_test_gw"},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        # Mock /billing/subscription
+        sub_route = respx_mock.get(f"{settings.billing_service_url}/billing/subscription").mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": "sub_gw", "tier": "team", "status": "active"},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+            # 1. /api/v1/billing/plans
+            resp_plans = await client.get("/api/v1/billing/plans")
+            assert resp_plans.status_code == 200
+            assert resp_plans.json()[0]["id"] == "team"
+
+            # 2. /billing/checkout via prefix route
+            resp_checkout = await client.post(
+                "/billing/checkout",
+                json={"plan_id": "team"},
+                headers={"X-Tenant-ID": "tenant_gw"},
+            )
+            assert resp_checkout.status_code == 200
+            assert resp_checkout.json()["session_id"] == "cs_test_gw"
+            assert checkout_route.calls.last.request.headers.get("x-tenant-id") == "tenant_gw"
+
+            # 3. /billing/subscription
+            resp_sub = await client.get(
+                "/billing/subscription",
+                headers={"X-Tenant-ID": "tenant_gw"},
+            )
+            assert resp_sub.status_code == 200
+            assert resp_sub.json()["tier"] == "team"
+            assert sub_route.calls.last.request.headers.get("x-tenant-id") == "tenant_gw"

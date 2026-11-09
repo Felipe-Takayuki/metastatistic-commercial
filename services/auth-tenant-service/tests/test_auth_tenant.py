@@ -210,3 +210,43 @@ async def test_member_management_and_sole_owner_protection(memory_store):
         # Remove colega
         del_colleague = await client.delete(f"/tenants/{tenant_id}/members/colleague_1")
         assert del_colleague.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_update_tenant_tier(memory_store):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Cria tenant community
+        payload = {
+            "name": "Acme Analytics",
+            "tier": "community",
+            "owner_id": "user_acme_1",
+            "owner_email": "owner@acme.com",
+        }
+        res = await client.post("/tenants", json=payload)
+        assert res.status_code == 201
+        tenant_id = res.json()["id"]
+        assert res.json()["tier"] == "community"
+        assert res.json()["quotas"]["max_users"] == 3
+
+        # Upgrade para enterprise
+        patch_res = await client.patch(f"/tenants/{tenant_id}/tier", json={"tier": "enterprise"})
+        assert patch_res.status_code == 200
+        upgraded = patch_res.json()
+        assert upgraded["tier"] == "enterprise"
+        assert upgraded["quotas"]["max_users"] == 1_000_000
+        assert "sso_saml" in upgraded["quotas"]["features"]
+
+        # Downgrade para team
+        patch_res2 = await client.patch(f"/tenants/{tenant_id}/tier", json={"tier": "team"})
+        assert patch_res2.status_code == 200
+        downgraded = patch_res2.json()
+        assert downgraded["tier"] == "team"
+        assert downgraded["quotas"]["max_users"] == 15
+
+        # Tier inexistente dá 422 (validação Pydantic)
+        bad_tier = await client.patch(f"/tenants/{tenant_id}/tier", json={"tier": "invalid_tier"})
+        assert bad_tier.status_code == 422
+
+        # Tenant inexistente dá 404
+        not_found = await client.patch("/tenants/non-existent-tenant-id/tier", json={"tier": "team"})
+        assert not_found.status_code == 404

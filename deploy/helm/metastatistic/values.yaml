@@ -157,7 +157,27 @@ exportService:
     minReplicas: 2
     maxReplicas: 10
 
-# 7. Dedicated R Statistical Worker
+# 7. Billing & Payments Service (Stripe)
+billingService:
+  replicaCount: 2
+  image:
+    repository: "billing-service"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8007
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 10
+
+# 8. Dedicated R Statistical Worker
 rWorker:
   replicaCount: 4
   image:

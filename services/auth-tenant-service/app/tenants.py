@@ -240,6 +240,33 @@ class TenantStore:
             members_count=m_count,
         )
 
+    def update_tenant_tier(self, tenant_id: str, new_tier: TierType) -> TenantResponse:
+        if new_tier not in TIER_QUOTAS:
+            raise ValueError(f"Invalid tier: {new_tier}. Must be one of {list(TIER_QUOTAS.keys())}")
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise TenantNotFoundError(f"Tenant {tenant_id} not found")
+            cursor.execute("UPDATE tenants SET tier = ? WHERE id = ?", (new_tier, tenant_id))
+            conn.commit()
+            m_count = cursor.execute(
+                "SELECT COUNT(*) as count FROM tenant_members WHERE tenant_id = ?", (tenant_id,)
+            ).fetchone()["count"]
+
+        quotas = TIER_QUOTAS[new_tier]
+        return TenantResponse(
+            id=row["id"],
+            name=row["name"],
+            slug=row["slug"],
+            tier=new_tier,
+            status=row["status"],
+            created_at=row["created_at"],
+            quotas=quotas,
+            members_count=m_count,
+        )
+
     def count_effective_users(self, tenant_id: str) -> int:
         now_iso = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:

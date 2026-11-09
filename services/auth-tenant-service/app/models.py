@@ -23,6 +23,10 @@ class TenantCreate(BaseModel):
     owner_email: Optional[str] = None
 
 
+class TenantTierUpdate(BaseModel):
+    tier: TierType
+
+
 class TenantResponse(BaseModel):
     id: str
     name: str

@@ -120,6 +120,15 @@ def determine_target_url(path: str) -> str:
     elif clean_path.startswith("/export"):
         return f"{settings.export_service_url.rstrip('/')}{clean_path}"
 
+    # Casos de Faturamento e Billing Stripe
+    if clean_path.startswith("/api/v1/billing/"):
+        target_path = clean_path.replace("/api/v1", "", 1)
+        return f"{settings.billing_service_url.rstrip('/')}{target_path}"
+    elif clean_path == "/api/v1/billing":
+        return f"{settings.billing_service_url.rstrip('/')}/billing"
+    elif clean_path.startswith("/billing/") or clean_path == "/billing":
+        return f"{settings.billing_service_url.rstrip('/')}{clean_path}"
+
     # Casos de Data API
     if clean_path.startswith("/api/v1/"):
         target_path = clean_path.replace("/api/v1", "", 1)

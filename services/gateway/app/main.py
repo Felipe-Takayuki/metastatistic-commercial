@@ -105,6 +105,14 @@ async def health_check():
         downstream["data_api"] = "unreachable"
         all_ok = False
 
+    # 7. Billing Service
+    try:
+        resp = await client.get(f"{settings.billing_service_url.rstrip('/')}/health", timeout=2.0)
+        downstream["billing_service"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
+    except Exception:
+        downstream["billing_service"] = "unreachable"
+        all_ok = False
+
     return {
         "status": "healthy" if all_ok else "degraded",
         "service": "gateway",
@@ -152,6 +160,7 @@ async def route_direct(request: Request, prefix: str, path: str) -> Response:
         "scim",
         "sso",
         "audit",
+        "billing",
     }:
         return await proxy_request(request, f"/{prefix}/{path}", client=http_client)
     return Response(

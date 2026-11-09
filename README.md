@@ -12,9 +12,12 @@ O repositório está organizado como um monorepo (`pnpm-workspace.yaml`):
 
 ### Microsserviços e Backend
 - **`services/gateway`** (porta `8080`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
-- **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados e emissão de tokens JWT (HS256).
+- **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados, SSO SAML 2.0 / OIDC, SCIM 2.0 e Trilha de Auditoria Imutável (SHA-256 Hash Chain).
 - **`services/stat-orchestrator`** (porta `8003`): Orquestrador de computação analítica com fila assíncrona priorizada por QoS (clientes VIP furam fila), cache determinístico LRU por hash SHA-256 e roteador inteligente Dual-Engine.
 - **`services/data-engine-service`** (porta `8004` / exposta `8014`): Motor de consulta analítica em DuckDB Sandbox confinada, streaming binário Apache Arrow IPC (`application/vnd.apache.arrow.stream`), anonimização e mascaramento de PII (LGPD/GDPR), conectores externos (SQLite, DuckDB, PostgreSQL, MySQL) e Data Prep.
+- **`services/bi-report-service`** (porta `8005` / exposta `8015`): Microsserviço de relatórios colaborativos e dashboards em tempo real com WebSockets, versionamento e snapshots.
+- **`services/export-service`** (porta `8006` / exposta `8016`): Gerador de relatórios multi-formato (HTML/PDF Paged Media APA 7th, LaTeX com booktabs, DOCX com estilos acadêmicos e Markdown GFM).
+- **`services/billing-service`** (porta `8007` / exposta `8017`): Microsserviço de monetização e pagamentos Stripe: planos Community, Team e Enterprise, Checkout Sessions, Customer Portal, faturamento multi-tenant e webhooks com atualização automática de tier.
 - **`apps/api`** (porta `8000`): Camada de dados, ingestão de CSV/Parquet via DuckDB, catálogo de datasets, relatórios, dashboards e abstração de storage (`StorageProvider` Local/S3).
 - **`engines/r-worker`**: **Engine A (Open Engine)** — Worker R isolado em container com supervisor leve e runtime JASP (tempo limite, recuperação automática, AGPL-compliant).
 
@@ -58,6 +61,12 @@ O progresso da evolução corporativa está documentado minuciosamente nas notas
   - **Trilha de Auditoria Criptográfica Imutável** (Merkle / SHA-256 Hash Chain) para conformidade estrita com SOC 2 Tipo II e FDA 21 CFR Part 11 com detecção matemática de adulteração em tempo real.
   - **API Gateway atualizado** com roteamento transparente para `/api/v1/sso/*`, `/scim/v2/*` e `/api/v1/audit/*`.
   - **Helm Charts Oficiais Kubernetes Enterprise** (`deploy/helm/metastatistic`) com HPA, Ingress TLS, ConfigMap, Secrets e Deployments/Services para os 7 microsserviços.
+- **[Fase Comercial 7 — Microsserviço de Billing e Monetização Stripe ✅](docs/commercial-billing-progress.md)**:
+  - **Microsserviço `billing-service`** com planos Community ($0), Team ($49/mês) e Enterprise ($299/mês).
+  - **Checkout Sessions & Customer Portal Stripe** com suporte a modo mock seguro para ambientes de desenvolvimento e CI/CD.
+  - **Processamento de Webhooks Stripe** (`checkout.session.completed`, `customer.subscription.deleted`, `invoice.*`) com verificação criptográfica de assinatura e atualização automática de planos no `auth-tenant-service`.
+  - **Isolamento multi-tenant** completo para histórico de faturas e assinaturas.
+  - **Suporte completo no Gateway, Docker Compose e Helm Charts Kubernetes**.
 
 ---
 
@@ -90,12 +99,16 @@ Serviços disponíveis:
 - **Data Engine Service**: `http://localhost:8014` (porta interna `8004`)
 - **BI Report Service**: `http://localhost:8015` (porta interna `8005`)
 - **Export Service**: `http://localhost:8016` (porta interna `8006`)
+- **Billing Service**: `http://localhost:8017` (porta interna `8007`)
 - **Data API**: `http://localhost:8000`
 
 ### 2. Execução dos Testes Automatizados
 
 #### Microsserviços e Backend Python
 ```bash
+# Testes do Billing Service (9 testes)
+uv run --directory services/billing-service pytest
+
 # Testes do BI Report Service (6 testes)
 uv run --directory services/bi-report-service pytest
 
@@ -108,10 +121,10 @@ uv run --directory services/data-engine-service pytest
 # Testes do Stat Orchestrator (13 testes)
 uv run --directory services/stat-orchestrator pytest
 
-# Testes do Auth Tenant Service (11 testes incluindo SSO, SCIM e Auditoria Imutável)
+# Testes do Auth Tenant Service (12 testes incluindo SSO, SCIM, Auditoria e Atualização de Tier)
 uv run --directory services/auth-tenant-service pytest
 
-# Testes do API Gateway (10 testes incluindo rotas Enterprise)
+# Testes do API Gateway (11 testes incluindo rotas Enterprise e Billing)
 uv run --directory services/gateway pytest
 
 # Testes da API de Dados (330 testes)

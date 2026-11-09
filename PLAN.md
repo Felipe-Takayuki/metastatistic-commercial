@@ -350,3 +350,19 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
 - [x] Criação de Helm Charts oficiais Kubernetes Enterprise (`deploy/helm/metastatistic`) com `Chart.yaml`, `values.yaml`, HPA, Ingress TLS, ConfigMap, Secrets e pares Deployment/Service para os 7 microsserviços.
 - [x] Testes automatizados completos de SSO, SCIM, Auditoria com teste de adulteração física direta no banco e 100% de aprovação (56 testes backend no monorepo).
 - [x] Documentação técnica detalhada em `docs/commercial-phase6-progress.md`.
+
+### Fase 7: Microsserviço de Billing e Monetização Stripe ✅ CONCLUÍDA (2026-11-09)
+- [x] Implementação do microsserviço `services/billing-service` (FastAPI, SQLite, Stripe SDK):
+  - Catálogo de planos comerciais (Community Free, Team $49/mês, Enterprise $299/mês).
+  - Checkout Sessions Stripe (`POST /billing/checkout`) com suporte a modo mock seguro em dev/testes.
+  - Customer Portal Stripe (`POST /billing/portal`) para gestão de cartões e faturamento.
+  - Histórico financeiro e faturas multi-tenant (`GET /billing/invoices`).
+  - Webhooks Stripe (`POST /billing/webhook`) tratando ativação de assinaturas, atualizações, cancelamentos com downgrade e faturas pagas/falhas.
+- [x] Atualização de `services/auth-tenant-service`:
+  - Endpoint `PATCH /tenants/{tenant_id}/tier` para reajuste dinâmico de cotas e registro de auditoria.
+- [x] Atualização do API Gateway (`services/gateway`):
+  - Proxy para rotas de billing e monitoramento de saúde integrado.
+- [x] Orquestração Docker Compose e Helm Charts:
+  - Adicionado `billing-service` (8017:8007), volume `billing_data`, templates de deployment, service e HPA.
+- [x] Suite de testes automatizada (67 testes passando 100% no monorepo backend).
+- [x] Documentação em `docs/commercial-billing-progress.md`.

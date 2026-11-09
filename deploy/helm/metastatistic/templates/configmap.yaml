@@ -13,4 +13,5 @@ data:
   DATA_ENGINE_SERVICE_URL: "http://{{ include "metastatistic.fullname" . }}-data-engine:{{ .Values.dataEngineService.service.port }}"
   BI_REPORT_SERVICE_URL: "http://{{ include "metastatistic.fullname" . }}-bi-report:{{ .Values.biReportService.service.port }}"
   EXPORT_SERVICE_URL: "http://{{ include "metastatistic.fullname" . }}-export:{{ .Values.exportService.service.port }}"
+  BILLING_SERVICE_URL: "http://{{ include "metastatistic.fullname" . }}-billing:{{ .Values.billingService.service.port }}"
   R_WORKER_URL: "http://{{ include "metastatistic.fullname" . }}-r-worker:{{ .Values.rWorker.service.port }}"
