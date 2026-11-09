@@ -399,3 +399,867 @@ input[type="number"], .field input[type="text"] { padding: 6px 10px; border: 1px
 
 /* montador "sem SQL" de gráficos e KPIs: campos empilhados com respiro */
 .builder { display: flex; flex-direction: column; gap: 10px; }
+
+/* ==========================================================================
+   Homepage Pública / Landing Page
+   ========================================================================== */
+.landing-page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 1. Navbar Sticky */
+.landing-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--surface-1) 85%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+
+.landing-nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--text-primary);
+}
+
+.landing-brand-logo {
+  display: block;
+}
+
+.landing-brand-name {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.landing-brand-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.landing-nav-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.landing-nav-links a:hover {
+  color: var(--text-primary);
+}
+
+.landing-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landing-theme-toggle {
+  font-size: 12.5px;
+}
+
+/* 2. Hero Section */
+.landing-hero {
+  padding: 64px 20px 48px;
+  text-align: center;
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.landing-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+}
+
+.landing-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--series-3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--series-3) 25%, transparent);
+}
+
+.landing-hero-title {
+  font-size: clamp(32px, 4.8vw, 52px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+  max-width: 920px;
+  color: var(--text-primary);
+}
+
+.landing-gradient-text {
+  background: linear-gradient(135deg, var(--series-1) 20%, var(--series-2) 90%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.landing-hero-subtitle {
+  font-size: clamp(15.5px, 1.8vw, 18.5px);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 780px;
+  margin: 0 auto 32px;
+}
+
+.landing-hero-subtitle strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.landing-hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 52px;
+}
+
+.landing-hero-btn {
+  font-weight: 600;
+  padding: 10px 24px;
+  font-size: 15px;
+}
+
+.landing-pricing-link {
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+  font-size: 14px;
+  padding: 8px 12px;
+}
+
+.landing-pricing-link:hover {
+  text-decoration: underline;
+  color: var(--accent-hover);
+}
+
+/* 3. Vitrine / Mockup APA 7th */
+.landing-showcase-wrapper {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.landing-showcase {
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  padding: 0;
+  background: var(--surface-1);
+  border-radius: 12px;
+}
+
+.landing-showcase-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--grid);
+  background: var(--surface-2);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.landing-window-dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.landing-window-dots .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.red { background: #ff5f56; }
+.dot.yellow { background: #ffbd2e; }
+.dot.green { background: #27c93f; }
+
+.landing-showcase-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.landing-tab-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.landing-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-1);
+}
+
+.landing-tab-btn.active {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-color: var(--border);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.landing-showcase-tag {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  padding: 3px 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.landing-showcase-content {
+  padding: 24px;
+}
+
+.landing-demo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.landing-demo-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.landing-demo-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.landing-demo-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.landing-table-responsive {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.landing-apa-sample {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+}
+
+.landing-apa-footnote {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.landing-viz-container {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+}
+
+.landing-viz-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.landing-svg-chart {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.landing-narrative-box {
+  background: var(--accent-wash);
+  border-left: 3px solid var(--accent);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.landing-narrative-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.landing-narrative-box p {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* 4. Seções Gerais */
+.landing-section {
+  padding: 80px 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.landing-section-header {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto 48px;
+}
+
+.landing-section-tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.landing-section-title {
+  font-size: clamp(26px, 3.5vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+  color: var(--text-primary);
+}
+
+.landing-section-desc {
+  font-size: 16px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* 5. Pilares / Grid */
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px;
+}
+
+.landing-card {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-radius: 12px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+
+.landing-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
+}
+
+.landing-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.landing-card h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.landing-card p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.landing-feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.landing-feature-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.landing-feature-list li::before {
+  content: "✓";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* 6. Seção Comparativa */
+.landing-compare-section {
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  max-width: none;
+  padding-left: max(20px, calc((100% - 1200px) / 2));
+  padding-right: max(20px, calc((100% - 1200px) / 2));
+}
+
+.landing-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  text-align: center;
+  background: var(--surface-1);
+}
+
+.landing-compare-table th,
+.landing-compare-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--grid);
+}
+
+.landing-compare-table th {
+  background: var(--surface-2);
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.landing-compare-table .feature-col {
+  text-align: left;
+  font-weight: 500;
+  width: 32%;
+}
+
+.landing-compare-table .highlight-col {
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-1));
+  font-weight: 600;
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.landing-badge-brand {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--on-accent);
+  margin-top: 4px;
+}
+
+.status-yes {
+  color: var(--series-3);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.status-no {
+  color: var(--danger);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.status-partial {
+  color: var(--warn);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* 7. Conformidade e Segurança */
+.landing-compliance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.landing-compliance-item {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.landing-compliance-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+.landing-compliance-item h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.landing-compliance-item p {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* 8. Planos e Preços */
+.landing-cycle-toggle {
+  display: inline-flex;
+  background: var(--surface-1);
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  margin-top: 24px;
+}
+
+.landing-cycle-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.landing-cycle-btn.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.landing-discount-chip {
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--series-3);
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+
+.landing-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  align-items: stretch;
+}
+
+.landing-pricing-card {
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-radius: 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+
+.landing-pricing-card.featured {
+  border: 2px solid var(--accent);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.09);
+}
+
+.landing-popular-badge {
+  position: absolute;
+  top: -13px;
+  right: 24px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.landing-enterprise-badge {
+  position: absolute;
+  top: -13px;
+  right: 24px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.landing-pricing-tier {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.landing-pricing-cost {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.landing-amount {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.landing-period {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.landing-pricing-desc {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  min-height: 40px;
+  margin-bottom: 20px;
+}
+
+.landing-plan-btn {
+  width: 100%;
+  margin-bottom: 24px;
+  padding: 10px;
+  font-weight: 600;
+}
+
+.landing-pricing-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.landing-pricing-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text-secondary);
+}
+
+.landing-pricing-features li {
+  line-height: 1.4;
+}
+
+/* 9. Banner CTA Pré-Footer */
+.landing-cta-banner {
+  margin: 40px auto 80px;
+  max-width: 1000px;
+  padding: 48px 32px;
+  text-align: center;
+  background: linear-gradient(135deg, var(--surface-1), var(--surface-2));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+}
+
+.landing-cta-content h2 {
+  font-size: clamp(24px, 3vw, 32px);
+  margin-bottom: 12px;
+}
+
+.landing-cta-content p {
+  color: var(--text-secondary);
+  font-size: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* 10. Footer Institucional */
+.landing-footer {
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+  padding: 60px 20px 32px;
+}
+
+.landing-footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 48px;
+  flex-wrap: wrap;
+  margin-bottom: 40px;
+}
+
+.landing-footer-brand {
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.landing-footer-tagline {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.landing-footer-seals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.landing-seal {
+  font-size: 11px;
+  font-family: var(--mono);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.landing-footer-links {
+  display: flex;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+
+.landing-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.landing-footer-col h5 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.landing-footer-col a,
+.landing-footer-col span {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.landing-footer-col a:hover {
+  color: var(--accent);
+}
+
+.landing-footer-bottom {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-top: 24px;
+  border-top: 1px solid var(--grid);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .landing-nav-links {
+    display: none;
+  }
+  .landing-hero {
+    padding-top: 36px;
+  }
+  .landing-footer-inner {
+    flex-direction: column;
+  }
+  .landing-footer-bottom {
+    flex-direction: column;
+    text-align: center;
+  }
+  .landing-compare-table {
+    min-width: 600px;
+  }
+}
+
