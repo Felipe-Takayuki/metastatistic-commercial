@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "metastatistic.fullname" . }}-data-engine
+  labels:
+    {{- include "metastatistic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-engine-service
+spec:
+  replicas: {{ .Values.dataEngineService.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: data-engine-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: data-engine-service
+    spec:
+      containers:
+        - name: data-engine-service
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.dataEngineService.image.repository }}:{{ .Values.dataEngineService.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.dataEngineService.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "metastatistic.fullname" . }}-config
+            - secretRef:
+                name: {{ include "metastatistic.fullname" . }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.dataEngineService.resources | nindent 12 }}

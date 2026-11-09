@@ -1,0 +1,178 @@
+# Default values for metastatistic enterprise deployment
+global:
+  environment: production
+  imageRegistry: "ghcr.io/metastatistic"
+  imagePullPolicy: IfNotPresent
+  domain: metastatistic.com
+
+secrets:
+  jwtSecretKey: "change-this-in-production-to-a-secure-256bit-secret"
+  dbPassword: "secure_db_password_change_me"
+
+config:
+  logLevel: "INFO"
+  corsOrigins: "*"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "500m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "gateway"
+  hosts:
+    - host: app.metastatistic.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: metastatistic-tls
+      hosts:
+        - app.metastatistic.com
+
+autoscaling:
+  enabled: true
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+# 1. API Gateway
+gateway:
+  replicaCount: 3
+  image:
+    repository: "gateway"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 20
+
+# 2. Auth & Tenant Service (SSO, SCIM, Audit Trail)
+authTenantService:
+  replicaCount: 3
+  image:
+    repository: "auth-tenant-service"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8001
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 15
+
+# 3. Statistical Orchestrator
+statOrchestrator:
+  replicaCount: 3
+  image:
+    repository: "stat-orchestrator"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8002
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2048Mi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 30
+
+# 4. Data Engine Service (Arrow & DuckDB)
+dataEngineService:
+  replicaCount: 3
+  image:
+    repository: "data-engine-service"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8003
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 8192Mi
+    requests:
+      cpu: 1000m
+      memory: 2048Mi
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 20
+
+# 5. BI & Report Service
+biReportService:
+  replicaCount: 3
+  image:
+    repository: "bi-report-service"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8004
+  resources:
+    limits:
+      cpu: 1500m
+      memory: 2048Mi
+    requests:
+      cpu: 300m
+      memory: 512Mi
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 15
+
+# 6. Multi-format Export Service
+exportService:
+  replicaCount: 2
+  image:
+    repository: "export-service"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8005
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2048Mi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 10
+
+# 7. Dedicated R Statistical Worker
+rWorker:
+  replicaCount: 4
+  image:
+    repository: "r-worker"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8006
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 8192Mi
+    requests:
+      cpu: 1000m
+      memory: 2048Mi
+  autoscaling:
+    minReplicas: 4
+    maxReplicas: 40

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "metastatistic.fullname" . }}-data-engine
+  labels:
+    {{- include "metastatistic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-engine-service
+spec:
+  type: {{ .Values.dataEngineService.service.type }}
+  ports:
+    - port: {{ .Values.dataEngineService.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: data-engine-service

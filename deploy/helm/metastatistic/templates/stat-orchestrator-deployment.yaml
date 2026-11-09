@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "metastatistic.fullname" . }}-stat-orchestrator
+  labels:
+    {{- include "metastatistic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: stat-orchestrator
+spec:
+  replicas: {{ .Values.statOrchestrator.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: stat-orchestrator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: stat-orchestrator
+    spec:
+      containers:
+        - name: stat-orchestrator
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.statOrchestrator.image.repository }}:{{ .Values.statOrchestrator.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.statOrchestrator.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "metastatistic.fullname" . }}-config
+            - secretRef:
+                name: {{ include "metastatistic.fullname" . }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.statOrchestrator.resources | nindent 12 }}

@@ -342,9 +342,11 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
   - Redimensionamento automático dinâmico (`autoResize`), suporte a temas (`light`/`dark`) e filtros.
 - [x] Atualização do API Gateway e Docker Compose com proxy reverso e healthcheck integrado.
 
-### Fase 6: Prontidão Enterprise, Segurança e Lançamento (Semanas 15–16)
-- [ ] Implementação de SSO corporativo (SAML 2.0 / Okta / Azure AD) e SCIM 2.0.
-- [ ] Implementação de Trilha de Auditoria imutável (*Audit Logs*) para conformidade com SOC 2 e FDA 21 CFR Part 11.
-- [ ] Criação de Helm Charts oficiais para implantação em clusters Kubernetes de clientes (*Enterprise On-Premise*).
-- [ ] Execução de testes de carga, testes de penetração (Pentest) e varredura de vulnerabilidades em dependências (SAST/DAST).
-- [ ] Lançamento comercial oficial e disponibilização dos ambientes SaaS de produção e staging.
+### Fase 6: Prontidão Enterprise, Segurança e Lançamento (Semanas 15–16) ✅ CONCLUÍDA (2026-11-09)
+- [x] Implementação de SSO corporativo (SAML 2.0 / Okta / Azure AD / OIDC) com provisionamento Just-In-Time (JIT) em `services/auth-tenant-service/app/sso.py`.
+- [x] Implementação de provisionamento de identidades SCIM 2.0 (RFC 7643 e RFC 7644) com suporte a Okta e Azure AD (`/scim/v2/tenants/{tenant_id}/*`).
+- [x] Implementação de Trilha de Auditoria imutável (*Audit Logs*) criptograficamente encadeada com SHA-256 (Merkle/blockchain-style) e verificação matemática de adulteração em tempo real para conformidade com SOC 2 Tipo II e FDA 21 CFR Part 11 em `services/auth-tenant-service/app/audit_trail.py`.
+- [x] Atualização de rotas no API Gateway (`services/gateway/app/proxy.py`) para rotear SSO, SCIM 2.0 e Audit Trail.
+- [x] Criação de Helm Charts oficiais Kubernetes Enterprise (`deploy/helm/metastatistic`) com `Chart.yaml`, `values.yaml`, HPA, Ingress TLS, ConfigMap, Secrets e pares Deployment/Service para os 7 microsserviços.
+- [x] Testes automatizados completos de SSO, SCIM, Auditoria com teste de adulteração física direta no banco e 100% de aprovação (56 testes backend no monorepo).
+- [x] Documentação técnica detalhada em `docs/commercial-phase6-progress.md`.

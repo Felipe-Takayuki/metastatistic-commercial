@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "metastatistic.fullname" . }}-export
+  labels:
+    {{- include "metastatistic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: export-service
+spec:
+  replicas: {{ .Values.exportService.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: export-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: export-service
+    spec:
+      containers:
+        - name: export-service
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.exportService.image.repository }}:{{ .Values.exportService.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.exportService.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "metastatistic.fullname" . }}-config
+            - secretRef:
+                name: {{ include "metastatistic.fullname" . }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.exportService.resources | nindent 12 }}

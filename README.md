@@ -52,6 +52,12 @@ O progresso da evolução corporativa está documentado minuciosamente nas notas
   - Microsserviço `export-service` com exportação multi-formato: HTML/PDF com CSS Paged Media (`@page { size: A4; margin: 2.5cm; }`), LaTeX com `booktabs` e `amsmath`, DOCX formatado via `python-docx` e Markdown GFM.
   - Pacote `@metastatistic/react-embed` com `iframe` sandbox, postMessage bidirecional e `autoResize`.
   - Integração total com o API Gateway (`gateway`) e orquestração Docker Compose.
+- **[Fase Comercial 6 — Prontidão Enterprise, Segurança Criptográfica e Orquestração Kubernetes ✅](docs/commercial-phase6-progress.md)**:
+  - **SSO Corporativo (SAML 2.0 & OIDC)** com provisionamento Just-In-Time (JIT) e mapeamento de atributos para Okta, Azure AD, Google e Keycloak.
+  - **Provisionamento SCIM 2.0** (RFC 7643 e RFC 7644) completo: `ServiceProviderConfig`, `Schemas`, `Users` com filtro, criação, desativação instantânea (`active: false`) e remoção.
+  - **Trilha de Auditoria Criptográfica Imutável** (Merkle / SHA-256 Hash Chain) para conformidade estrita com SOC 2 Tipo II e FDA 21 CFR Part 11 com detecção matemática de adulteração em tempo real.
+  - **API Gateway atualizado** com roteamento transparente para `/api/v1/sso/*`, `/scim/v2/*` e `/api/v1/audit/*`.
+  - **Helm Charts Oficiais Kubernetes Enterprise** (`deploy/helm/metastatistic`) com HPA, Ingress TLS, ConfigMap, Secrets e Deployments/Services para os 7 microsserviços.
 
 ---
 
@@ -102,10 +108,10 @@ uv run --directory services/data-engine-service pytest
 # Testes do Stat Orchestrator (13 testes)
 uv run --directory services/stat-orchestrator pytest
 
-# Testes do Auth Tenant Service (6 testes)
+# Testes do Auth Tenant Service (11 testes incluindo SSO, SCIM e Auditoria Imutável)
 uv run --directory services/auth-tenant-service pytest
 
-# Testes do API Gateway (9 testes)
+# Testes do API Gateway (10 testes incluindo rotas Enterprise)
 uv run --directory services/gateway pytest
 
 # Testes da API de Dados (330 testes)

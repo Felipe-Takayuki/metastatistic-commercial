@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "metastatistic.fullname" . }}-auth
+  labels:
+    {{- include "metastatistic.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-tenant-service
+spec:
+  replicas: {{ .Values.authTenantService.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: auth-tenant-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "metastatistic.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: auth-tenant-service
+    spec:
+      containers:
+        - name: auth-tenant-service
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.authTenantService.image.repository }}:{{ .Values.authTenantService.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.authTenantService.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "metastatistic.fullname" . }}-config
+            - secretRef:
+                name: {{ include "metastatistic.fullname" . }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.authTenantService.resources | nindent 12 }}

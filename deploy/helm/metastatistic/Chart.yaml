@@ -1,0 +1,21 @@
+apiVersion: v2
+name: metastatistic
+description: Enterprise Helm Chart for MetaStatistic Commercial Cloud & On-Premises Analytics Platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - statistics
+  - bi
+  - enterprise
+  - saml
+  - oidc
+  - scim
+  - soc2
+  - fda-21-cfr-part-11
+home: https://metastatistic.com
+sources:
+  - https://github.com/metastatistic/metastatistic-commercial
+maintainers:
+  - name: MetaStatistic Architecture Team
+    email: enterprise@metastatistic.com

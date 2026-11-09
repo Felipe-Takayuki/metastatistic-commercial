@@ -114,9 +114,46 @@ class TenantStore:
                     accepted INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS tenant_sso_configs (
+                    tenant_id TEXT PRIMARY KEY,
+                    provider_type TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    idp_entity_id TEXT,
+                    idp_sso_url TEXT,
+                    idp_cert TEXT,
+                    sp_entity_id TEXT,
+                    oidc_issuer TEXT,
+                    oidc_client_id TEXT,
+                    oidc_client_secret TEXT,
+                    oidc_auth_url TEXT,
+                    oidc_token_url TEXT,
+                    oidc_userinfo_url TEXT,
+                    jit_provisioning INTEGER NOT NULL DEFAULT 1,
+                    default_role TEXT NOT NULL DEFAULT 'analyst',
+                    attribute_mapping TEXT DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT UNIQUE NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    resource_type TEXT NOT NULL,
+                    resource_id TEXT,
+                    details TEXT DEFAULT '{}',
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    timestamp TEXT NOT NULL,
+                    prev_hash TEXT NOT NULL,
+                    record_hash TEXT NOT NULL
+                );
                 CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug);
                 CREATE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token);
                 CREATE INDEX IF NOT EXISTS idx_tenant_members_user ON tenant_members(user_id);
+                CREATE INDEX IF NOT EXISTS idx_audit_tenant_time ON audit_log(tenant_id, timestamp);
+                CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
             """)
 
     def create_tenant(self, data: TenantCreate) -> TenantResponse:

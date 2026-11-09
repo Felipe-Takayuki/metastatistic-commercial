@@ -95,6 +95,14 @@ def test_determine_target_url():
     assert determine_target_url("/api/v1/export/generate") == f"{settings.export_service_url}/export/generate"
     assert determine_target_url("/export/docx") == f"{settings.export_service_url}/export/docx"
 
+    # Enterprise: SSO, SCIM 2.0 e Trilha de Auditoria Imutável
+    assert determine_target_url("/api/v1/sso/login") == f"{settings.auth_service_url}/auth/sso/login"
+    assert determine_target_url("/sso/saml/acs") == f"{settings.auth_service_url}/auth/sso/saml/acs"
+    assert determine_target_url("/scim/v2/tenants/t1/ServiceProviderConfig") == f"{settings.auth_service_url}/scim/v2/tenants/t1/ServiceProviderConfig"
+    assert determine_target_url("/api/v1/scim/v2/tenants/t1/Users") == f"{settings.auth_service_url}/scim/v2/tenants/t1/Users"
+    assert determine_target_url("/api/v1/audit/events") == f"{settings.auth_service_url}/audit/events"
+    assert determine_target_url("/audit/verify") == f"{settings.auth_service_url}/audit/verify"
+
 
 @pytest.mark.asyncio
 async def test_health_check_endpoint():
@@ -310,3 +318,63 @@ async def test_proxy_routing_to_bi_reports_and_export_service():
             assert resp_exp.status_code == 200
             assert resp_exp.json()["format"] == "html"
             assert export_route.calls.last.request.headers.get("x-tenant-id") == "tenant_medical"
+
+
+@pytest.mark.asyncio
+async def test_proxy_routing_to_enterprise_sso_scim_audit():
+    async with respx.mock(assert_all_called=True) as respx_mock:
+        # Mock SSO login
+        sso_route = respx_mock.post(f"{settings.auth_service_url}/auth/sso/login").mock(
+            return_value=httpx.Response(
+                200,
+                json={"auth_url": "https://idp.okta.com/sso", "provider_type": "saml"},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        # Mock SCIM Users
+        scim_route = respx_mock.get(f"{settings.auth_service_url}/scim/v2/tenants/t_corp/Users").mock(
+            return_value=httpx.Response(
+                200,
+                json={"schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"], "totalResults": 0, "Resources": []},
+                headers={"Content-Type": "application/scim+json"},
+            )
+        )
+
+        # Mock Audit Verify
+        audit_route = respx_mock.get(f"{settings.auth_service_url}/audit/verify").mock(
+            return_value=httpx.Response(
+                200,
+                json={"valid": True, "total_records": 10, "verified_at": "2026-11-09T00:00:00Z"},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+            # 1. /api/v1/sso/login
+            resp_sso = await client.post(
+                "/api/v1/sso/login",
+                json={"tenant_id": "t_corp"},
+                headers={"X-Tenant-ID": "t_corp"},
+            )
+            assert resp_sso.status_code == 200
+            assert resp_sso.json()["provider_type"] == "saml"
+            assert sso_route.calls.last.request.headers.get("x-tenant-id") == "t_corp"
+
+            # 2. /scim/v2/tenants/t_corp/Users
+            resp_scim = await client.get(
+                "/scim/v2/tenants/t_corp/Users",
+                headers={"X-Tenant-ID": "t_corp"},
+            )
+            assert resp_scim.status_code == 200
+            assert "application/scim+json" in resp_scim.headers["content-type"]
+            assert scim_route.calls.last.request.headers.get("x-tenant-id") == "t_corp"
+
+            # 3. /api/v1/audit/verify
+            resp_audit = await client.get(
+                "/api/v1/audit/verify",
+                headers={"X-Tenant-ID": "t_corp"},
+            )
+            assert resp_audit.status_code == 200
+            assert resp_audit.json()["valid"] is True
+            assert audit_route.calls.last.request.headers.get("x-tenant-id") == "t_corp"
