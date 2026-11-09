@@ -9,7 +9,8 @@ describe("LandingPage", () => {
 
     // Brand e badges
     expect(html).toContain("Metastatistic");
-    expect(html).toContain("Enterprise SaaS");
+    expect(html).toContain("Enterprise");
+    expect(html).not.toContain("Enterprise SaaS");
 
     // Hero title & subtitle
     expect(html).toContain("A agilidade visual do Business Intelligence");

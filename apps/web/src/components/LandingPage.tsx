@@ -42,7 +42,7 @@ export function LandingPage({ onOpenAuth }: LandingPageProps) {
               <rect x="22" y="11" width="5" height="16" rx="1.5" fill="var(--series-3)" />
             </svg>
             <span className="landing-brand-name">Metastatistic</span>
-            <span className="landing-brand-badge">Enterprise SaaS</span>
+            <span className="landing-brand-badge">Enterprise</span>
           </div>
 
           <nav className="landing-nav-links" aria-label="Navegação da página">
