@@ -129,7 +129,7 @@ services:
       R_WORKER_URLS: "http://r-worker-1:8000"
       ANALYSIS_TIMEOUT_S: "60"
       DATA_DIR: "/data"
-      AUTH_ENABLED: "${AUTH_ENABLED:-false}"
+      AUTH_ENABLED: "${AUTH_ENABLED:-true}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     volumes:
       - datasets:/data
