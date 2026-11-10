@@ -205,4 +205,3 @@ Serviços acessíveis:
 
 ---
 
-> Continuação do trabalho e acompanhamento acadêmico: **Professor Allan Siriani** ([github.com/siriani](https://github.com/siriani)).
