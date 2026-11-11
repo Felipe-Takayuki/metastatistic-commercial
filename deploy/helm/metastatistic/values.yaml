@@ -5,13 +5,23 @@ global:
   imagePullPolicy: IfNotPresent
   domain: metastatistic.com
 
+# IMPORTANTE: com global.environment=production, auth-tenant-service, gateway e billing-service RECUSAM iniciar
+# (CrashLoopBackOff) se estes segredos ficarem com o valor padrão/vazio. Defina-os via `--set`, um values próprio
+# ou um Secret gerenciado externamente (ex.: sealed-secrets, external-secrets).
 secrets:
+  # mínimo 32 caracteres; gere com `openssl rand -hex 32`
   jwtSecretKey: "change-this-in-production-to-a-secure-256bit-secret"
   dbPassword: "secure_db_password_change_me"
+  # Stripe (billing-service): chave secreta e segredo de assinatura do webhook reais
+  stripeSecretKey: ""
+  stripePublishableKey: ""
+  stripeWebhookSecret: ""
 
 config:
   logLevel: "INFO"
   corsOrigins: "*"
+  # true só em ambientes de demonstração (global.environment != production); em produção o billing-service recusa mock
+  stripeMockMode: "false"
 
 ingress:
   enabled: true

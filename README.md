@@ -186,7 +186,7 @@ Roadmap completo e dívida técnica em [`PLAN.md`](PLAN.md); relatórios por fas
 | 8 | Frontend único, onboarding B2B, landing, **`audit-service` extraído** | ✅ |
 | — | PostgreSQL, Redis/fila, object storage, medição de uso, TLS | ⬜ pendente |
 
-**Principais pontos em aberto:** autenticação no `audit-service`; entrega *best-effort* dos eventos de auditoria; dois logs de auditoria coexistindo (`apps/api` e `audit-service`); preços divergentes entre documentos e código.
+**Principais pontos em aberto:** o gateway e os serviços confiam no header `X-Tenant-ID` e no `tenant_id` de um JWT cuja assinatura não é verificada — **qualquer cliente consegue ler dados de outro tenant** (verificado em teste, ver `PLAN.md` §7); autenticação no `audit-service`; entrega *best-effort* dos eventos de auditoria; dois logs de auditoria coexistindo (`apps/api` e `audit-service`); preços divergentes entre documentos e código.
 
 ---
 
@@ -226,7 +226,23 @@ Serviços acessíveis (a porta do gateway é parametrizável; padrão `8085`):
 * **Healthcheck Agregador**: `http://localhost:8085/health` — lista `auth_tenant_service`, `stat_orchestrator`, `data_engine`, `bi_report_service`, `export_service`, `data_api`, `billing_service` e `audit_service`
 * **Painel de Pagamentos Stripe (Mock/Live)**: Integrado diretamente no botão "Planos" da interface e no fluxo de upgrade.
 
-Variáveis úteis (todas opcionais): `GATEWAY_PORT` (8085), `API_PORT` (8020), `R_WORKER_PORT` (8011), `AUTH_ENABLED` (`true`), `COOKIE_SECURE` (`false`). O `billing-service` roda com `STRIPE_MOCK_MODE=true` no compose; para cobrança real, configure as credenciais do Stripe e desative o modo mock.
+### Configuração (`.env`)
+O compose lê um `.env` na raiz. Há um modelo versionado:
+```bash
+cp .env.example .env     # o .env não é versionado (.gitignore)
+```
+Em desenvolvimento tudo é opcional: o que ficar vazio usa valores de desenvolvimento (e os serviços avisam no log). Variáveis:
+
+| Variável | Padrão | Uso |
+|---|---|---|
+| `ENVIRONMENT` | `development` | `production` ativa a validação de segredos (abaixo) |
+| `GATEWAY_PORT` / `API_PORT` / `R_WORKER_PORT` | `8085` / `8020` / `8011` | portas expostas no host |
+| `AUTH_ENABLED` / `COOKIE_SECURE` | `true` / `false` | sessão do app (`COOKIE_SECURE=true` atrás de HTTPS) |
+| `JWT_SECRET_KEY` | chave de dev | assinatura dos JWT (`openssl rand -hex 32`) |
+| `STRIPE_MOCK_MODE` | `true` | simula checkout e webhooks |
+| `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_WEBHOOK_SECRET` | credenciais de dev | Stripe real |
+
+**Produção.** Com `ENVIRONMENT=production`, `auth-tenant-service`, `gateway` e `billing-service` **recusam iniciar** (o container entra em restart com a causa no log) se: `JWT_SECRET_KEY` estiver ausente, for um valor padrão do repositório ou tiver menos de 32 caracteres; `STRIPE_MOCK_MODE=true` (no modo mock o webhook aceita qualquer `Stripe-Signature`, o que permitiria promover um tenant sem pagar); ou as credenciais do Stripe forem as de desenvolvimento. No Helm, defina `secrets.jwtSecretKey`, `secrets.stripeSecretKey` e `secrets.stripeWebhookSecret` (o `values.yaml` vem com placeholders de propósito).
 
 ### Testes
 Cada serviço Python tem seu ambiente `uv`:

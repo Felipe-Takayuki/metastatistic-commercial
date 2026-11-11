@@ -28,6 +28,8 @@ services:
       DATA_API_URL: "http://api:8000"
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
     depends_on:
       - auth-tenant-service
       - stat-orchestrator
@@ -49,6 +51,8 @@ services:
       PORT: "8002"
       DATABASE_URL: "sqlite:///./data/auth_tenant.db"
       AUDIT_SERVICE_URL: "http://audit-service:8008"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
     volumes:
       - auth_data:/service/data
     depends_on:
@@ -117,7 +121,11 @@ services:
       PORT: "8007"
       AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
       DATABASE_URL: "sqlite:///./data/billing.db"
-      STRIPE_MOCK_MODE: "true"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      STRIPE_MOCK_MODE: "${STRIPE_MOCK_MODE:-true}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
     volumes:
       - billing_data:/service/data
     restart: unless-stopped

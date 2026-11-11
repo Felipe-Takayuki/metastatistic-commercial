@@ -8,6 +8,7 @@ data:
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
   ENVIRONMENT: {{ .Values.global.environment | quote }}
+  STRIPE_MOCK_MODE: {{ .Values.config.stripeMockMode | quote }}
   AUTH_SERVICE_URL: "http://{{ include "metastatistic.fullname" . }}-auth:{{ .Values.authTenantService.service.port }}"
   STAT_ORCHESTRATOR_URL: "http://{{ include "metastatistic.fullname" . }}-stat-orchestrator:{{ .Values.statOrchestrator.service.port }}"
   DATA_ENGINE_SERVICE_URL: "http://{{ include "metastatistic.fullname" . }}-data-engine:{{ .Values.dataEngineService.service.port }}"
