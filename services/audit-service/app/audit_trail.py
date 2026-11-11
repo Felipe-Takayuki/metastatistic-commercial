@@ -233,6 +233,9 @@ class AuditTrailManager:
         """
         Verifica a cadeia criptográfica de hashes em ordem sequencial.
         Detecta qualquer adulteração física ou lógica no banco de dados.
+
+        A cadeia é por tenant (ver `record_event`): com `tenant_id` verifica só a cadeia dele; sem `tenant_id`
+        verifica a cadeia de cada tenant separadamente e reporta o primeiro registro adulterado encontrado.
         """
         now_iso = datetime.now(timezone.utc).isoformat()
         query = "SELECT * FROM audit_log"
@@ -245,35 +248,44 @@ class AuditTrailManager:
         with self._get_connection() as conn:
             rows = conn.execute(query, params).fetchall()
 
-        if not rows:
-            return AuditVerificationResult(
-                valid=True,
-                total_records=0,
-                latest_hash=None,
-                genesis_hash=GENESIS_HASH,
-                verified_at=now_iso,
-            )
-
-        expected_prev_hash = GENESIS_HASH
-        latest_hash = None
-
+        chains: Dict[str, list] = {}
         for row in rows:
-            rec_id = row["id"]
-            event_id = row["event_id"]
-            prev_hash = row["prev_hash"]
-            stored_record_hash = row["record_hash"]
+            chains.setdefault(row["tenant_id"], []).append(row)
 
-            # 1. Valida encadeamento com o registro anterior
-            if prev_hash != expected_prev_hash:
+        for chain in chains.values():
+            failure = self._find_chain_failure(chain)
+            if failure:
+                rec_id, event_id, reason = failure
                 return AuditVerificationResult(
                     valid=False,
                     total_records=len(rows),
-                    latest_hash=latest_hash,
+                    latest_hash=None,
                     genesis_hash=GENESIS_HASH,
                     tampered_at_id=rec_id,
                     tampered_event_id=event_id,
-                    reason=f"Broken hash chain: expected prev_hash '{expected_prev_hash}', got '{prev_hash}'",
+                    reason=reason,
                     verified_at=now_iso,
+                )
+
+        return AuditVerificationResult(
+            valid=True,
+            total_records=len(rows),
+            latest_hash=rows[-1]["record_hash"] if rows else None,  # hash do último evento gravado
+            genesis_hash=GENESIS_HASH,
+            verified_at=now_iso,
+        )
+
+    @staticmethod
+    def _find_chain_failure(chain: list) -> Optional[tuple]:
+        """Retorna (id, event_id, motivo) do primeiro registro inválido de uma cadeia, ou None se íntegra."""
+        expected_prev_hash = GENESIS_HASH
+        for row in chain:
+            # 1. Valida encadeamento com o registro anterior
+            if row["prev_hash"] != expected_prev_hash:
+                return (
+                    row["id"],
+                    row["event_id"],
+                    f"Broken hash chain: expected prev_hash '{expected_prev_hash}', got '{row['prev_hash']}'",
                 )
 
             # 2. Recalcula hash dos dados para comprovar integridade do registro
@@ -285,31 +297,17 @@ class AuditTrailManager:
                 resource_id=row["resource_id"],
                 details_json=row["details"] or "{}",
                 timestamp=row["timestamp"],
-                prev_hash=prev_hash,
+                prev_hash=row["prev_hash"],
             )
-
-            if recalculated_hash != stored_record_hash:
-                return AuditVerificationResult(
-                    valid=False,
-                    total_records=len(rows),
-                    latest_hash=latest_hash,
-                    genesis_hash=GENESIS_HASH,
-                    tampered_at_id=rec_id,
-                    tampered_event_id=event_id,
-                    reason=f"Content tampering detected: payload hash mismatch on record {rec_id}",
-                    verified_at=now_iso,
+            if recalculated_hash != row["record_hash"]:
+                return (
+                    row["id"],
+                    row["event_id"],
+                    f"Content tampering detected: payload hash mismatch on record {row['id']}",
                 )
 
-            expected_prev_hash = stored_record_hash
-            latest_hash = stored_record_hash
-
-        return AuditVerificationResult(
-            valid=True,
-            total_records=len(rows),
-            latest_hash=latest_hash,
-            genesis_hash=GENESIS_HASH,
-            verified_at=now_iso,
-        )
+            expected_prev_hash = row["record_hash"]
+        return None
 
     def export_audit_trail(self, tenant_id: Optional[str] = None) -> AuditExportResponse:
         verification = self.verify_integrity(tenant_id)

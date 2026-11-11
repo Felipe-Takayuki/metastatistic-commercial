@@ -24,6 +24,7 @@ services:
       BI_REPORT_SERVICE_URL: "http://bi-report-service:8005"
       EXPORT_SERVICE_URL: "http://export-service:8006"
       BILLING_SERVICE_URL: "http://billing-service:8007"
+      AUDIT_SERVICE_URL: "http://audit-service:8008"
       DATA_API_URL: "http://api:8000"
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
@@ -34,6 +35,7 @@ services:
       - bi-report-service
       - export-service
       - billing-service
+      - audit-service
       - api
       - web
     restart: unless-stopped
@@ -46,8 +48,11 @@ services:
     environment:
       PORT: "8002"
       DATABASE_URL: "sqlite:///./data/auth_tenant.db"
+      AUDIT_SERVICE_URL: "http://audit-service:8008"
     volumes:
       - auth_data:/service/data
+    depends_on:
+      - audit-service
     restart: unless-stopped
 
   stat-orchestrator:
@@ -117,6 +122,18 @@ services:
       - billing_data:/service/data
     restart: unless-stopped
 
+  audit-service:
+    build: ./services/audit-service
+    image: metastatistic-audit-service:latest
+    ports:
+      - "8018:8008"
+    environment:
+      PORT: "8008"
+      DATABASE_URL: "sqlite:///./data/audit.db"
+    volumes:
+      - audit_data:/service/data
+    restart: unless-stopped
+
   api:
     build: ./apps/api
     image: metastatistic-api:latest
@@ -151,3 +168,4 @@ volumes:
   auth_data:
   bi_data:
   billing_data:
+  audit_data:

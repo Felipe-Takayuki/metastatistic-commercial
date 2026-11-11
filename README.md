@@ -174,12 +174,13 @@ O repositório está organizado como um monorepo moderno gerenciado via `pnpm-wo
 
 ### Microsserviços e Backend
 * **`services/gateway`** (porta `8080`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
-* **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados, SSO SAML 2.0 / OIDC, SCIM 2.0 e Trilha de Auditoria Imutável (SHA-256 Hash Chain).
+* **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados, SSO SAML 2.0 / OIDC e SCIM 2.0 (os eventos de auditoria são enviados ao `audit-service`).
 * **`services/stat-orchestrator`** (porta `8003`): Orquestrador de computação analítica com fila assíncrona priorizada por QoS (clientes VIP furam fila), cache determinístico LRU por hash SHA-256 e roteador inteligente Dual-Engine.
 * **`services/data-engine-service`** (porta `8004` / exposta `8014`): Motor de consulta analítica em DuckDB Sandbox confinada, streaming binário Apache Arrow IPC (`application/vnd.apache.arrow.stream`), anonimização e mascaramento de PII (LGPD/GDPR), conectores externos (SQLite, DuckDB, PostgreSQL, MySQL) e Data Prep.
 * **`services/bi-report-service`** (porta `8005` / exposta `8015`): Microsserviço de relatórios colaborativos e dashboards em tempo real com WebSockets, versionamento e snapshots.
 * **`services/export-service`** (porta `8006` / exposta `8016`): Gerador de relatórios multi-formato (HTML/PDF Paged Media APA 7th, LaTeX com booktabs, DOCX com estilos acadêmicos e Markdown GFM).
 * **`services/billing-service`** (porta `8007` / exposta `8017`): Microsserviço de monetização e pagamentos Stripe: planos Community, Team e Enterprise, Checkout Sessions, Customer Portal, faturamento multi-tenant e webhooks com atualização automática de tier.
+* **`services/audit-service`** (porta `8008` / exposta `8018`): Trilha de Auditoria Imutável com encadeamento de hash SHA-256 por tenant, verificação de integridade (`/audit/verify`) e exportação com atestado de conformidade (SOC 2 / FDA 21 CFR Part 11). Banco e volume próprios.
 * **`apps/api`** (porta `8000`): Camada de dados, ingestão de CSV/Parquet via DuckDB, catálogo de datasets, relatórios, dashboards e abstração de storage (`StorageProvider` Local/S3).
 * **`engines/r-worker`**: **Engine A (Open Engine)** — Worker R isolado em container com supervisor leve e runtime JASP (tempo limite, recuperação automática, AGPL-compliant).
 

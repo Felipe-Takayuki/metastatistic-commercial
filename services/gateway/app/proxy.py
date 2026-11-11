@@ -45,6 +45,7 @@ def determine_target_url(path: str) -> str:
     Roteia o caminho da requisição para o serviço downstream apropriado:
     - /, /assets/*, /favicon.ico, /index.html e rotas não-API -> WEB_URL
     - /api/v1/auth/* e /api/v1/tenants/* -> AUTH_SERVICE_URL
+    - /api/v1/audit/* -> AUDIT_SERVICE_URL
     - /api/v1/analyses/* e /api/v1/jobs/* -> STAT_ORCHESTRATOR_URL
     - /api/v1/* (datasets, queries, reports, dashboards, etc.) -> DATA_API_URL
     """
@@ -94,7 +95,7 @@ def determine_target_url(path: str) -> str:
     elif clean_path.startswith("/tenants/") or clean_path == "/tenants":
         return f"{settings.auth_service_url.rstrip('/')}{clean_path}"
 
-    # Casos de Enterprise: SSO, SCIM 2.0 e Audit Trail
+    # Casos de Enterprise: SSO e SCIM 2.0
     if clean_path.startswith("/api/v1/sso/"):
         target_path = clean_path.replace("/api/v1/sso", "/auth/sso", 1)
         return f"{settings.auth_service_url.rstrip('/')}{target_path}"
@@ -110,13 +111,14 @@ def determine_target_url(path: str) -> str:
     elif clean_path.startswith("/scim/") or clean_path == "/scim":
         return f"{settings.auth_service_url.rstrip('/')}{clean_path}"
 
+    # Trilha de Auditoria Imutável -> audit-service
     if clean_path.startswith("/api/v1/audit/"):
         target_path = clean_path.replace("/api/v1/audit", "/audit", 1)
-        return f"{settings.auth_service_url.rstrip('/')}{target_path}"
+        return f"{settings.audit_service_url.rstrip('/')}{target_path}"
     elif clean_path == "/api/v1/audit":
-        return f"{settings.auth_service_url.rstrip('/')}/audit"
+        return f"{settings.audit_service_url.rstrip('/')}/audit"
     elif clean_path.startswith("/audit/") or clean_path == "/audit":
-        return f"{settings.auth_service_url.rstrip('/')}{clean_path}"
+        return f"{settings.audit_service_url.rstrip('/')}{clean_path}"
 
     # Casos de Orquestração Estatística e Jobs
     if clean_path.startswith("/api/v1/analyses"):

@@ -128,8 +128,8 @@ def test_determine_target_url():
     assert determine_target_url("/sso/saml/acs") == f"{settings.auth_service_url}/auth/sso/saml/acs"
     assert determine_target_url("/scim/v2/tenants/t1/ServiceProviderConfig") == f"{settings.auth_service_url}/scim/v2/tenants/t1/ServiceProviderConfig"
     assert determine_target_url("/api/v1/scim/v2/tenants/t1/Users") == f"{settings.auth_service_url}/scim/v2/tenants/t1/Users"
-    assert determine_target_url("/api/v1/audit/events") == f"{settings.auth_service_url}/audit/events"
-    assert determine_target_url("/audit/verify") == f"{settings.auth_service_url}/audit/verify"
+    assert determine_target_url("/api/v1/audit/events") == f"{settings.audit_service_url}/audit/events"
+    assert determine_target_url("/audit/verify") == f"{settings.audit_service_url}/audit/verify"
 
     # Web Frontend & Static Assets (Unificação de acesso único via Gateway)
     assert determine_target_url("/") == f"{settings.web_url}/"
@@ -167,6 +167,9 @@ async def test_health_check_endpoint():
         respx_mock.get(f"{settings.billing_service_url}/health").mock(
             return_value=httpx.Response(200, json={"status": "healthy"})
         )
+        respx_mock.get(f"{settings.audit_service_url}/health").mock(
+            return_value=httpx.Response(200, json={"status": "healthy"})
+        )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
             resp = await client.get("/health")
@@ -179,6 +182,7 @@ async def test_health_check_endpoint():
             assert data["downstream"]["bi_report_service"] == "healthy"
             assert data["downstream"]["export_service"] == "healthy"
             assert data["downstream"]["billing_service"] == "healthy"
+            assert data["downstream"]["audit_service"] == "healthy"
             assert data["downstream"]["data_api"] == "healthy"
 
 
@@ -385,7 +389,7 @@ async def test_proxy_routing_to_enterprise_sso_scim_audit():
         )
 
         # Mock Audit Verify
-        audit_route = respx_mock.get(f"{settings.auth_service_url}/audit/verify").mock(
+        audit_route = respx_mock.get(f"{settings.audit_service_url}/audit/verify").mock(
             return_value=httpx.Response(
                 200,
                 json={"valid": True, "total_records": 10, "verified_at": "2026-11-09T00:00:00Z"},

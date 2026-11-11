@@ -48,13 +48,7 @@ from app.scim import (
     SCIMUser,
     SCIMUserCreate,
 )
-from app.audit_trail import (
-    AuditEventCreate,
-    AuditEventResponse,
-    AuditExportResponse,
-    AuditTrailManager,
-    AuditVerificationResult,
-)
+from app.audit_client import AuditClient, AuditEventCreate, get_audit_manager
 
 store: Optional[TenantStore] = None
 
@@ -74,10 +68,6 @@ def get_scim_manager(tenant_store: TenantStore = Depends(get_store)) -> SCIMMana
     return SCIMManager(tenant_store)
 
 
-def get_audit_manager(tenant_store: TenantStore = Depends(get_store)) -> AuditTrailManager:
-    return AuditTrailManager(tenant_store._get_connection)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     get_store()
@@ -87,7 +77,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MetaStatistic Auth, Tenant & Enterprise Security Service",
     version="1.0.0",
-    description="Identity, RBAC, Multi-Tenancy, SAML/OIDC SSO, SCIM 2.0, and SOC 2 / FDA Audit Trail for MetaStatistic",
+    description="Identity, RBAC, Multi-Tenancy, SAML/OIDC SSO, SCIM 2.0, for MetaStatistic (audit events are sent to audit-service)",
     lifespan=lifespan,
 )
 
@@ -115,7 +105,7 @@ def health_check():
         "status": "healthy",
         "service": "auth-tenant-service",
         "version": "1.0.0",
-        "features": ["rbac", "sso_saml", "sso_oidc", "scim_v2", "audit_trail_immutable"],
+        "features": ["rbac", "sso_saml", "sso_oidc", "scim_v2"],
     }
 
 
@@ -128,7 +118,7 @@ def health_check():
 def create_tenant(
     payload: TenantCreate,
     tenant_store: TenantStore = Depends(get_store),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     tenant = tenant_store.create_tenant(payload)
     audit.record_event(
@@ -171,7 +161,7 @@ def update_tenant_tier(
     tenant_id: str,
     payload: TenantTierUpdate,
     tenant_store: TenantStore = Depends(get_store),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         tenant = tenant_store.update_tenant_tier(tenant_id, payload.tier)
@@ -213,7 +203,7 @@ def create_invitation(
     tenant_id: str,
     payload: InvitationCreate,
     tenant_store: TenantStore = Depends(get_store),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         inv = tenant_store.create_invitation(tenant_id, payload)
@@ -239,7 +229,7 @@ def accept_invitation(
     token: str,
     payload: AcceptInvitationRequest,
     tenant_store: TenantStore = Depends(get_store),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         member = tenant_store.accept_invitation(token, payload)
@@ -285,7 +275,7 @@ def update_member_role(
     user_id: str,
     payload: MemberRoleUpdate,
     tenant_store: TenantStore = Depends(get_store),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         member = tenant_store.update_member_role(tenant_id, user_id, payload.role)
@@ -311,7 +301,7 @@ def remove_member(
     tenant_id: str,
     user_id: str,
     tenant_store: TenantStore = Depends(get_store),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         removed = tenant_store.remove_member(tenant_id, user_id)
@@ -360,7 +350,7 @@ def auth_status() -> Dict[str, Any]:
 def issue_token(
     payload: LoginRequest,
     tenant_store: TenantStore = Depends(get_store),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     tenant = None
     if payload.tenant_id:
@@ -436,7 +426,7 @@ def set_tenant_sso_config(
     tenant_id: str,
     payload: SSOConfigCreate,
     sso: SSOManager = Depends(get_sso_manager),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         resp = sso.set_config(tenant_id, payload)
@@ -486,7 +476,7 @@ def sso_login(
 def saml_acs_endpoint(
     payload: SAMLACSRequest,
     sso: SSOManager = Depends(get_sso_manager),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         resp = sso.process_saml_assertion(
@@ -515,7 +505,7 @@ def saml_acs_endpoint(
 def oidc_callback_endpoint(
     payload: OIDCCallbackRequest,
     sso: SSOManager = Depends(get_sso_manager),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     try:
         resp = sso.process_oidc_callback(
@@ -600,7 +590,7 @@ def scim_create_user(
     payload: SCIMUserCreate,
     request: Request,
     scim: SCIMManager = Depends(get_scim_manager),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     base_url = str(request.base_url).rstrip("/")
     user = scim.create_user(tenant_id, base_url, payload)
@@ -646,7 +636,7 @@ def scim_patch_user(
     payload: SCIMPatchRequest,
     request: Request,
     scim: SCIMManager = Depends(get_scim_manager),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     base_url = str(request.base_url).rstrip("/")
     updated = scim.patch_user(tenant_id, user_id, base_url, payload)
@@ -671,7 +661,7 @@ def scim_delete_user(
     tenant_id: str,
     user_id: str,
     scim: SCIMManager = Depends(get_scim_manager),
-    audit: AuditTrailManager = Depends(get_audit_manager),
+    audit: AuditClient = Depends(get_audit_manager),
 ):
     scim.delete_user(tenant_id, user_id)
     audit.record_event(
@@ -685,57 +675,3 @@ def scim_delete_user(
         )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-# ==========================================
-# Immutable Audit Trail Endpoints (SOC 2 Type II / FDA 21 CFR Part 11)
-# ==========================================
-
-
-@app.post("/audit/events", response_model=AuditEventResponse, status_code=status.HTTP_201_CREATED)
-def record_audit_event(
-    payload: AuditEventCreate,
-    audit: AuditTrailManager = Depends(get_audit_manager),
-):
-    return audit.record_event(payload)
-
-
-@app.get("/audit/events", response_model=List[AuditEventResponse])
-def list_audit_events(
-    tenant_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    action: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
-    audit: AuditTrailManager = Depends(get_audit_manager),
-):
-    return audit.list_events(
-        tenant_id=tenant_id,
-        user_id=user_id,
-        action=action,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@app.get("/audit/verify", response_model=AuditVerificationResult)
-def verify_audit_trail(
-    tenant_id: Optional[str] = None,
-    audit: AuditTrailManager = Depends(get_audit_manager),
-):
-    """
-    Executa a verificação matemática de integridade criptográfica da cadeia de hashes (Merkle/SHA-256).
-    Comprova que não houve nenhuma adulteração no banco de dados.
-    """
-    return audit.verify_integrity(tenant_id=tenant_id)
-
-
-@app.get("/audit/export", response_model=AuditExportResponse)
-def export_audit_trail(
-    tenant_id: Optional[str] = None,
-    audit: AuditTrailManager = Depends(get_audit_manager),
-):
-    """
-    Exporta a trilha de auditoria completa com atestado de integridade e metadados de conformidade.
-    """
-    return audit.export_audit_trail(tenant_id=tenant_id)

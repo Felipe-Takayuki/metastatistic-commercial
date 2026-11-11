@@ -26,3 +26,9 @@ Microsserviço responsável pela gestão de Identidade, Organizações (Tenants)
 - `DELETE /tenants/{tenant_id}/members/{user_id}`
 - `POST /auth/token`
 - `POST /auth/verify`
+
+## Auditoria
+A trilha de auditoria imutável vive no [`audit-service`](../audit-service/README.md). Este serviço apenas envia os eventos
+(`tenant.create`, `member.role_update`, `auth.token_issued`, `sso.*`, `scim.*`, …) para `POST {AUDIT_SERVICE_URL}/audit/events`.
+O envio é best-effort: se o audit-service estiver fora do ar, o erro é logado e a operação principal segue. Defina
+`AUDIT_SERVICE_URL=""` para desativar o envio.

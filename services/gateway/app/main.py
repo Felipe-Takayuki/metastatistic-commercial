@@ -113,6 +113,14 @@ async def health_check():
         downstream["billing_service"] = "unreachable"
         all_ok = False
 
+    # 8. Audit Service
+    try:
+        resp = await client.get(f"{settings.audit_service_url.rstrip('/')}/health", timeout=2.0)
+        downstream["audit_service"] = "healthy" if resp.status_code == 200 else f"status_{resp.status_code}"
+    except Exception:
+        downstream["audit_service"] = "unreachable"
+        all_ok = False
+
     return {
         "status": "healthy" if all_ok else "degraded",
         "service": "gateway",

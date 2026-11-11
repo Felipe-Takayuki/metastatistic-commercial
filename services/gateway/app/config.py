@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     bi_report_service_url: str = "http://localhost:8005"
     export_service_url: str = "http://localhost:8006"
     billing_service_url: str = "http://localhost:8007"
+    audit_service_url: str = "http://localhost:8008"
     data_api_url: str = "http://localhost:8000"
     web_url: str = "http://localhost:3000"
     default_tenant_id: str = "default"

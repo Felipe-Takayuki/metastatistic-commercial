@@ -177,7 +177,27 @@ billingService:
     minReplicas: 2
     maxReplicas: 10
 
-# 8. Dedicated R Statistical Worker
+# 8. Immutable Audit Trail Service (SHA-256 hash chain)
+auditService:
+  replicaCount: 2
+  image:
+    repository: "audit-service"
+    tag: "1.0.0"
+  service:
+    type: ClusterIP
+    port: 8008
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 6
+
+# 9. Dedicated R Statistical Worker
 rWorker:
   replicaCount: 4
   image:
