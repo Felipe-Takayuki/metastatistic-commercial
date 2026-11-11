@@ -50,12 +50,18 @@ class User:
     display_name: str
     role: str
     active: bool = True
+    avatar_key: str | None = None   # caminho do objeto da foto no armazenamento (None = sem foto)
+    avatar_type: str | None = None  # image/png, image/jpeg…
 
     def can(self, role: str) -> bool:
         return ROLES.index(self.role) >= ROLES.index(role)
 
     def public(self) -> dict:
-        return {"id": self.id, "username": self.username, "display_name": self.display_name, "role": self.role, "active": self.active}
+        return {
+            "id": self.id, "username": self.username, "display_name": self.display_name, "role": self.role, "active": self.active,
+            # só um marcador de versão (muda a cada troca de foto, serve de cache-buster); a chave do objeto não sai da API
+            "avatar_version": self.avatar_key.rsplit("/", 1)[-1].split(".")[0] if self.avatar_key else None,
+        }
 
 
 # Quando a autenticação está desligada todo mundo é este usuário (comportamento anterior à fase de usuários).
@@ -111,7 +117,8 @@ def _check_role(role: str) -> None:
 # ---------- usuários ----------
 
 def _row_user(row) -> User:
-    return User(id=row["id"], username=row["username"], display_name=row["display_name"], role=row["role"], active=bool(row["active"]))
+    return User(id=row["id"], username=row["username"], display_name=row["display_name"], role=row["role"], active=bool(row["active"]),
+                avatar_key=row["avatar_key"], avatar_type=row["avatar_type"])
 
 
 def user_count() -> int:
@@ -143,6 +150,11 @@ def get_user(user_id: str) -> User:
     if row is None:
         raise UserNotFound(f"user not found: {user_id}")
     return _row_user(row)
+
+
+def set_avatar(user_id: str, key: str | None, content_type: str | None) -> None:
+    with closing(db.connect()) as con, con:
+        con.execute("UPDATE users SET avatar_key = ?, avatar_type = ? WHERE id = ?", [key, content_type, user_id])
 
 
 def list_users() -> list[User]:

@@ -77,5 +77,11 @@ def connect() -> sqlite3.Connection:
         con.execute("ALTER TABLE dashboards ADD COLUMN filters_json TEXT NOT NULL DEFAULT '[]'")
     if "last_seen" not in {r["name"] for r in con.execute("PRAGMA table_info(sessions)")}:
         con.execute("ALTER TABLE sessions ADD COLUMN last_seen TEXT")
+    # migração: foto de perfil (objeto no armazenamento de objetos; aqui ficam só a chave e o tipo)
+    user_cols = {r["name"] for r in con.execute("PRAGMA table_info(users)")}
+    if "avatar_key" not in user_cols:
+        con.execute("ALTER TABLE users ADD COLUMN avatar_key TEXT")
+    if "avatar_type" not in user_cols:
+        con.execute("ALTER TABLE users ADD COLUMN avatar_type TEXT")
     return con
 

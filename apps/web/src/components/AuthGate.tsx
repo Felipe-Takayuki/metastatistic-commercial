@@ -3,7 +3,7 @@ import { api, UNAUTHORIZED_EVENT, type AuthStatus, type Role, type User } from "
 import { credentialProblem, roleCan } from "../lib/auth";
 import { LandingPage } from "./LandingPage";
 
-interface Session { user: User; authEnabled: boolean; signOut: () => Promise<void> }
+interface Session { user: User; authEnabled: boolean; signOut: () => Promise<void>; updateUser: (user: User) => void }
 const SessionContext = createContext<Session | null>(null);
 
 export const useSession = (): Session => {
@@ -45,8 +45,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (status.user) {
     const signOut = async () => { try { await api.logout(); } finally { await load(); } };
+    const updateUser = (user: User) => setStatus((s) => (s ? { ...s, user } : s)); // ex.: nova foto de perfil
     return (
-      <SessionContext.Provider value={{ user: status.user, authEnabled: status.auth_enabled, signOut }}>
+      <SessionContext.Provider value={{ user: status.user, authEnabled: status.auth_enabled, signOut, updateUser }}>
         {children}
       </SessionContext.Provider>
     );

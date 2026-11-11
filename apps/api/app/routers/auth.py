@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from .. import audit, auth, permissions
+from .. import audit, auth, avatars, permissions
 from ..config import settings
 from ..security import COOKIE, current_user, require_admin, require_editor
 
@@ -111,6 +111,53 @@ def logout(request: Request, response: Response) -> None:
 @router.get("/me")
 def me(user: auth.User = Depends(current_user)) -> dict:
     return user.public()
+
+
+def _real_user(user: auth.User) -> auth.User:
+    """Foto de perfil exige um usuário de verdade (sem autenticação todos são o "anônimo", que não tem registro)."""
+    if user.id == auth.ANONYMOUS_ADMIN.id:
+        raise HTTPException(409, "authentication is disabled")
+    return user
+
+
+@router.put("/me/avatar")
+def put_avatar(file: UploadFile = File(...), user: auth.User = Depends(current_user)) -> dict:
+    """Troca a foto de perfil. A imagem é validada pelos bytes (PNG, JPEG, WebP ou GIF, até 2 MB) e guardada no bucket."""
+    user = _real_user(user)
+    data = file.file.read(avatars.MAX_BYTES + 1)  # lê um byte a mais só para saber se passou do limite
+    try:
+        avatars.save(user, data)
+    except avatars.AvatarTooLarge as exc:
+        raise HTTPException(413, str(exc)) from exc
+    except avatars.AvatarError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except avatars.StorageUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    audit.log(user, "update_avatar", "user", user.id)
+    return auth.get_user(user.id).public()
+
+
+@router.get("/me/avatar")
+def get_avatar(user: auth.User = Depends(current_user)) -> Response:
+    try:
+        found = avatars.load(_real_user(user))
+    except avatars.StorageUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if found is None:
+        raise HTTPException(404, "no avatar")
+    data, content_type = found
+    return Response(data, media_type=content_type, headers={
+        "Cache-Control": "private, max-age=3600",   # a URL do cliente muda de versão a cada troca
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    })
+
+
+@router.delete("/me/avatar", status_code=204)
+def delete_avatar(user: auth.User = Depends(current_user)) -> None:
+    user = _real_user(user)
+    avatars.remove(user)
+    audit.log(user, "delete_avatar", "user", user.id)
 
 
 @router.post("/password", status_code=204)

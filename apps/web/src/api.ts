@@ -233,7 +233,7 @@ export interface CustomerPortalSession {
 }
 
 export type Role = "viewer" | "editor" | "admin";
-export interface User { id: string; username: string; display_name: string; role: Role; active: boolean; attributes?: Record<string, string> }
+export interface User { id: string; username: string; display_name: string; role: Role; active: boolean; attributes?: Record<string, string>; avatar_version?: string | null }
 export interface DirectoryUser { id: string; username: string; display_name: string }
 export interface AccessConfig { restricted: boolean; user_ids: string[]; rls: { column: string; attribute: string } | null }
 export interface AuditEvent { id: number; ts: string; user_id: string | null; username: string | null; action: string; kind: string | null; target: string | null; detail: string | null }
@@ -291,6 +291,18 @@ export const api = {
   register: (username: string, password: string, displayName?: string) => request<User>("/auth/register", json("POST", { username, password, display_name: displayName })),
   login: (username: string, password: string) => request<User>("/auth/login", json("POST", { username, password })),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
+  uploadAvatar: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<User>("/auth/me/avatar", { method: "PUT", body: form });
+  },
+  deleteAvatar: () => request<void>("/auth/me/avatar", { method: "DELETE" }),
+  /** Bytes da foto do usuário atual (o <img> não manda o X-Tenant-ID, então buscamos com fetch). */
+  avatarBlob: async (): Promise<Blob> => {
+    const res = await fetch("/api/auth/me/avatar", { headers: { "X-Tenant-ID": getActiveTenantId() } });
+    if (!res.ok) throw new ApiError(`Erro ${res.status}`, res.status);
+    return res.blob();
+  },
   changePassword: (current: string, next: string) => request<void>("/auth/password", json("POST", { current, new: next })),
   listUsers: () => request<User[]>("/users"),
   createUser: (u: { username: string; password: string; display_name: string; role: Role }) => request<User>("/users", json("POST", u)),

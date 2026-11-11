@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     s3_bucket: str = "metastatistic"
     s3_access_key: str = ""
     s3_secret_key: str = ""
+    s3_region: str = "garage"  # o Garage só aceita a região do seu s3_region (padrão "garage"); AWS: us-east-1 etc.
     default_tenant_id: str = "default"
 
 

@@ -19,6 +19,7 @@ def get_storage_provider() -> StorageProvider:
                 endpoint_url=getattr(settings, "s3_endpoint_url", "") or None,
                 access_key=getattr(settings, "s3_access_key", "") or None,
                 secret_key=getattr(settings, "s3_secret_key", "") or None,
+                region=getattr(settings, "s3_region", "") or None,
                 base_cache_dir=settings.data_dir,
                 default_tenant_id=getattr(settings, "default_tenant_id", "default"),
             )

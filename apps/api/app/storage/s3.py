@@ -4,6 +4,12 @@ from typing import Optional
 from .base import StorageProvider
 
 
+def _is_missing(exc: Exception) -> bool:
+    """O erro do boto3 é "chave não existe" (e não falha de rede, credencial ou bucket)?"""
+    error = (getattr(exc, "response", None) or {}).get("Error", {})
+    return error.get("Code") in {"NoSuchKey", "404", "NotFound"}
+
+
 class S3StorageProvider(StorageProvider):
     """Provedor de armazenamento em S3 / MinIO compatível, com cache local
 
@@ -16,6 +22,7 @@ class S3StorageProvider(StorageProvider):
         endpoint_url: Optional[str] = None,
         access_key: Optional[str] = None,
         secret_key: Optional[str] = None,
+        region: Optional[str] = None,
         base_cache_dir: Path | str = "./data",
         default_tenant_id: str = "default",
     ):
@@ -23,6 +30,7 @@ class S3StorageProvider(StorageProvider):
         self.endpoint_url = endpoint_url
         self.access_key = access_key
         self.secret_key = secret_key
+        self.region = region
         self.cache_dir = Path(base_cache_dir) / "s3_cache"
         self.default_tenant_id = default_tenant_id
         self._client = None
@@ -37,9 +45,20 @@ class S3StorageProvider(StorageProvider):
                     "Instale-o via 'pip install boto3' ou use o backend local."
                 )
 
+            from botocore.config import Config
+
             kwargs = {}
             if self.endpoint_url:
                 kwargs["endpoint_url"] = self.endpoint_url
+                # Garage/MinIO: endereçamento por caminho (http://host/bucket/chave), sem DNS por bucket; e checksums só
+                # quando o S3 exige (o boto3 recente manda CRC por padrão, o que servidores compatíveis nem sempre aceitam)
+                kwargs["config"] = Config(
+                    s3={"addressing_style": "path"},
+                    request_checksum_calculation="when_required",
+                    response_checksum_validation="when_required",
+                )
+            if self.region:
+                kwargs["region_name"] = self.region
             if self.access_key and self.secret_key:
                 kwargs["aws_access_key_id"] = self.access_key
                 kwargs["aws_secret_access_key"] = self.secret_key
@@ -70,6 +89,9 @@ class S3StorageProvider(StorageProvider):
             resp = client.get_object(Bucket=self.bucket, Key=key)
             return resp["Body"].read()
         except Exception as e:
+            # Só "objeto inexistente" vira FileNotFoundError; falha de rede/credencial/bucket sobe como está
+            if not _is_missing(e):
+                raise
             # Fallback para chave sem prefixo de tenant no default tenant
             if tenant_id == self.default_tenant_id:
                 try:

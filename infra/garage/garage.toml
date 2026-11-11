@@ -1,0 +1,18 @@
+# Garage (armazenamento de objetos compatível com S3) em nó único. Segredos NÃO ficam aqui:
+# GARAGE_RPC_SECRET e GARAGE_ADMIN_TOKEN vêm do ambiente (docker-compose.yml / .env).
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+# Um nó, uma cópia dos dados. Para replicar, suba mais nós e aumente este valor.
+replication_factor = 1
+
+rpc_bind_addr = "0.0.0.0:3901"
+rpc_public_addr = "garage:3901"
+
+[s3_api]
+s3_region = "garage"            # a API usa S3_REGION=garage; o Garage recusa assinaturas de outra região
+api_bind_addr = "0.0.0.0:3900"
+
+[admin]
+api_bind_addr = "0.0.0.0:3903"

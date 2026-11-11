@@ -156,13 +156,57 @@ services:
     volumes:
       - datasets:/data
     depends_on:
-      - r-worker-1
+      r-worker-1:
+        condition: service_started
+      garage-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+      # fotos de perfil (e futuros objetos) vão para o bucket do Garage
+      STORAGE_BACKEND: "s3"
+      S3_ENDPOINT_URL: "http://garage:3900"
+      S3_REGION: "garage"
+      S3_BUCKET: "${S3_BUCKET:-metastatistic}"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-GK0000000000000000000000de}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-0000000000000000000000000000000000000000000000000000000000de0de0}"
 
   r-worker-1:
     <<: *r-worker
     ports:
       - "${R_WORKER_PORT:-8011}:8000"
+
+  # Armazenamento de objetos compatível com S3 (nó único). Sem porta publicada: só a `api` o alcança, pela rede do compose.
+  # Para inspecionar:  docker compose exec garage /garage status
+  garage:
+    image: dxflrs/garage:v1.0.1
+    environment:
+      GARAGE_RPC_SECRET: "${GARAGE_RPC_SECRET:-0000000000000000000000000000000000000000000000000000000000de0de1}"
+      GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-dev-garage-admin-token}"
+    volumes:
+      - ./infra/garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Execução única: define o layout do nó, cria o bucket e importa a chave de acesso (idempotente).
+  garage-init:
+    image: python:3.12-slim
+    command: ["python", "/init.py"]
+    environment:
+      GARAGE_ADMIN_URL: "http://garage:3903"
+      GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-dev-garage-admin-token}"
+      S3_BUCKET: "${S3_BUCKET:-metastatistic}"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-GK0000000000000000000000de}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-0000000000000000000000000000000000000000000000000000000000de0de0}"
+    volumes:
+      - ./infra/garage/init.py:/init.py:ro
+    depends_on:
+      - garage
+    restart: "no"
 
   web:
     build: ./apps/web
@@ -177,3 +221,5 @@ volumes:
   bi_data:
   billing_data:
   audit_data:
+  garage_meta:
+  garage_data:

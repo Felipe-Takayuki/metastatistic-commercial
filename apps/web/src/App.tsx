@@ -4,8 +4,9 @@ import { DataTab } from "./components/DataTab";
 import { useCan } from "./components/AuthGate";
 import { Sidebar } from "./components/Sidebar";
 import { DatasetAccess } from "./components/DatasetAccess";
-import { UserMenu, UsersLink } from "./components/UserMenu";
+import { ProfileLink, UserMenu, UsersLink } from "./components/UserMenu";
 import { UsersPage } from "./components/UsersPage";
+import { ProfilePage } from "./components/ProfilePage";
 import { DashboardsPage } from "./components/DashboardsPage";
 import { ReportsPage } from "./components/ReportsPage";
 import { newSession, type AnalysisSession } from "./lib/analyses";
@@ -126,6 +127,7 @@ export default function App() {
           <a href={routeHref({ name: "explore" })} aria-current={route.name === "explore" ? "page" : undefined}>Explorar</a>
           <a href={routeHref({ name: "reports" })} aria-current={route.name === "reports" || route.name === "report" ? "page" : undefined}>Relatórios</a>
           <a href={routeHref({ name: "dashboards" })} aria-current={route.name === "dashboards" || route.name === "dashboard" ? "page" : undefined}>Dashboards</a>
+          <ProfileLink current={route.name === "profile"} />
           <UsersLink current={route.name === "users"} />
         </nav>
         <span className="spacer" />
@@ -147,7 +149,9 @@ export default function App() {
             </div>
           )}
 
-          {route.name === "users" ? (
+          {route.name === "profile" ? (
+            <ProfilePage />
+          ) : route.name === "users" ? (
             <UsersPage />
           ) : route.name === "dashboard" ? (
             <Suspense fallback={<div className="empty"><span className="spinner" aria-label="Carregando" /></div>}>

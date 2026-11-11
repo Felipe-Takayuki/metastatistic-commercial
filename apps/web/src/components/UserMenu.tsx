@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { api } from "../api";
 import { credentialProblem, ROLE_LABEL } from "../lib/auth";
 import { routeHref } from "../lib/route";
+import { Avatar } from "./Avatar";
 import { useCan, useSession } from "./AuthGate";
 
 /** Nome + papel + sair, na barra superior. Some quando a autenticação está desligada. */
@@ -11,14 +12,22 @@ export function UserMenu() {
   if (!authEnabled) return null;
   return (
     <>
-      <span className="user-chip" title={`${user.username} · ${ROLE_LABEL[user.role]}`}>
-        {user.display_name} <span className="muted small">({ROLE_LABEL[user.role]})</span>
-      </span>
+      <a className="user-chip" href={routeHref({ name: "profile" })} title={`${user.username} · ${ROLE_LABEL[user.role]} — abrir perfil`}>
+        <Avatar name={user.display_name} version={user.avatar_version} size={26} />
+        <span className="user-chip-name">{user.display_name} <span className="muted small">({ROLE_LABEL[user.role]})</span></span>
+      </a>
       <button className="btn ghost sm" onClick={() => setChanging(true)}>Senha</button>
       <button className="btn ghost sm" onClick={() => void signOut()}>Sair</button>
       {changing && <PasswordDialog username={user.username} onClose={() => setChanging(false)} />}
     </>
   );
+}
+
+/** Link "Perfil" da navegação (só com login ligado: sem ele não existe usuário para ter perfil). */
+export function ProfileLink({ current }: { current: boolean }) {
+  const { authEnabled } = useSession();
+  if (!authEnabled) return null;
+  return <a href={routeHref({ name: "profile" })} aria-current={current ? "page" : undefined}>Perfil</a>;
 }
 
 /** Link "Usuários" da navegação (só administradores). */
