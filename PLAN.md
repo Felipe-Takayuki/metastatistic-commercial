@@ -4,6 +4,26 @@ Plataforma unificada corporativa e B2B SaaS de Business Intelligence, Data Prepa
 
 ---
 
+## 0. Estado Atual (2026-11-11)
+
+Este documento é o **plano**; a tabela abaixo diz o que **existe hoje** no repositório. O diagrama da §3 e as tecnologias citadas na §3.1 (Traefik/Envoy, PostgreSQL, Redis, RabbitMQ, S3) são a **arquitetura-alvo**: na implementação atual cada serviço é FastAPI com SQLite próprio e um gateway FastAPI sob medida (ver §7).
+
+| Plano (§3.1) | Implementado em | Status |
+|---|---|---|
+| 1. API Gateway | `services/gateway` | ✅ proxy por prefixo, tenant em cascata, `/health` agregado. Sem TLS próprio |
+| 2. Auth & Multi-Tenancy | `services/auth-tenant-service` | ✅ tenants, RBAC, convites, JWT, SSO SAML/OIDC, SCIM 2.0. Sem *Workspaces* |
+| 3. Billing | `services/billing-service` | ✅ Stripe (modo mock em dev). ⬜ medição de uso |
+| 4. Data Engine | `services/data-engine-service` | ✅ DuckDB sandbox, Arrow IPC, PII, conectores |
+| 5. Stat Orchestrator | `services/stat-orchestrator` | ✅ fila por QoS, cache LRU, Dual-Engine. Fila em memória (sem Redis/RabbitMQ) |
+| 6. Workers | `engines/r-worker` (Engine A) + Engine B dentro do orquestrador | ✅ / ⬜ não há cluster de workers Python separado |
+| 7. BI & Reports | `services/bi-report-service` | ✅ |
+| 8. Export | `services/export-service` | ✅ |
+| 9. Frontend | `apps/web` (+ `packages/react-embed`) | ✅ |
+| 10. Audit Trail | `services/audit-service` | ✅ extraído do auth em 2026-11-11 (Fase 8) |
+| (monólito original) | `apps/api` | ✅ datasets, relatórios, dashboards, usuários; mantém um log de auditoria próprio (§7) |
+
+---
+
 ## 1. Visão Executiva e Posicionamento de Mercado
 
 ### 1.1 Transformação do Produto: Do Monólito Experimental ao Enterprise SaaS
@@ -102,6 +122,8 @@ flowchart TD
         Gateway --> StatOrch["5. Stat Orchestrator\n(stat-orchestrator)"]
         Gateway --> BIReport["7. BI & Reports\n(bi-report-service)"]
         Gateway --> Export["8. Export & Delivery\n(export-service)"]
+        Gateway --> Audit["9. Audit Trail\n(audit-service)"]
+        Auth -.->|eventos de auditoria| Audit
     end
 
     subgraph Data_Storage["Camada de Dados & Mensageria"]
@@ -123,6 +145,7 @@ flowchart TD
     BIReport --> Postgres
     BIReport --> S3
     Export --> S3
+    Audit --> Postgres
     StatOrch --> Redis
     WorkerR --> S3
     WorkerPy --> S3
@@ -130,7 +153,7 @@ flowchart TD
 
 ### 3.1 Detalhamento de Cada Microsserviço
 
-#### 1. API Gateway & Edge Router (`apps/gateway`)
+#### 1. API Gateway & Edge Router (`services/gateway`)
 - **Tecnologia**: Traefik Enterprise ou Envoy Proxy.
 - **Responsabilidades**:
   - Roteamento inteligente baseado em subdomínios de inquilinos (`{org_slug}.metastatistic.com` e domínios personalizados).
@@ -139,7 +162,7 @@ flowchart TD
   - Rate limiting adaptativo segregado por tier de assinatura (ex: Free: 60 req/min, Enterprise: 5.000 req/min).
   - OpenTelemetry distributed tracing e correlação de `X-Correlation-ID`.
 
-#### 2. Identity, Multi-Tenancy & Access Management (`services/auth-tenant`)
+#### 2. Identity, Multi-Tenancy & Access Management (`services/auth-tenant-service`)
 - **Tecnologia**: Go ou Python FastAPI com SQLAlchemy 2.0 / Pydantic.
 - **Responsabilidades**:
   - Estrutura hierárquica multi-tenant: Organizações (*Tenants*), Espaços de Trabalho (*Workspaces*), Equipes e Usuários.
@@ -147,9 +170,9 @@ flowchart TD
   - SCIM 2.0 (*System for Cross-domain Identity Management*) para provisionamento e desprovisionamento automatizado de usuários por equipes de TI.
   - Controle de Acesso Baseado em Papéis e Atributos (RBAC/ABAC):
     - `Owner`, `Org Admin`, `Workspace Admin`, `Data Engineer`, `Senior Statistician`, `Analyst`, `Viewer`.
-  - Trilha de Auditoria imutável (*Audit Logs*) para compliance com SOC 2 e HIPAA.
+  - Emite eventos de auditoria (`tenant.create`, `member.role_update`, `auth.token_issued`, `sso.*`, `scim.*`…) para o `audit-service` (§3.1 #10); a trilha em si não mora mais aqui.
 
-#### 3. Billing, Quotas & Usage Metering (`services/billing`)
+#### 3. Billing, Quotas & Usage Metering (`services/billing-service`)
 - **Tecnologia**: Python FastAPI / Node.js.
 - **Responsabilidades**:
   - Integração com Stripe Billing e Paddle para gestão de assinaturas, faturas automáticas e pagamentos via cartão/invoice corporativo.
@@ -160,7 +183,7 @@ flowchart TD
     - Contagem de assentos (*seats*) ativos.
   - Motor de limites de cotas com *soft limits* (notificações por email/webhook aos 80% e 90%) e *hard limits* (bloqueio gracioso de novas análises com upgrade prompt).
 
-#### 4. Data Query & Transformation Engine (`services/data-engine`)
+#### 4. Data Query & Transformation Engine (`services/data-engine-service`)
 - **Tecnologia**: Python com DuckDB, Apache Arrow, Polars e SQLGlot.
 - **Responsabilidades**:
   - Gerenciamento de Conexões Externas com pools seguros: PostgreSQL, MySQL, Snowflake, BigQuery, ClickHouse, Redshift, Amazon Athena, MariaDB e S3 Parquet/Delta Lake.
@@ -185,7 +208,7 @@ flowchart TD
     - Fila `community-batch`.
   - Servidor WebSocket para emissão de progresso passo a passo aos clientes web.
 
-#### 6. Stat Workers Cluster (`services/stat-worker-r` & `services/stat-worker-py`)
+#### 6. Stat Workers Cluster (`engines/r-worker`; Engine B Python embutido no `stat-orchestrator`)
 - **Tecnologia**:
   - Worker R: Debian/Ubuntu slim com R 4.3+, `jaspTools`, módulos R oficiais do JASP e `arrow`.
   - Worker Python: Python 3.12 slim com `scipy`, `statsmodels`, `pingouin`, `pymc`, `polars`, `pyarrow`.
@@ -196,7 +219,7 @@ flowchart TD
   - Timeout forçado por análise (ex: 60s standard, 600s enterprise).
   - Sistema de arquivos temporário efêmero em RAM (`tmpfs`), destruído imediatamente após o envio dos resultados para o Object Storage.
 
-#### 7. BI, Reporting & Collaboration Service (`services/bi-report`)
+#### 7. BI, Reporting & Collaboration Service (`services/bi-report-service`)
 - **Tecnologia**: Node.js / TypeScript com NestJS ou Python FastAPI.
 - **Responsabilidades**:
   - Gestão de Dashboards com layouts de grid dinâmico (React Grid Layout), cross-filtering interativo e parâmetros globais sincronizados.
@@ -206,7 +229,7 @@ flowchart TD
   - Colaboração em Tempo Real utilizando CRDTs com **Yjs** e WebSockets (múltiplos estatísticos e analistas editando o mesmo relatório simultaneamente com presença de cursores).
   - Versionamento de Relatórios: snapshots imutáveis arquivados no S3 com trilha de alterações (revisões históricas restauráveis).
 
-#### 8. Export & Delivery Service (`services/export`)
+#### 8. Export & Delivery Service (`services/export-service`)
 - **Tecnologia**: Node.js com Playwright (Chromium Headless), Python com `python-docx` e LaTeX Compiler.
 - **Responsabilidades**:
   - Geração de PDFs de alta fidelidade:
@@ -216,13 +239,22 @@ flowchart TD
   - Exportação nativa de relatórios editáveis para DOCX (Word), PPTX (PowerPoint) e arquivos `.tex` (LaTeX acadêmico).
   - Motor de Agendamento (Cron Scheduler): disparo recorrente de relatórios por e-mail (SendGrid / AWS SES) ou canais corporativos (Slack, Microsoft Teams, Webhooks).
 
-#### 9. Frontend Enterprise (`apps/web-enterprise`)
+#### 9. Frontend Enterprise (`apps/web`)
 - **Tecnologia**: Next.js 15+ (App Router), React 19, TypeScript, Tailwind CSS, shadcn/ui, Apache ECharts, Monaco Editor.
 - **Responsabilidades**:
   - Interface do usuário com padrão visual refinado e responsivo.
   - Suporte a temas corporativos (White-labeling com logos, cores da marca e fontes customizadas para planos Enterprise).
   - Pacote `@metastatistic/react-embed`:
     - SDK JavaScript/React para incorporação (*iframe seguro* e *web component*) de dashboards e gráficos estatísticos em sistemas legados dos clientes com autenticação via JWT assinado.
+
+#### 10. Audit Trail (`services/audit-service`)
+- **Tecnologia**: Python FastAPI, SQLite próprio (`audit.db`, volume `audit_data`). Alvo: PostgreSQL com tabela *append-only*.
+- **Responsabilidades**:
+  - Registrar eventos encadeados por hash SHA-256 **por tenant** (`prev_hash` → `record_hash`), para SOC 2 Tipo II e FDA 21 CFR Part 11.
+  - `GET /audit/verify`: recalcula as cadeias e aponta o primeiro registro adulterado (com `tenant_id` verifica a cadeia dele; sem, verifica todas separadamente).
+  - `GET /audit/export`: eventos em ordem cronológica com atestado de integridade.
+  - `POST /audit/events`: ingestão, usada pelo `auth-tenant-service`. Hoje é *best-effort* no chamador (ver §7).
+  - `python -m app.import_legacy`: migra eventos da antiga tabela `audit_log` do auth preservando hashes.
 
 ---
 
@@ -271,28 +303,36 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
 | **Suporte & SLAs** | Fórum GitHub | Horário Comercial (e-mail) | 99.9% SLA + Gerente Dedicado | 99.99% SLA + Suporte 24/7/365 |
 | **Certificações & Compliance**| Nenhuma | Termos padrão | SOC 2 Tipo II, HIPAA BAA | 21 CFR Part 11, GxP, ISO 27001 |
 
+> **⚠️ Preços divergentes no repositório (decisão pendente).** Existem três tabelas diferentes:
+> | Fonte | Team | Enterprise |
+> |---|---|---|
+> | Esta matriz (§5) | US$ 49 / usuário / mês | US$ 149 / usuário / mês (mín. 10) |
+> | `README.md` (plano de negócio, atividade 9) | R$ 249 / mês (R$ 199 no anual) | R$ 1.490 / mês |
+> | **Implementado** (`services/billing-service/app/config.py`, `PricingModal.tsx`) | US$ 49 / mês (US$ 490 / ano) | US$ 299 / mês (US$ 2.990 / ano), **por organização**, não por usuário |
+>
+> Só a última é o que a plataforma realmente cobra hoje. Antes de ir ao ar é preciso escolher o modelo (por assento × por organização) e a moeda, e alinhar as três fontes.
+
 ---
 
 ## 6. Roteiro Fases de Implementação (Roadmap)
 
-### Fase 1: Preparação do Fork e Desacoplamento de Contratos (Semanas 1–2)
-- [ ] Inicialização da estrutura Monorepo (pnpm / Turborepo ou Nx) com:
-  - `packages/contracts`: Schemas TypeScript, Pydantic e JSON Schema unificados para análises estatísticas e queries.
-  - `packages/sdk`: SDK cliente em TypeScript para consumo da API.
-  - `packages/ui`: Componentes de design system reutilizáveis (shadcn/ui + Tailwind).
+### Fase 1: Preparação do Fork e Desacoplamento de Contratos (Semanas 1–2) — ✅ núcleo concluído (2026-11-06), itens de persistência pendentes
+- [x] Inicialização da estrutura Monorepo (pnpm) com:
+  - [x] `packages/contracts`: contratos TypeScript para tenancy, análises/APA, queries e storage.
+  - [ ] `packages/sdk`: SDK cliente em TypeScript — **não criado** (o consumo é pelo `apps/web/src/api.ts`; `packages/react-embed` cobre o caso de embutir).
+  - [ ] `packages/ui`: design system compartilhado — **não criado** (estilos vivem em `apps/web`).
 - [ ] Refatoração da persistência:
-  - Adição de suporte ao PostgreSQL com migrações gerenciadas via Alembic / Prisma.
-  - Inclusão sistemática de `tenant_id` em todas as entidades relacionais.
-- [ ] Criação de abstração de armazenamento de objetos (`StorageProvider`) com suporte a S3 e MinIO local.
+  - [ ] PostgreSQL com migrações Alembic / Prisma — **pendente**; todos os serviços usam SQLite (ver §7).
+  - [ ] `tenant_id` sistemático em todas as entidades — **parcial**: `apps/api` tem tabela `tenants` e o BI/auth isolam por `X-Tenant-ID`; sem auditoria completa do isolamento.
+- [x] Abstração de armazenamento de objetos (`StorageProvider`) com backends `local` e `s3` em `apps/api/app/storage/`. (Execução com MinIO local não verificada.)
 
-### Fase 2: Gateway, Auth Multi-Tenant e Billing (Semanas 3–5)
-- [ ] Implementação do serviço `auth-tenant-service`:
-  - Criação de Organizações, Workspaces e Gestão de Convites.
-  - Sistema de permissões RBAC com middlewares de autorização.
-- [ ] Configuração do API Gateway com terminação TLS e roteamento baseado em subdomínio de inquilino.
-- [ ] Implementação do serviço `billing-service`:
-  - Integração com webhooks do Stripe para criação e cancelamento de planos.
-  - Middleware de medição de uso e enforcement de cotas.
+### Fase 2: Gateway, Auth Multi-Tenant e Billing (Semanas 3–5) — ✅ concluída (2026-11-06; billing na Fase 7)
+- [x] Implementação do serviço `auth-tenant-service`:
+  - [x] Organizações e Gestão de Convites. [ ] *Workspaces* — **não implementados** (existem só como tipo em `packages/contracts`).
+  - [x] RBAC (`owner`, `admin`, `statistician`, `analyst`, `viewer`) com proteção ao owner e cotas por tier.
+- [x] API Gateway (`services/gateway`) com roteamento por subdomínio / `X-Tenant-ID` / JWT. [ ] Terminação TLS — **não implementada no gateway** (o Helm chart prevê Ingress TLS).
+- [x] Serviço `billing-service`: webhooks do Stripe (criação, atualização, cancelamento) — entregue na Fase 7.
+  - [ ] Middleware de **medição de uso** — não implementado; o enforcement de cotas limita membros/datasets/armazenamento por tier no auth.
 
 ### Fase 3: Separação do Data Engine e Conectores SQL (Semanas 6–8) ✅ CONCLUÍDA (2026-11-07)
 - [x] Extração da lógica de consulta para o microsserviço `data-engine-service`:
@@ -307,7 +347,7 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
   - Healthcheck unificado agregando `data-engine-service`.
   - Serviço `data-engine-service` configurado no `docker-compose.yml` (porta 8014:8004).
 
-### Fase 4: Orquestração e Cluster de Workers com Autoscaling (Semanas 9–11)
+### Fase 4: Orquestração e Cluster de Workers com Autoscaling (Semanas 9–11) ✅ CONCLUÍDA (2026-11-06)
 - [x] Construção do microsserviço `stat-orchestrator`:
   - Fila assíncrona de jobs com suporte a prioridade por tier (VIP Enterprise vs Standard) e controle de concorrência.
   - Implementação do cache LRU determinístico de análises (hash de tenant, dataset, opções e colunas).
@@ -345,7 +385,7 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
 ### Fase 6: Prontidão Enterprise, Segurança e Lançamento (Semanas 15–16) ✅ CONCLUÍDA (2026-11-09)
 - [x] Implementação de SSO corporativo (SAML 2.0 / Okta / Azure AD / OIDC) com provisionamento Just-In-Time (JIT) em `services/auth-tenant-service/app/sso.py`.
 - [x] Implementação de provisionamento de identidades SCIM 2.0 (RFC 7643 e RFC 7644) com suporte a Okta e Azure AD (`/scim/v2/tenants/{tenant_id}/*`).
-- [x] Implementação de Trilha de Auditoria imutável (*Audit Logs*) criptograficamente encadeada com SHA-256 (Merkle/blockchain-style) e verificação matemática de adulteração em tempo real para conformidade com SOC 2 Tipo II e FDA 21 CFR Part 11 em `services/auth-tenant-service/app/audit_trail.py`.
+- [x] Implementação de Trilha de Auditoria imutável (*Audit Logs*) criptograficamente encadeada com SHA-256 (Merkle/blockchain-style) e verificação matemática de adulteração em tempo real para conformidade com SOC 2 Tipo II e FDA 21 CFR Part 11 em `services/auth-tenant-service/app/audit_trail.py` (**movido para `services/audit-service` na Fase 8**).
 - [x] Atualização de rotas no API Gateway (`services/gateway/app/proxy.py`) para rotear SSO, SCIM 2.0 e Audit Trail.
 - [x] Criação de Helm Charts oficiais Kubernetes Enterprise (`deploy/helm/metastatistic`) com `Chart.yaml`, `values.yaml`, HPA, Ingress TLS, ConfigMap, Secrets e pares Deployment/Service para os 7 microsserviços.
 - [x] Testes automatizados completos de SSO, SCIM, Auditoria com teste de adulteração física direta no banco e 100% de aprovação (56 testes backend no monorepo).
@@ -366,3 +406,45 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
   - Adicionado `billing-service` (8017:8007), volume `billing_data`, templates de deployment, service e HPA.
 - [x] Suite de testes automatizada (67 testes passando 100% no monorepo backend).
 - [x] Documentação em `docs/commercial-billing-progress.md`.
+
+### Fase 8: Produto Unificado, Onboarding e Extração da Auditoria ✅ CONCLUÍDA (2026-11-09 → 2026-11-11)
+- [x] **Frontend único atrás do gateway** (`docs/commercial-frontend-unification.md`): `/` e assets servidos via `WEB_URL`, normalização de `/api/*` → `/api/v1/*`, modal de planos (`PricingModal`) integrado ao `billing-service`.
+- [x] **Onboarding B2B**: autenticação ligada por padrão no compose, cadastro self-service e login/registro fluidos, seletor de workspace (organização) e convite de membros, landing page pública com `AuthGate`. Rotas de sessão do frontend (`/auth/login`, `/auth/me`…) roteadas para a `apps/api`.
+- [x] **Plano de negócio** (atividade 9) e mapa de reaproveitamento em `README.md` e `docs/plano-de-negocio.md`.
+- [x] **Infra**: stack consolidada em um único `docker-compose.yml`; portas de host parametrizáveis (`GATEWAY_PORT` padrão 8085, `API_PORT` padrão 8020, `R_WORKER_PORT` padrão 8011) para convivência em VPS.
+- [x] **Extração do `audit-service`** (2026-11-11):
+  - Serviço novo (porta 8008 / exposta 8018) com banco e volume próprios; lógica de hash chain movida sem alteração do `auth-tenant-service`.
+  - `auth-tenant-service` passou a enviar eventos por HTTP (`AuditClient`, *best-effort*) e deixou de expor `/audit/*`.
+  - Gateway roteia `/audit` e `/api/v1/audit` para o novo serviço e o inclui no `/health` agregado. Compose e Helm (deployment, service, configmap, values, HPA) atualizados.
+  - `python -m app.import_legacy` migra eventos antigos preservando hashes (idempotente).
+  - **Correção**: `GET /audit/verify` sem `tenant_id` verificava uma cadeia global, mas a gravação encadeia por tenant, gerando falso "Broken hash chain" com 2+ tenants. Agora cada cadeia é verificada separadamente.
+  - Verificado: testes unitários (audit 10, auth 17, gateway 12) e ponta a ponta em Docker (eventos via gateway, persistência após restart, detecção de adulteração direta no SQLite, degradação com o audit fora do ar, import legado). Helm **não** foi validado (sem `helm` disponível).
+
+---
+
+## 7. Dívida Técnica e Próximos Passos
+
+Ordenados por risco para um lançamento com clientes regulados.
+
+### Segurança e conformidade
+- [ ] **`audit-service` sem autenticação/autorização.** Qualquer chamador que alcance o serviço pode `POST /audit/events` (forjar eventos) e ler eventos de qualquer tenant via `?tenant_id=`. Exigir JWT/serviço-a-serviço, restringir o `POST` à rede interna (não rotear pelo gateway) e limitar leitura ao tenant do token.
+- [ ] **Entrega de eventos de auditoria é *best-effort*.** Se o `audit-service` estiver fora do ar, o evento é perdido (só há log de erro). Para 21 CFR Part 11: *outbox* + retry no `auth-tenant-service`, ou falhar fechado nas operações críticas.
+- [ ] **Imutabilidade só criptográfica.** A cadeia *detecta* adulteração, mas o SQLite permite `UPDATE`/`DELETE`. Alvo: tabela *append-only* (PostgreSQL com permissões restritas / triggers) e âncora periódica do último hash fora do banco.
+- [ ] **Segredos padrão no código**: `JWT_SECRET_KEY` com valor default em `auth-tenant-service` e `gateway`; exigir variável de ambiente e falhar sem ela fora de dev.
+
+### Consistência do produto
+- [ ] **Dois logs de auditoria coexistem.** `apps/api/app/audit.py` (SQLite simples, sem hash, lido por `apps/web/src/components/AuditLog.tsx` em `GET /audit?before_id=&action=`) e o `audit-service` (cadeia SHA-256, `/audit/events`). Pelo gateway, `/audit` agora cai no segundo, com outro formato; a tela de auditoria do frontend provavelmente não funciona via gateway. Decidir: o `apps/api` passa a emitir eventos ao `audit-service` e o front lê dele.
+- [ ] **Preços divergentes** entre README, PLAN §5 e `billing-service` (ver nota na §5).
+
+### Infraestrutura e dados
+- [ ] **PostgreSQL** (multi-tenant com RLS) no lugar de SQLite por serviço; Alembic para migrações.
+- [ ] **Fila/cache distribuídos** (Redis, RabbitMQ/Kafka) no `stat-orchestrator`; hoje fila e cache LRU são em memória por processo.
+- [ ] **Object storage** (MinIO/S3) em uso real nos serviços; hoje só a abstração `StorageProvider` existe no `apps/api`.
+- [ ] **Helm**: validar com `helm lint`/`helm template` e testar num cluster; definir volumes persistentes para os serviços com SQLite.
+- [ ] **TLS** no ponto de entrada (Ingress) e observabilidade (OpenTelemetry, `X-Correlation-ID`) previstas na §3.1 mas não implementadas.
+
+### Funcionalidades do plano ainda não feitas
+- [ ] *Workspaces* e hierarquia de papéis ampliada (`Org Admin`, `Workspace Admin`, `Data Engineer`, `Senior Statistician`).
+- [ ] Medição de uso (segundos de worker, GB, consultas) e *soft/hard limits* com notificação (§3.1 #3).
+- [ ] `packages/sdk` e `packages/ui`.
+- [ ] Opção Enterprise On-Premise / *air-gapped* da §5.

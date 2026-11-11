@@ -3,7 +3,7 @@
 > **ISW055 · Atividade 9 — Fork e Plano de Negócio**  
 > **Professor**: Allan Siriani ([github.com/siriani](https://github.com/siriani))  
 > **Projeto**: Metastatistic Commercial (B2B SaaS de Business Intelligence & Rigor Estatístico)  
-> **Repositório**: [metastatistic-commercial](https://github.com/siriani)
+> **Repositório**: [metastatistic-commercial](https://github.com/Felipe-Takayuki/metastatistic-commercial)
 
 ---
 
@@ -83,6 +83,8 @@ O modelo de monetização é um SaaS B2B Freemium com cobrança recorrente via *
   • Fila compartilhada        • Fila prioritária         • Audit Trail Hash Chain SHA-256
 ```
 
+> **Nota — preços ainda não unificados.** Os valores em R$ abaixo são os do plano de negócio (atividade 9). A plataforma, porém, hoje cobra em **US$ por organização**: Team US$ 49/mês (US$ 490/ano) e Enterprise US$ 299/mês (US$ 2.990/ano), conforme `services/billing-service/app/config.py` e o modal de planos. O `PLAN.md` (§5) traz ainda uma terceira versão, por usuário. A escolha do modelo e da moeda está pendente — ver `PLAN.md` §5 e §7.
+
 1. **Plano Community (Free — R$ 0 / mês)**:
    * **Público**: Estudantes de graduação, pesquisadores autônomos e experimentadores.
    * **Limites**: 1 usuário individual, até 5 datasets carregados (máx. 50 MB por arquivo), análises estatísticas básicas (Descritivas, Teste t, Pearson), 1 dashboard ativo, relatórios com marca d'água discreta e processamento em fila assíncrona pública.
@@ -136,7 +138,7 @@ Conforme os requisitos da disciplina, absolutamente nada da arquitetura original
 | :--- | :--- | :--- |
 | **Catálogo de Filmes (TMDB)** | **Catálogo de Datasets e Análises Estatísticas** | Tabela de dados clínicos (ex.: ensaio de glicemia), esquema de colunas, níveis de medida (nominal, ordinal, contínuo) e biblioteca de testes estatísticos. |
 | **Microsserviço de Login + RBAC** | **Gestão de Inquilinos (Multi-Tenancy), SSO e Permissões** | Papéis corporativos de negócio: `admin` (gestor do laboratório), `editor` (pesquisador/analista) e `viewer` (auditor/leitor), com autenticação SSO SAML/OIDC e SCIM 2.0. |
-| **Logs e Auditoria (Redis)** | **Trilha de Auditoria Criptográfica Imutável (Audit Trail)** | Registros em cadeia de hash SHA-256 com verificação de integridade matemática: `"dataset_uploaded"`, `"analysis_executed"`, `"report_exported"`, em conformidade com **FDA 21 CFR Part 11**. |
+| **Logs e Auditoria (Redis)** | **Trilha de Auditoria Criptográfica Imutável (Audit Trail)** | Registros em cadeia de hash SHA-256 com verificação de integridade matemática: `"dataset_uploaded"`, `"analysis_executed"`, `"report_exported"`, em conformidade com **FDA 21 CFR Part 11**. Implementado em `services/audit-service` (SQLite próprio; sem Redis). |
 | **Upload e Perfil (MinIO / S3)** | **Armazenamento Seguro de Datasets e Snapshots** | Upload de grandes arquivos CSV/Parquet de dados de pacientes, fotos/avatares de perfil dos cientistas e snapshots versionados de relatórios. |
 | **Plano Premium (Stripe)** | **Microsserviço de Billing & Assinaturas Recorrentes** | Gestão automatizada dos planos Community, Team e Enterprise com Stripe Checkout, Webhooks e sincronização de cotas no banco. |
 | **Swagger, CI/CD e Observabilidade** | **Documentação OpenAPI, Helm Charts Kubernetes & Testes** | Contratos canônicos OpenAPI (`@metastatistic/contracts`), esteira de testes automatizados (Vitest/Pytest), healthcheck centralizado no Gateway e deploy em containers. |
@@ -165,6 +167,26 @@ Para orientar a evolução nas atividades 10 (Negócio no Ar) e 11 (Assinatura c
 * **Issue #6 — Trilha de Auditoria Criptográfica Imutável (FDA 21 CFR Part 11 & SOC 2)**
   * *Descrição*: Implementar registro de eventos encadeados por hash SHA-256 no microsserviço de auditoria com endpoint de verificação de adulteração.
   * *Critérios de Aceitação*: `GET /audit/verify` retorna status de integridade matemática e alerta se qualquer registro histórico for alterado.
+  * *Status*: ✅ entregue em `services/audit-service` (extraído do `auth-tenant-service` em 2026-11-11); falta autenticação no serviço e entrega garantida dos eventos — ver `PLAN.md` §7.
+
+---
+
+## 📍 Estado do Projeto
+
+Roadmap completo e dívida técnica em [`PLAN.md`](PLAN.md); relatórios por fase em [`docs/`](docs/).
+
+| Fase | Entrega | Status |
+|---|---|---|
+| 1–2 | Monorepo, contratos, `auth-tenant-service`, gateway | ✅ (sem `packages/sdk`/`ui`, sem *Workspaces*, ainda em SQLite) |
+| 3 | `data-engine-service` (DuckDB, Arrow, PII, conectores) | ✅ |
+| 4 | `stat-orchestrator` + Engine B (Python) + Engine A (R/JASP) | ✅ |
+| 5 | `bi-report-service`, `export-service`, `@metastatistic/react-embed` | ✅ |
+| 6 | SSO SAML/OIDC, SCIM 2.0, trilha de auditoria, Helm | ✅ (Helm não validado em cluster) |
+| 7 | `billing-service` com Stripe | ✅ (modo mock por padrão em dev) |
+| 8 | Frontend único, onboarding B2B, landing, **`audit-service` extraído** | ✅ |
+| — | PostgreSQL, Redis/fila, object storage, medição de uso, TLS | ⬜ pendente |
+
+**Principais pontos em aberto:** autenticação no `audit-service`; entrega *best-effort* dos eventos de auditoria; dois logs de auditoria coexistindo (`apps/api` e `audit-service`); preços divergentes entre documentos e código.
 
 ---
 
@@ -173,7 +195,7 @@ Para orientar a evolução nas atividades 10 (Negócio no Ar) e 11 (Assinatura c
 O repositório está organizado como um monorepo moderno gerenciado via `pnpm-workspace.yaml`:
 
 ### Microsserviços e Backend
-* **`services/gateway`** (porta `8080`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
+* **`services/gateway`** (porta interna `8080`, exposta em `${GATEWAY_PORT:-8085}`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
 * **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados, SSO SAML 2.0 / OIDC e SCIM 2.0 (os eventos de auditoria são enviados ao `audit-service`).
 * **`services/stat-orchestrator`** (porta `8003`): Orquestrador de computação analítica com fila assíncrona priorizada por QoS (clientes VIP furam fila), cache determinístico LRU por hash SHA-256 e roteador inteligente Dual-Engine.
 * **`services/data-engine-service`** (porta `8004` / exposta `8014`): Motor de consulta analítica em DuckDB Sandbox confinada, streaming binário Apache Arrow IPC (`application/vnd.apache.arrow.stream`), anonimização e mascaramento de PII (LGPD/GDPR), conectores externos (SQLite, DuckDB, PostgreSQL, MySQL) e Data Prep.
@@ -181,7 +203,7 @@ O repositório está organizado como um monorepo moderno gerenciado via `pnpm-wo
 * **`services/export-service`** (porta `8006` / exposta `8016`): Gerador de relatórios multi-formato (HTML/PDF Paged Media APA 7th, LaTeX com booktabs, DOCX com estilos acadêmicos e Markdown GFM).
 * **`services/billing-service`** (porta `8007` / exposta `8017`): Microsserviço de monetização e pagamentos Stripe: planos Community, Team e Enterprise, Checkout Sessions, Customer Portal, faturamento multi-tenant e webhooks com atualização automática de tier.
 * **`services/audit-service`** (porta `8008` / exposta `8018`): Trilha de Auditoria Imutável com encadeamento de hash SHA-256 por tenant, verificação de integridade (`/audit/verify`) e exportação com atestado de conformidade (SOC 2 / FDA 21 CFR Part 11). Banco e volume próprios.
-* **`apps/api`** (porta `8000`): Camada de dados, ingestão de CSV/Parquet via DuckDB, catálogo de datasets, relatórios, dashboards e abstração de storage (`StorageProvider` Local/S3).
+* **`apps/api`** (porta interna `8000`, exposta em `${API_PORT:-8020}`): Camada de dados, ingestão de CSV/Parquet via DuckDB, catálogo de datasets, relatórios, dashboards e abstração de storage (`StorageProvider` Local/S3).
 * **`engines/r-worker`**: **Engine A (Open Engine)** — Worker R isolado em container com supervisor leve e runtime JASP (tempo limite, recuperação automática, AGPL-compliant).
 
 ### Pacotes Compartilhados e Frontend
@@ -199,10 +221,29 @@ Para subir todo o ecossistema distribuído de microsserviços:
 docker compose up -d --build
 ```
 
-Serviços acessíveis:
-* **Aplicação Web & API Gateway Único**: `http://localhost:8080` (e `http://localhost:3000`)
-* **Healthcheck Agregador**: `http://localhost:8080/health`
+Serviços acessíveis (a porta do gateway é parametrizável; padrão `8085`):
+* **Aplicação Web & API Gateway Único**: `http://localhost:8085`
+* **Healthcheck Agregador**: `http://localhost:8085/health` — lista `auth_tenant_service`, `stat_orchestrator`, `data_engine`, `bi_report_service`, `export_service`, `data_api`, `billing_service` e `audit_service`
 * **Painel de Pagamentos Stripe (Mock/Live)**: Integrado diretamente no botão "Planos" da interface e no fluxo de upgrade.
+
+Variáveis úteis (todas opcionais): `GATEWAY_PORT` (8085), `API_PORT` (8020), `R_WORKER_PORT` (8011), `AUTH_ENABLED` (`true`), `COOKIE_SECURE` (`false`). O `billing-service` roda com `STRIPE_MOCK_MODE=true` no compose; para cobrança real, configure as credenciais do Stripe e desative o modo mock.
+
+### Testes
+Cada serviço Python tem seu ambiente `uv`:
+```bash
+cd services/<serviço> && uv run pytest        # ex.: audit-service, auth-tenant-service, gateway
+cd apps/api && uv run pytest
+pnpm test                                      # pacotes e frontend (workspace)
+```
+
+### Migrando a auditoria do `auth-tenant-service` (instalações anteriores à Fase 8)
+Eventos antigos ficam na tabela `audit_log` do banco do auth. Para trazê-los ao `audit-service` **antes de ele receber tráfego**:
+```bash
+docker volume ls --format '{{.Name}}' | grep auth_data      # nome real: <projeto>_auth_data
+docker compose run --rm -v <projeto>_auth_data:/legacy:ro audit-service \
+  python -m app.import_legacy /legacy/auth_tenant.db
+```
+É idempotente, preserva os hashes e não altera o banco de origem (detalhes em `services/audit-service/README.md`).
 
 ---
 
