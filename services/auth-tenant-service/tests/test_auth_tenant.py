@@ -262,3 +262,22 @@ async def test_update_tenant_tier(memory_store):
         # Tenant inexistente dá 404
         not_found = await client.patch("/tenants/non-existent-tenant-id/tier", json={"tier": "team"})
         assert not_found.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_tenant_access_endpoint(memory_store):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = (await client.post("/tenants", json={
+            "name": "Access Lab", "tier": "team", "owner_id": "u_owner", "owner_email": "o@a.io",
+        })).json()
+
+        by_id = await client.get(f"/tenants/{created['id']}/access/u_owner")
+        assert by_id.status_code == 200
+        assert by_id.json() == {"tenant_id": created["id"], "tenant_slug": created["slug"], "tier": "team", "role": "owner"}
+
+        by_slug = await client.get(f"/tenants/{created['slug']}/access/u_owner")
+        assert by_slug.status_code == 200 and by_slug.json()["tenant_id"] == created["id"]
+
+        # não-membro e tenant inexistente são indistinguíveis (404)
+        assert (await client.get(f"/tenants/{created['id']}/access/u_stranger")).status_code == 404
+        assert (await client.get("/tenants/nao-existe/access/u_owner")).status_code == 404

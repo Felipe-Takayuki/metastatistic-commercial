@@ -45,6 +45,14 @@ class TenantMemberResponse(BaseModel):
     joined_at: str
 
 
+class TenantAccessResponse(BaseModel):
+    """Resultado da checagem de associação usada pelo gateway (endpoint interno)."""
+    tenant_id: str
+    tenant_slug: str
+    tier: str
+    role: RoleType
+
+
 class MemberRoleUpdate(BaseModel):
     role: RoleType
 

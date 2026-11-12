@@ -17,6 +17,7 @@ from app.models import (
     InvitationResponse,
     LoginRequest,
     MemberRoleUpdate,
+    TenantAccessResponse,
     TenantCreate,
     TenantMemberResponse,
     TenantResponse,
@@ -143,6 +144,19 @@ def get_tenant(tenant_id: str, tenant_store: TenantStore = Depends(get_store)):
             detail=f"Tenant {tenant_id} not found",
         )
     return tenant
+
+
+@app.get("/tenants/{tenant_ref}/access/{user_id}", response_model=TenantAccessResponse)
+def get_tenant_access(tenant_ref: str, user_id: str, tenant_store: TenantStore = Depends(get_store)):
+    """
+    INTERNO (o gateway bloqueia chamadas externas): resolve o tenant por id ou slug e devolve o papel do usuário nele.
+    404 se o tenant não existe OU o usuário não é membro (indistinguíveis de propósito: não vaza quais tenants existem).
+    """
+    tenant = tenant_store.get_tenant(tenant_ref) or tenant_store.get_tenant_by_slug(tenant_ref)
+    member = tenant_store.get_member(tenant.id, user_id) if tenant else None
+    if not tenant or not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not a member of this tenant")
+    return TenantAccessResponse(tenant_id=tenant.id, tenant_slug=tenant.slug, tier=tenant.tier, role=member.role)
 
 
 @app.get("/tenants/by-slug/{slug}", response_model=TenantResponse)
