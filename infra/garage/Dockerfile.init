@@ -1,0 +1,4 @@
+# Execução única que prepara o Garage (layout, bucket, chave) — ver init.py. Usado por docker-compose.portainer.yml.
+FROM python:3.12-slim
+COPY init.py /init.py
+CMD ["python", "/init.py"]

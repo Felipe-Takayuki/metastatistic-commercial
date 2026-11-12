@@ -238,6 +238,8 @@ docker compose -f docker-compose.yml -f docker-compose.remote-r.yml up -d --buil
 ```
 O worker remoto não enxerga o volume de datasets, então a `api` e o `stat-orchestrator` enviam o Parquet ao **edge** (`engines/r-worker-edge`: token Bearer, `PUT /datasets/{id}`, proxy de `/run`) antes da análise; o código R não muda. Sem worker remoto, limite o R com `R_WORKER_MEM_LIMIT` (ex.: `512m`).
 
+**Portainer / servidor único:** `docker-compose.portainer.yml` é um stack autocontido (sem worker R local, sem montar arquivos do host, DuckDB e containers com teto de memória, só o gateway publica porta). Crie um stack do tipo *Repository* apontando para ele e defina `R_WORKER_URLS`, `R_WORKER_TOKEN` e `JWT_SECRET_KEY` (ver o cabeçalho do arquivo).
+
 ### Configuração (`.env`)
 O compose lê um `.env` na raiz. Há um modelo versionado:
 ```bash

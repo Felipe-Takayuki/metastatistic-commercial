@@ -1,0 +1,186 @@
+# Stack ÚNICO e autocontido para o Portainer (ou qualquer `docker compose up`), pensado para servidor pequeno (~1 GB):
+#   - sem worker R local: as análises vão para o worker R remoto (engines/r-worker-edge), com envio de datasets sob demanda;
+#   - sem montagem de arquivos do host (funciona com o Docker do Portainer em outra máquina): garage.toml e init.py entram em
+#     imagens pequenas construídas pelo próprio compose;
+#   - só o gateway publica porta; ajustes de memória (DuckDB da api limitado, tetos por container).
+#
+# Portainer: Stacks > Add stack > **Repository** (https://github.com/Felipe-Takayuki/metastatistic-commercial, branch main,
+# Compose path `docker-compose.portainer.yml`). Precisa ser "Repository": o compose faz build a partir do código do repositório.
+# O "Web editor" não serve (não tem os contextos de build).
+#
+# Variáveis (Environment variables do stack). OBRIGATÓRIAS:
+#   R_WORKER_URLS   URL do edge do worker R remoto, ex.: https://metastatistic.fdevs.io
+#   R_WORKER_TOKEN  o mesmo token do edge (openssl rand -hex 32)
+#   JWT_SECRET_KEY  openssl rand -hex 32
+# Opcionais: GATEWAY_PORT (8085), ENVIRONMENT (development), AUTH_ENABLED (true), COOKIE_SECURE (true atrás de HTTPS),
+#   STRIPE_* (billing), S3_ACCESS_KEY/S3_SECRET_KEY/GARAGE_RPC_SECRET/GARAGE_ADMIN_TOKEN (Garage interno; ver .env.example).
+
+services:
+  gateway:
+    build: ./services/gateway
+    image: metastatistic-gateway:latest
+    mem_limit: 128m
+    ports:
+      - "${GATEWAY_PORT:-8085}:8080"
+    environment:
+      PORT: "8080"
+      AUTH_SERVICE_URL: "http://platform:8000/_auth"
+      STAT_ORCHESTRATOR_URL: "http://stat-orchestrator:8003"
+      DATA_ENGINE_SERVICE_URL: "http://data-engine-service:8004"
+      BI_REPORT_SERVICE_URL: "http://platform:8000/_bi"
+      EXPORT_SERVICE_URL: "http://platform:8000/_export"
+      BILLING_SERVICE_URL: "http://platform:8000/_billing"
+      AUDIT_SERVICE_URL: "http://platform:8000/_audit"
+      DATA_API_URL: "http://api:8000"
+      WEB_URL: "http://web:80"
+      DEFAULT_TENANT_ID: "default"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?defina JWT_SECRET_KEY (openssl rand -hex 32)}"
+      AUTHZ_ENABLED: "${AUTH_ENABLED:-true}"
+    depends_on:
+      - platform
+      - stat-orchestrator
+      - data-engine-service
+      - api
+      - web
+    restart: unless-stopped
+
+  # audit + auth-tenant + billing + bi-report + export no MESMO processo (ver services/platform-service)
+  platform:
+    build:
+      context: ./services
+      dockerfile: platform-service/Dockerfile
+    image: metastatistic-platform:latest
+    mem_limit: 192m
+    environment:
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?defina JWT_SECRET_KEY (openssl rand -hex 32)}"
+      AUTH_DATABASE_URL: "sqlite:////srv/data/auth/auth_tenant.db"
+      AUDIT_DATABASE_URL: "sqlite:////srv/data/audit/audit.db"
+      BILLING_DATABASE_URL: "sqlite:////srv/data/billing/billing.db"
+      BI_DATABASE_URL: "sqlite:////srv/data/bi/bi_reports.db"
+      AUDIT_SERVICE_URL: "http://localhost:8000/_audit"
+      AUTH_SERVICE_URL: "http://localhost:8000/_auth"
+      TEMP_DIR: "/tmp/export"
+      STRIPE_MOCK_MODE: "${STRIPE_MOCK_MODE:-true}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+    volumes:
+      - auth_data:/srv/data/auth
+      - audit_data:/srv/data/audit
+      - billing_data:/srv/data/billing
+      - bi_data:/srv/data/bi
+    restart: unless-stopped
+
+  stat-orchestrator:
+    build: ./services/stat-orchestrator
+    image: metastatistic-stat-orchestrator:latest
+    mem_limit: 256m
+    environment:
+      PORT: "8003"
+      R_WORKER_URLS: "${R_WORKER_URLS:?defina R_WORKER_URLS (URL do edge do worker R remoto)}"
+      R_WORKER_TOKEN: "${R_WORKER_TOKEN:?defina R_WORKER_TOKEN (o mesmo token do edge)}"
+      R_WORKER_SYNC_DATASETS: "true"
+      DATA_DIR: "/data"
+      CACHE_SIZE_MB: "32"
+      CACHE_MAX_ENTRIES: "128"
+      DEFAULT_ENGINE: "auto"
+      ANALYSIS_TIMEOUT_S: "60"
+    volumes:
+      - datasets:/data:ro
+    restart: unless-stopped
+
+  data-engine-service:
+    build: ./services/data-engine-service
+    image: metastatistic-data-engine-service:latest
+    mem_limit: 256m
+    environment:
+      PORT: "8004"
+      DATA_DIR: "/data"
+      QUERY_MEMORY_LIMIT: "192MB"   # o DuckDB respeita este teto (o padrão é 512MB)
+      QUERY_THREADS: "1"
+    volumes:
+      - datasets:/data:ro
+    restart: unless-stopped
+
+  api:
+    build: ./apps/api
+    image: metastatistic-api:latest
+    mem_limit: 512m
+    environment:
+      R_WORKER_URLS: "${R_WORKER_URLS:?defina R_WORKER_URLS (URL do edge do worker R remoto)}"
+      R_WORKER_TOKEN: "${R_WORKER_TOKEN:?defina R_WORKER_TOKEN (o mesmo token do edge)}"
+      R_WORKER_SYNC_DATASETS: "true"
+      ANALYSIS_TIMEOUT_S: "60"
+      DATA_DIR: "/data"
+      AUTH_ENABLED: "${AUTH_ENABLED:-true}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      QUERY_MEMORY_LIMIT: "256MB"   # o padrão é 1GB, que estouraria o servidor pequeno
+      QUERY_THREADS: "1"
+      STORAGE_BACKEND: "s3"
+      S3_ENDPOINT_URL: "http://garage:3900"
+      S3_REGION: "garage"
+      S3_BUCKET: "${S3_BUCKET:-metastatistic}"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-GK0000000000000000000000de}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-0000000000000000000000000000000000000000000000000000000000de0de0}"
+    volumes:
+      - datasets:/data
+    depends_on:
+      garage-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build: ./apps/web
+    image: metastatistic-web:latest
+    mem_limit: 32m
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Garage (S3) em nó único, sem porta publicada; a configuração vai dentro da imagem.
+  garage:
+    build:
+      context: ./infra/garage
+      dockerfile: Dockerfile
+    image: metastatistic-garage:latest
+    mem_limit: 128m
+    environment:
+      GARAGE_RPC_SECRET: "${GARAGE_RPC_SECRET:-0000000000000000000000000000000000000000000000000000000000de0de1}"
+      GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-dev-garage-admin-token}"
+    volumes:
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Execução única: layout do nó, bucket e chave de acesso (idempotente).
+  garage-init:
+    build:
+      context: ./infra/garage
+      dockerfile: Dockerfile.init
+    image: metastatistic-garage-init:latest
+    mem_limit: 64m
+    environment:
+      GARAGE_ADMIN_URL: "http://garage:3903"
+      GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-dev-garage-admin-token}"
+      S3_BUCKET: "${S3_BUCKET:-metastatistic}"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-GK0000000000000000000000de}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-0000000000000000000000000000000000000000000000000000000000de0de0}"
+    depends_on:
+      - garage
+    restart: "no"
+
+volumes:
+  datasets:
+  auth_data:
+  bi_data:
+  billing_data:
+  audit_data:
+  garage_meta:
+  garage_data:
