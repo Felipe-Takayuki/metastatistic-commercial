@@ -251,6 +251,7 @@ Em desenvolvimento tudo é opcional: o que ficar vazio usa valores de desenvolvi
 |---|---|---|
 | `ENVIRONMENT` | `development` | `production` ativa a validação de segredos (abaixo) |
 | `GATEWAY_PORT` / `API_PORT` / `R_WORKER_PORT` | `8085` / `8020` / `8011` | portas expostas no host |
+| `GATEWAY_BIND` / `API_BIND` | `0.0.0.0` | endereço em que `GATEWAY_PORT`/`API_PORT` escutam no host (ex.: `127.0.0.1` atrás de túnel) |
 | `AUTH_ENABLED` / `COOKIE_SECURE` | `true` / `false` | sessão do app (`COOKIE_SECURE=true` atrás de HTTPS) |
 | `JWT_SECRET_KEY` | chave de dev | assinatura dos JWT (`openssl rand -hex 32`) |
 | `STRIPE_MOCK_MODE` | `true` | simula checkout e webhooks |
