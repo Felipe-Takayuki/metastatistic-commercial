@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict
 
 from pydantic import field_validator, model_validator
@@ -30,6 +31,19 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = DEV_STRIPE_WEBHOOK_SECRET
     stripe_mock_mode: bool = True  # Allows deterministic mock sessions & webhook checks in dev/tests
 
+    # URL pública do app (APP_URL). Quando definida, as URLs de retorno do Stripe (sucesso, cancelamento e portal) partem dela;
+    # BILLING_*_URL_DEFAULT explícitas continuam valendo. Sem APP_URL, valem os padrões de desenvolvimento abaixo.
+    app_url: str = ""
+
+    # IDs de preço do Stripe (criados no painel). STRIPE_PRICE_ID (um preço só, nome usado em outros projetos) vale como o preço
+    # MENSAL do plano Team, a menos que STRIPE_PRICE_TEAM_MONTHLY exista. Sem nada definido ficam os IDs de exemplo
+    # (price_team_monthly...), que só funcionam no modo mock.
+    stripe_price_id: str = ""
+    stripe_price_team_monthly: str = ""
+    stripe_price_team_yearly: str = ""
+    stripe_price_enterprise_monthly: str = ""
+    stripe_price_enterprise_yearly: str = ""
+
     # Frontend Redirection URLs
     billing_success_url_default: str = "http://localhost:3000/billing/success?session_id={CHECKOUT_SESSION_ID}"
     billing_cancel_url_default: str = "http://localhost:3000/billing/canceled"
@@ -42,6 +56,22 @@ class Settings(BaseSettings):
         if value is None or str(value).strip() == "":
             return cls.model_fields[info.field_name].default
         return value
+
+    @model_validator(mode="after")
+    def _derive_redirect_urls(self):
+        base = self.app_url.strip().rstrip("/")
+        if base:
+            if not re.match(r"^https?://", base):
+                base = "https://" + base   # APP_URL=app.exemplo.com -> https://app.exemplo.com (o Stripe exige URL absoluta)
+            derived = {
+                "billing_success_url_default": base + "/?billing=success&session_id={CHECKOUT_SESSION_ID}",
+                "billing_cancel_url_default": base + "/?billing=canceled",
+                "billing_return_url_default": base + "/",
+            }
+            for field, value in derived.items():
+                if field not in self.model_fields_set:   # o que veio explícito (env/argumento) ganha de APP_URL
+                    setattr(self, field, value)
+        return self
 
     @property
     def is_production(self) -> bool:
@@ -67,10 +97,37 @@ class Settings(BaseSettings):
                 )
         elif self.stripe_mock_mode:
             logger.warning("STRIPE_MOCK_MODE ativo: cobranças e webhooks simulados (apenas desenvolvimento).")
+        if not self.stripe_mock_mode:
+            missing = [name for name, price in stripe_price_ids(self).items() if price == PLACEHOLDER_PRICES[name]]
+            if missing:
+                logger.warning(
+                    "Stripe real ligado, mas estes preços ainda são IDs de exemplo (o checkout deles não vai funcionar): %s. "
+                    "Defina STRIPE_PRICE_ID (Team mensal) ou STRIPE_PRICE_TEAM_MONTHLY/_YEARLY e STRIPE_PRICE_ENTERPRISE_MONTHLY/_YEARLY.",
+                    ", ".join(missing),
+                )
         return self
 
 
+PLACEHOLDER_PRICES = {
+    "team_monthly": "price_team_monthly",
+    "team_yearly": "price_team_yearly",
+    "enterprise_monthly": "price_enterprise_monthly",
+    "enterprise_yearly": "price_enterprise_yearly",
+}
+
+
+def stripe_price_ids(s: Settings) -> Dict[str, str]:
+    """ID de preço efetivo de cada plano pago/ciclo: o específico, depois (só Team mensal) STRIPE_PRICE_ID, depois o exemplo."""
+    return {
+        "team_monthly": s.stripe_price_team_monthly.strip() or s.stripe_price_id.strip() or PLACEHOLDER_PRICES["team_monthly"],
+        "team_yearly": s.stripe_price_team_yearly.strip() or PLACEHOLDER_PRICES["team_yearly"],
+        "enterprise_monthly": s.stripe_price_enterprise_monthly.strip() or PLACEHOLDER_PRICES["enterprise_monthly"],
+        "enterprise_yearly": s.stripe_price_enterprise_yearly.strip() or PLACEHOLDER_PRICES["enterprise_yearly"],
+    }
+
+
 settings = Settings()
+_PRICES = stripe_price_ids(settings)
 
 PLANS: Dict[str, Dict[str, Any]] = {
     "community": {
@@ -99,8 +156,8 @@ PLANS: Dict[str, Dict[str, Any]] = {
         "price_monthly": 4900,  # $49.00 USD in cents
         "price_yearly": 49000,  # $490.00 USD in cents (2 months free)
         "currency": "usd",
-        "stripe_price_id_monthly": "price_team_monthly",
-        "stripe_price_id_yearly": "price_team_yearly",
+        "stripe_price_id_monthly": _PRICES["team_monthly"],
+        "stripe_price_id_yearly": _PRICES["team_yearly"],
         "features": ["jasp_engine", "csv_import", "postgres_connector", "team_sharing"],
         "quotas": {
             "max_users": 15,
@@ -117,8 +174,8 @@ PLANS: Dict[str, Dict[str, Any]] = {
         "price_monthly": 29900,  # $299.00 USD in cents
         "price_yearly": 299000,  # $2990.00 USD in cents
         "currency": "usd",
-        "stripe_price_id_monthly": "price_enterprise_monthly",
-        "stripe_price_id_yearly": "price_enterprise_yearly",
+        "stripe_price_id_monthly": _PRICES["enterprise_monthly"],
+        "stripe_price_id_yearly": _PRICES["enterprise_yearly"],
         "features": [
             "jasp_engine",
             "proprietary_engine",

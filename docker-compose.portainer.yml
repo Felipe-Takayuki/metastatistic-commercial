@@ -11,9 +11,11 @@
 # Variáveis (Environment variables do stack). OBRIGATÓRIAS:
 #   R_WORKER_URLS   URL do edge do worker R remoto, ex.: https://metastatistic.fdevs.io
 #   R_WORKER_TOKEN  o mesmo token do edge (openssl rand -hex 32)
-#   JWT_SECRET_KEY  openssl rand -hex 32
+#   JWT_SECRET_KEY  openssl rand -hex 32   (ou JWT_SECRET, o nome usado em outros projetos)
 # Opcionais: GATEWAY_PORT (8085), ENVIRONMENT (development), AUTH_ENABLED (true), COOKIE_SECURE (true atrás de HTTPS),
-#   STRIPE_* (billing), S3_ACCESS_KEY/S3_SECRET_KEY/GARAGE_RPC_SECRET/GARAGE_ADMIN_TOKEN (Garage interno; ver .env.example).
+#   Stripe: STRIPE_MOCK_MODE (true = simulado; false = Stripe real), STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET,
+#   STRIPE_PRICE_ID (preço mensal do plano Team) ou STRIPE_PRICE_TEAM_/ENTERPRISE_ + MONTHLY/YEARLY, APP_URL (URL pública do app),
+#   S3_ACCESS_KEY/S3_SECRET_KEY/GARAGE_RPC_SECRET/GARAGE_ADMIN_TOKEN (Garage interno; ver .env.example).
 
 services:
   gateway:
@@ -35,7 +37,7 @@ services:
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
       ENVIRONMENT: "${ENVIRONMENT:-development}"
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?defina JWT_SECRET_KEY (openssl rand -hex 32)}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-${JWT_SECRET:?defina JWT_SECRET_KEY ou JWT_SECRET (openssl rand -hex 32)}}"
       AUTHZ_ENABLED: "${AUTH_ENABLED:-true}"
     depends_on:
       - platform
@@ -54,7 +56,7 @@ services:
     mem_limit: 192m
     environment:
       ENVIRONMENT: "${ENVIRONMENT:-development}"
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?defina JWT_SECRET_KEY (openssl rand -hex 32)}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-${JWT_SECRET:?defina JWT_SECRET_KEY ou JWT_SECRET (openssl rand -hex 32)}}"
       AUTH_DATABASE_URL: "sqlite:////srv/data/auth/auth_tenant.db"
       AUDIT_DATABASE_URL: "sqlite:////srv/data/audit/audit.db"
       BILLING_DATABASE_URL: "sqlite:////srv/data/billing/billing.db"
@@ -66,6 +68,13 @@ services:
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
       STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY:-}"
       STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+      # URL pública do app (retorno do checkout/portal do Stripe) e IDs de preço; STRIPE_PRICE_ID = preço mensal do plano Team
+      APP_URL: "${APP_URL:-}"
+      STRIPE_PRICE_ID: "${STRIPE_PRICE_ID:-}"
+      STRIPE_PRICE_TEAM_MONTHLY: "${STRIPE_PRICE_TEAM_MONTHLY:-}"
+      STRIPE_PRICE_TEAM_YEARLY: "${STRIPE_PRICE_TEAM_YEARLY:-}"
+      STRIPE_PRICE_ENTERPRISE_MONTHLY: "${STRIPE_PRICE_ENTERPRISE_MONTHLY:-}"
+      STRIPE_PRICE_ENTERPRISE_YEARLY: "${STRIPE_PRICE_ENTERPRISE_YEARLY:-}"
     volumes:
       - auth_data:/srv/data/auth
       - audit_data:/srv/data/audit
