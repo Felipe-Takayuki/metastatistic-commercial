@@ -5,6 +5,7 @@ from typing import List, Optional
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from billing_service.config import PLANS, settings
 from billing_service.db import BillingStore
@@ -18,7 +19,7 @@ from billing_service.models import (
     SubscriptionResponse,
     WebhookEventResponse,
 )
-from billing_service.stripe_client import stripe_client
+from billing_service.stripe_client import StripeUnavailable, stripe_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(StripeUnavailable)
+async def _stripe_unavailable_handler(request: Request, exc: StripeUnavailable):
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
 
 async def notify_tenant_tier_change(tenant_id: str, new_tier: str) -> bool:

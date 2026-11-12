@@ -4,11 +4,25 @@ import uuid
 from typing import Any, Dict, Optional
 
 import stripe
-from billing_service.config import PLANS, settings
+from billing_service.config import PLACEHOLDER_PRICES, PLANS, settings
 
 logger = logging.getLogger(__name__)
 
 stripe.api_key = settings.stripe_secret_key
+
+_SignatureError = getattr(stripe, "SignatureVerificationError", None) or stripe.error.SignatureVerificationError
+
+
+class StripeUnavailable(Exception):
+    """Stripe real ligado (STRIPE_MOCK_MODE=false), mas a chamada não pôde ser feita ou falhou.
+
+    Nunca cai para uma sessão simulada: no modo real, um checkout falso levaria o usuário a uma página que não existe.
+    `status_code`: 503 = configuração ausente (chave/preço), 502 = o Stripe recusou ou não respondeu.
+    """
+
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class StripeClient:
@@ -17,10 +31,19 @@ class StripeClient:
         self.secret_key = settings.stripe_secret_key
         self.webhook_secret = settings.stripe_webhook_secret
 
+    def _require_real(self) -> None:
+        """No modo real exige uma chave de API de verdade; em vez de simular, falha explicando o que falta."""
+        key = self.secret_key.strip()
+        if not key or "placeholder" in key or key.startswith("sk_test_metastatistic"):
+            raise StripeUnavailable(
+                "Stripe real ligado (STRIPE_MOCK_MODE=false), mas STRIPE_SECRET_KEY está ausente ou é de exemplo.", 503
+            )
+
     def get_or_create_customer(self, tenant_id: str, email: Optional[str] = None) -> str:
         """Cria ou recupera um Stripe Customer ID para o tenant."""
-        if self.mock_mode or not self.secret_key or "placeholder" in self.secret_key or self.secret_key.startswith("sk_test_placeholder") or self.secret_key.startswith("sk_test_metastatistic"):
+        if self.mock_mode:
             return f"cus_mock_{tenant_id}"
+        self._require_real()
 
         try:
             customer = stripe.Customer.create(
@@ -29,8 +52,8 @@ class StripeClient:
             )
             return customer.id
         except Exception as e:
-            logger.warning(f"Fallback to mock customer due to Stripe error: {e}")
-            return f"cus_mock_{tenant_id}"
+            logger.error("Stripe: falha ao criar o customer do tenant %s: %s", tenant_id, e)
+            raise StripeUnavailable(f"Stripe recusou a criação do cliente: {e}") from e
 
     def create_checkout_session(
         self,
@@ -47,16 +70,23 @@ class StripeClient:
         if not plan:
             raise ValueError(f"Plan '{plan_id}' does not exist")
 
-        if self.mock_mode or not self.secret_key or "placeholder" in self.secret_key or self.secret_key.startswith("sk_test_placeholder") or self.secret_key.startswith("sk_test_metastatistic"):
+        if self.mock_mode:
             mock_id = f"cs_test_{uuid.uuid4().hex[:16]}"
             return {
                 "session_id": mock_id,
                 "url": f"https://checkout.stripe.com/c/pay/{mock_id}",
                 "customer_id": customer_id,
             }
+        self._require_real()
 
+        price_id = plan.get(f"stripe_price_id_{billing_cycle}")
+        if not price_id or price_id in PLACEHOLDER_PRICES.values():
+            raise StripeUnavailable(
+                f"Preço do Stripe não configurado para {plan_id}/{billing_cycle}: defina "
+                f"STRIPE_PRICE_{plan_id.upper()}_{billing_cycle.upper()} (ou STRIPE_PRICE_ID para Team mensal).",
+                503,
+            )
         try:
-            price_id = plan.get(f"stripe_price_id_{billing_cycle}")
             session = stripe.checkout.Session.create(
                 customer=customer_id,
                 payment_method_types=["card"],
@@ -78,21 +108,17 @@ class StripeClient:
                 "customer_id": customer_id,
             }
         except Exception as e:
-            logger.warning(f"Error creating real Stripe checkout session, falling back to mock: {e}")
-            mock_id = f"cs_test_{uuid.uuid4().hex[:16]}"
-            return {
-                "session_id": mock_id,
-                "url": f"https://checkout.stripe.com/c/pay/{mock_id}",
-                "customer_id": customer_id,
-            }
+            logger.error("Stripe: falha ao criar o checkout (%s/%s, tenant %s): %s", plan_id, billing_cycle, tenant_id, e)
+            raise StripeUnavailable(f"Stripe recusou a criação do checkout: {e}") from e
 
     def create_portal_session(self, customer_id: str, return_url: str) -> Dict[str, Any]:
         """Cria uma sessão do Stripe Customer Portal para gestão de assinatura e cartões."""
-        if self.mock_mode or not self.secret_key or "placeholder" in self.secret_key or self.secret_key.startswith("sk_test_placeholder") or self.secret_key.startswith("sk_test_metastatistic"):
+        if self.mock_mode:
             mock_id = f"bps_{uuid.uuid4().hex[:16]}"
             return {
                 "url": f"https://billing.stripe.com/p/session/{mock_id}?customer={customer_id}&return_url={return_url}"
             }
+        self._require_real()
 
         try:
             portal = stripe.billing_portal.Session.create(
@@ -101,11 +127,8 @@ class StripeClient:
             )
             return {"url": portal.url}
         except Exception as e:
-            logger.warning(f"Error creating portal session, falling back to mock: {e}")
-            mock_id = f"bps_{uuid.uuid4().hex[:16]}"
-            return {
-                "url": f"https://billing.stripe.com/p/session/{mock_id}?customer={customer_id}&return_url={return_url}"
-            }
+            logger.error("Stripe: falha ao criar a sessão do portal (customer %s): %s", customer_id, e)
+            raise StripeUnavailable(f"Stripe recusou a criação do portal: {e}") from e
 
     def verify_webhook_event(self, payload_bytes: bytes, sig_header: Optional[str]) -> Dict[str, Any]:
         """
@@ -129,12 +152,15 @@ class StripeClient:
         if not sig_header:
             raise ValueError("Missing Stripe-Signature header")
 
+        if not self.webhook_secret.strip():
+            raise ValueError("STRIPE_WEBHOOK_SECRET não configurado: não dá para validar a assinatura")
+
         try:
             event = stripe.Webhook.construct_event(
                 payload_bytes, sig_header, self.webhook_secret
             )
             return event
-        except stripe.error.SignatureVerificationError as e:
+        except _SignatureError as e:
             raise ValueError(f"Invalid webhook signature: {e}")
         except Exception as e:
             raise ValueError(f"Webhook processing error: {e}")
