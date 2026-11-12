@@ -5,6 +5,7 @@ import httpx
 
 from app.config import settings
 from app.engines.base import StatisticalEngine
+from app.remote_datasets import RemoteDatasets, RemoteSyncError, is_dataset_missing
 
 
 class REngineError(Exception):
@@ -22,6 +23,11 @@ class RStatisticalEngine(StatisticalEngine):
         self._timeout_s = timeout_s or settings.analysis_timeout_s
         self._next_worker_idx = 0
         self._lock = asyncio.Lock()
+        self._remote = RemoteDatasets(settings.data_dir) if settings.r_worker_sync_datasets else None   # worker R em outra máquina
+
+    @staticmethod
+    def _auth_headers() -> dict[str, str]:
+        return {"Authorization": f"Bearer {settings.r_worker_token}"} if settings.r_worker_token else {}
 
     @property
     def name(self) -> str:
@@ -43,7 +49,7 @@ class RStatisticalEngine(StatisticalEngine):
         worker_statuses = {}
         healthy_count = 0
 
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=3.0, headers=self._auth_headers()) as client:
             for url in self._urls:
                 try:
                     resp = await client.get(f"{url}/health")
@@ -73,9 +79,17 @@ class RStatisticalEngine(StatisticalEngine):
 
         req_payload = {**payload, "timeout_s": timeout}
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout + 30.0, connect=5.0)) as client:
+        dataset_id = req_payload.get("dataset_id")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout + 30.0, connect=5.0), headers=self._auth_headers()) as client:
             try:
+                if self._remote and isinstance(dataset_id, str):
+                    await self._remote.ensure(client, worker_url, dataset_id)
                 resp = await client.post(f"{worker_url}/run", json=req_payload)
+                if self._remote and isinstance(dataset_id, str) and is_dataset_missing(resp.status_code, resp.text):
+                    await self._remote.ensure(client, worker_url, dataset_id, force=True)   # o edge descartou o arquivo (limite de cache)
+                    resp = await client.post(f"{worker_url}/run", json=req_payload)
+            except RemoteSyncError as exc:
+                raise REngineError(exc.status, exc.message) from exc
             except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
                 raise REngineError(503, f"Falha ao conectar ao worker R ({worker_url}): {exc}") from exc
             except httpx.TimeoutException as exc:

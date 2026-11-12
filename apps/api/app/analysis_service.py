@@ -9,6 +9,7 @@ import httpx
 
 from .config import settings
 from .pool import ConnectFailure, PoolError, WorkerPool, WorkerReply, WorkerTimeout
+from .remote_datasets import RemoteDatasets, RemoteSyncError, is_dataset_missing
 
 
 class AnalysisFailed(PoolError):
@@ -120,11 +121,25 @@ def build_service() -> AnalysisService:
         # leitura = limite da análise + folga para o worker recriar o motor depois de um timeout anterior
         timeout=httpx.Timeout(settings.analysis_timeout_s + 100, connect=3.0),
         limits=httpx.Limits(max_connections=max(4, len(urls) * 2)),
+        headers={"Authorization": f"Bearer {settings.r_worker_token}"} if settings.r_worker_token else None,
     )
+    remote = RemoteDatasets(settings.data_dir) if settings.r_worker_sync_datasets else None   # worker R em outra máquina
 
     async def send(url: str, payload: dict[str, Any]) -> WorkerReply:
+        dataset_id = payload.get("dataset_id")
         try:
+            if remote and isinstance(dataset_id, str):
+                await remote.ensure(client, url, dataset_id)
             resp = await client.post(f"{url}/run", json=payload)
+            if remote and isinstance(dataset_id, str) and is_dataset_missing(resp.status_code, resp.text):
+                await remote.ensure(client, url, dataset_id, force=True)   # o edge descartou o arquivo (limite de cache)
+                resp = await client.post(f"{url}/run", json=payload)
+        except RemoteSyncError as exc:
+            if exc.status == 503:
+                raise ConnectFailure(exc.message) from exc   # worker remoto fora do ar: o pool o tira de circulação
+            if exc.status == 504:
+                raise TimeoutError(exc.message) from exc
+            return WorkerReply(502, {"message": exc.message})
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             raise ConnectFailure(str(exc)) from exc
         except httpx.TimeoutException as exc:

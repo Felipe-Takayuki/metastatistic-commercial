@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     r_worker_url: str = "http://localhost:8001"
     r_worker_urls: str = ""  # lista separada por vírgulas (o pool); vazio = usa só r_worker_url
+    # Worker R em outra máquina (engines/r-worker-edge): token do edge e envio do Parquet antes da análise.
+    r_worker_token: str = ""
+    r_worker_sync_datasets: bool = False
 
     # Armazenamento e Multi-tenancy
     database_url: str = ""
