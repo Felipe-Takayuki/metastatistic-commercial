@@ -46,6 +46,10 @@ def call(method: str, path: str, body=None, query: dict | None = None):
         raise AdminError(exc.code, exc.read().decode(errors="replace")[:300]) from exc
 
 
+def _is_not_found(exc: "AdminError") -> bool:
+    return exc.status == 404 or (exc.status == 400 and "not found" in str(exc).lower())
+
+
 def retry(what: str, fn, seconds: float = WAIT_S):
     """O Garage leva alguns segundos para aceitar chamadas depois de subir e depois de aplicar o layout."""
     deadline = time.monotonic() + seconds
@@ -74,7 +78,7 @@ def ensure_bucket() -> str:
     try:
         return call("GET", "/bucket", query={"globalAlias": BUCKET})["id"]
     except AdminError as exc:
-        if exc.status != 404:
+        if not _is_not_found(exc):
             raise
     bucket_id = call("POST", "/bucket", {"globalAlias": BUCKET})["id"]
     print(f"bucket: '{BUCKET}' criado")
@@ -85,7 +89,8 @@ def ensure_key() -> None:
     try:
         info = call("GET", "/key", query={"id": KEY_ID, "showSecretKey": "true"})
     except AdminError as exc:
-        if exc.status != 404:
+        # chave inexistente: o Garage 1.0 responde 400 "Access key not found" (versões antigas, 404)
+        if not _is_not_found(exc):
             raise
         call("POST", "/key/import", {"name": KEY_NAME, "accessKeyId": KEY_ID, "secretAccessKey": SECRET})
         print(f"chave: {KEY_ID} importada")
