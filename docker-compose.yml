@@ -150,12 +150,14 @@ services:
   # Armazenamento de objetos compatível com S3 (nó único). Sem porta publicada: só a `api` o alcança, pela rede do compose.
   # Para inspecionar:  docker compose exec garage /garage status
   garage:
-    image: dxflrs/garage:v1.0.1
+    build:
+      context: ./infra/garage
+      dockerfile: Dockerfile
+    image: metastatistic-garage:latest
     environment:
       GARAGE_RPC_SECRET: "${GARAGE_RPC_SECRET:-0000000000000000000000000000000000000000000000000000000000de0de1}"
       GARAGE_ADMIN_TOKEN: "${GARAGE_ADMIN_TOKEN:-dev-garage-admin-token}"
     volumes:
-      - ./infra/garage/garage.toml:/etc/garage.toml:ro
       - garage_meta:/var/lib/garage/meta
       - garage_data:/var/lib/garage/data
     healthcheck:
@@ -167,7 +169,10 @@ services:
 
   # Execução única: define o layout do nó, cria o bucket e importa a chave de acesso (idempotente).
   garage-init:
-    image: python:3.12-slim
+    build:
+      context: ./infra/garage
+      dockerfile: Dockerfile.init
+    image: metastatistic-garage-init:latest
     command: ["python", "/init.py"]
     environment:
       GARAGE_ADMIN_URL: "http://garage:3903"
@@ -175,8 +180,6 @@ services:
       S3_BUCKET: "${S3_BUCKET:-metastatistic}"
       S3_ACCESS_KEY: "${S3_ACCESS_KEY:-GK0000000000000000000000de}"
       S3_SECRET_KEY: "${S3_SECRET_KEY:-0000000000000000000000000000000000000000000000000000000000de0de0}"
-    volumes:
-      - ./infra/garage/init.py:/init.py:ro
     depends_on:
       - garage
     restart: "no"
