@@ -121,6 +121,11 @@ def test_determine_target_url():
     assert determine_target_url("/api/dashboards") == f"{settings.data_api_url}/dashboards"
     assert determine_target_url("/api/dashboards/d1") == f"{settings.data_api_url}/dashboards/d1"
     assert determine_target_url("/api/reportsfoo") != f"{settings.data_api_url}/reportsfoo"
+    for resource, path in (("queries", "run"), ("transforms", "preview"), ("analyses", "run"), ("audit", "")):
+        assert determine_target_url(f"/api/{resource}/{path}".rstrip("/")) == f"{settings.data_api_url}/{resource}/{path}".rstrip("/")
+    # as versões /api/v1 continuam nos serviços dedicados
+    assert determine_target_url("/api/v1/queries/run") == f"{settings.data_engine_service_url}/queries/run"
+    assert determine_target_url("/api/v1/analyses/run") == f"{settings.stat_orchestrator_url}/analyses/run"
 
     # Export Service
     assert determine_target_url("/api/v1/export/generate") == f"{settings.export_service_url}/export/generate"

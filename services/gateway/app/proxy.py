@@ -43,6 +43,10 @@ API_DIRECT_PREFIXES = {
 }
 
 
+# Recursos que o app web usa sem /v1 e que o apps/api implementa (ver determine_target_url)
+WEB_API_RESOURCES = ("reports", "dashboards", "queries", "transforms", "analyses", "audit")
+
+
 def determine_target_url(path: str) -> str:
     """
     Roteia o caminho da requisição para o serviço downstream apropriado:
@@ -61,10 +65,11 @@ def determine_target_url(path: str) -> str:
     ):
         return f"{settings.web_url.rstrip('/')}{clean_path if clean_path else '/'}"
 
-    # Relatórios e dashboards do app web (/api/reports, /api/dashboards, sem /v1) são do apps/api: lá moram o contrato do
-    # editor (blocos com sql/chart/markdown, coleções, dono, can_edit). O bi-report-service guarda blocos num formato
-    # próprio (content/order) e descartaria esses campos; ele continua atendendo /api/v1/reports e /api/v1/dashboards.
-    for resource in ("reports", "dashboards"):
+    # O app web fala /api/<recurso> (sem /v1) e esse contrato é do apps/api: lá moram os relatórios e dashboards com blocos
+    # do editor (sql/chart/markdown, coleções, dono, can_edit), as consultas SQL pelos nomes dos datasets, as transformações,
+    # as análises com checagem de acesso ao dataset e a auditoria do app. Os serviços dedicados (bi-report, data-engine,
+    # stat-orchestrator, audit) têm formatos próprios e continuam atendendo /api/v1/<recurso>.
+    for resource in WEB_API_RESOURCES:
         if clean_path == f"/api/{resource}" or clean_path.startswith(f"/api/{resource}/"):
             return f"{settings.data_api_url.rstrip('/')}{clean_path[4:]}"
 
