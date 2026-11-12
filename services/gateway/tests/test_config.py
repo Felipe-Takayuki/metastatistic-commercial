@@ -60,3 +60,12 @@ def test_validation_error_does_not_leak_secret():
     with pytest.raises(ValidationError) as exc:
         Settings(environment="production", jwt_secret_key="SUPERSECRET-too-short")
     assert "SUPERSECRET" not in str(exc.value)
+
+
+def test_production_rejects_disabled_authz():
+    with pytest.raises(ValidationError, match="AUTHZ_ENABLED=false"):
+        Settings(environment="production", jwt_secret_key=STRONG_SECRET, authz_enabled=False)
+
+
+def test_authz_is_enabled_by_default():
+    assert Settings().authz_enabled is True

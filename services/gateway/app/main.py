@@ -6,6 +6,7 @@ import websockets
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.authz import fetch_identity
 from app.config import settings
 from app.proxy import proxy_request
 from app.tenant_resolver import tenant_middleware
@@ -189,6 +190,13 @@ async def route_root_files(request: Request, filename: str) -> Response:
 # Proxy para WebSocket de colaboração em tempo real
 @app.websocket("/ws/{path:path}")
 async def websocket_proxy(websocket: WebSocket, path: str):
+    if settings.authz_enabled:
+        # O handshake do WebSocket leva o cookie de sessão; sem sessão válida, recusa antes de aceitar a conexão.
+        client = http_client or httpx.AsyncClient(timeout=5.0)
+        identity, failure = await fetch_identity(client, websocket.headers.get("cookie"))
+        if failure or not identity:
+            await websocket.close(code=1008)  # policy violation
+            return
     await websocket.accept()
     ws_target_base = settings.bi_report_service_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
     query_str = str(websocket.query_params)

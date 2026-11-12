@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     web_url: str = "http://localhost:3000"
     default_tenant_id: str = "default"
     environment: str = "development"
+    # Autenticação/autorização no gateway (sessão do apps/api + associação ao tenant). Desligar só com AUTH_ENABLED=false.
+    authz_enabled: bool = True
+    authz_cache_ttl_s: float = 5.0  # cache de associações POSITIVAS ao tenant (remoção de membro vale em até este tempo)
     jwt_secret_key: str = DEV_JWT_SECRET
     port: int = 8080
     host: str = "0.0.0.0"
@@ -44,6 +47,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _check_secrets(self):
         if self.is_production:
+            if not self.authz_enabled:
+                raise ValueError(
+                    "Configuração insegura com ENVIRONMENT=production: AUTHZ_ENABLED=false desliga a autenticação e o "
+                    "isolamento de tenants no gateway."
+                )
             if self.jwt_secret_key in INSECURE_JWT_SECRETS or len(self.jwt_secret_key) < MIN_JWT_SECRET_LENGTH:
                 raise ValueError(
                     "Configuração insegura com ENVIRONMENT=production: JWT_SECRET_KEY está ausente, é um valor padrão "

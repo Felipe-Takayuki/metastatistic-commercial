@@ -1,7 +1,8 @@
 from typing import Optional
 import httpx
 from fastapi import Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from app.authz import SPOOFABLE_HEADERS, Decision, authorize
 from app.config import settings
 from app.tenant_resolver import resolve_tenant
 
@@ -17,6 +18,8 @@ HOP_BY_HOP_HEADERS = {
     "host",
     "content-length",
 }
+
+DENY_ERRORS = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 503: "Service Unavailable"}
 
 API_DIRECT_PREFIXES = {
     "api",
@@ -211,31 +214,13 @@ def determine_target_url(path: str) -> str:
 
 async def proxy_request(request: Request, path: str, client: Optional[httpx.AsyncClient] = None) -> Response:
     """
-    Encaminha a requisição assincronamente para o serviço de destino,
-    injetando os headers de tenant e preservando o corpo e os parâmetros.
+    Autentica/autoriza e encaminha a requisição assincronamente para o serviço de destino.
+
+    O tenant pedido pelo cliente (header, subdomínio, JWT) NÃO é confiável: com `authz_enabled`, o gateway valida a sessão,
+    confere a associação ao tenant, descarta os headers de identidade do cliente e injeta os verificados.
     """
     target_url = determine_target_url(path)
-    tenant_id, tenant_slug = resolve_tenant(dict(request.headers), host=request.headers.get("host"))
-
-    # Monta cabeçalhos encaminhados sem duplicatas
-    fwd_headers = {}
-    for key, value in request.headers.items():
-        low_key = key.lower()
-        if low_key not in HOP_BY_HOP_HEADERS and low_key not in {"x-tenant-id", "x-tenant-slug"}:
-            fwd_headers[key] = value
-
-    # Injeta identificação de tenant canonicalizada
-    fwd_headers["X-Tenant-ID"] = tenant_id
-    if tenant_slug:
-        fwd_headers["X-Tenant-Slug"] = tenant_slug
-
-    # Headers de proxy reverso
-    client_host = request.client.host if request.client else "unknown"
-    fwd_headers["X-Forwarded-For"] = client_host
-    fwd_headers["X-Forwarded-Proto"] = request.url.scheme
-    if request.headers.get("host"):
-        fwd_headers["X-Forwarded-Host"] = request.headers["host"]
-
+    requested_tenant_id, requested_tenant_slug = resolve_tenant(dict(request.headers), host=request.headers.get("host"))
     body = await request.body()
     query_params = dict(request.query_params)
 
@@ -244,7 +229,55 @@ async def proxy_request(request: Request, path: str, client: Optional[httpx.Asyn
         client = httpx.AsyncClient(timeout=60.0)
         close_client = True
 
+    tenant_id, tenant_slug = requested_tenant_id, requested_tenant_slug
     try:
+        decision: Optional[Decision] = None
+        if settings.authz_enabled:
+            decision = await authorize(
+                method=request.method,
+                path=path,
+                target_url=target_url,
+                headers=dict(request.headers),
+                query_params=query_params,
+                host=request.headers.get("host"),
+                body=body,
+                client=client,
+            )
+            if not decision.allowed:
+                return JSONResponse(
+                    status_code=decision.status,
+                    content={"error": DENY_ERRORS.get(decision.status, "Forbidden"), "detail": decision.detail},
+                    headers={"X-Tenant-ID": requested_tenant_id},
+                )
+            query_params.update(decision.query_overrides)
+
+        # Com a autorização ativa, o tenant efetivo é o verificado; sem identidade (rota pública) vale o pedido, sem confiança.
+        tenant_id = decision.tenant_id if decision and decision.tenant_id else requested_tenant_id
+        tenant_slug = decision.tenant_slug if decision and decision.tenant_id else requested_tenant_slug
+
+        # Monta cabeçalhos encaminhados sem duplicatas; identidade vinda do cliente nunca passa.
+        fwd_headers = {}
+        for key, value in request.headers.items():
+            low_key = key.lower()
+            if low_key not in HOP_BY_HOP_HEADERS and low_key not in SPOOFABLE_HEADERS:
+                fwd_headers[key] = value
+
+        fwd_headers["X-Tenant-ID"] = tenant_id
+        if tenant_slug:
+            fwd_headers["X-Tenant-Slug"] = tenant_slug
+        if decision and decision.identity:
+            fwd_headers["X-User-ID"] = decision.identity.user_id
+            fwd_headers["X-User-Role"] = decision.identity.role
+            if decision.tenant_role:
+                fwd_headers["X-Tenant-Role"] = decision.tenant_role
+
+        # Headers de proxy reverso
+        client_host = request.client.host if request.client else "unknown"
+        fwd_headers["X-Forwarded-For"] = client_host
+        fwd_headers["X-Forwarded-Proto"] = request.url.scheme
+        if request.headers.get("host"):
+            fwd_headers["X-Forwarded-Host"] = request.headers["host"]
+
         req = client.build_request(
             method=request.method,
             url=target_url,

@@ -30,6 +30,8 @@ services:
       DEFAULT_TENANT_ID: "default"
       ENVIRONMENT: "${ENVIRONMENT:-development}"
       JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
+      # autenticação/autorização de tenant no gateway; segue o mesmo AUTH_ENABLED do app (false = modo sem login)
+      AUTHZ_ENABLED: "${AUTH_ENABLED:-true}"
     depends_on:
       - auth-tenant-service
       - stat-orchestrator
