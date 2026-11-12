@@ -1,0 +1,61 @@
+# Máquina do WORKER R (separada do servidor principal): worker R (jaspTools) + edge (token e envio de datasets).
+#
+#   cp .env.example .env     # defina R_WORKER_TOKEN (openssl rand -hex 32) e, se quiser TLS, R_WORKER_DOMAIN
+#   docker compose -f docker-compose.r-worker.yml up -d --build                 # edge em http://<máquina>:8090
+#   docker compose -f docker-compose.r-worker.yml --profile tls up -d --build   # + Caddy com HTTPS automático (R_WORKER_DOMAIN)
+#
+# SEGURANÇA: o token e os datasets viajam pela rede. Em HTTP puro isso só é aceitável dentro de uma rede privada
+# (WireGuard/Tailscale). Pela internet use o perfil `tls`. O edge só escuta em 127.0.0.1 por padrão (R_EDGE_BIND).
+services:
+  r-worker:
+    build: ./engines/r-worker
+    image: metastatistic-r-worker:spike
+    init: true
+    restart: unless-stopped
+    mem_limit: ${R_WORKER_MEM_LIMIT:-1536m}
+    cpus: 2
+    environment:
+      ANALYSIS_TIMEOUT_S: "60"
+    volumes:
+      - r_datasets:/data:ro   # o edge grava; o worker só lê
+
+  r-worker-edge:
+    build: ./engines/r-worker-edge
+    image: metastatistic-r-worker-edge:latest
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      R_WORKER_TOKEN: "${R_WORKER_TOKEN:?defina R_WORKER_TOKEN (openssl rand -hex 32, mínimo 32 caracteres)}"
+      R_WORKER_URL: "http://r-worker:8000"
+      DATA_DIR: "/data"
+      MAX_CACHE_MB: "${R_CACHE_MB:-2048}"   # datasets em cache; passou disso, saem os menos usados (a api reenvia se precisar)
+    volumes:
+      - r_datasets:/data
+    ports:
+      - "${R_EDGE_BIND:-127.0.0.1}:${R_EDGE_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - r-worker
+
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      R_WORKER_DOMAIN: "${R_WORKER_DOMAIN:-localhost}"   # com o perfil tls, defina o domínio real (DNS apontando para esta máquina)
+    volumes:
+      - ./infra/r-worker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - r-worker-edge
+
+volumes:
+  r_datasets:
+  caddy_data:

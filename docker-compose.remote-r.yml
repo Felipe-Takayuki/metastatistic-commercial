@@ -1,0 +1,22 @@
+# Servidor PRINCIPAL sem worker R local: as análises vão para um worker R em OUTRA máquina (docker-compose.r-worker.yml).
+# Economiza até R_WORKER_MEM_LIMIT (1,5 GB por padrão) de RAM no servidor principal.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.remote-r.yml up -d --build
+#
+# Exige no .env:  R_WORKER_URLS (ex.: https://r.seudominio.com ou http://100.x.y.z:8090) e R_WORKER_TOKEN (o mesmo da outra máquina).
+# Como o worker não enxerga o volume de datasets daqui, a api/stat-orchestrator enviam o Parquet ao edge antes da análise.
+services:
+  r-worker-1:
+    profiles: ["local-r"]   # não sobe (só com --profile local-r)
+
+  api:
+    environment:
+      R_WORKER_URLS: "${R_WORKER_URLS:?defina R_WORKER_URLS no .env (URL do edge do worker R remoto)}"
+      R_WORKER_TOKEN: "${R_WORKER_TOKEN:?defina R_WORKER_TOKEN no .env (o mesmo token do edge)}"
+      R_WORKER_SYNC_DATASETS: "true"
+
+  stat-orchestrator:
+    environment:
+      R_WORKER_URLS: "${R_WORKER_URLS:?defina R_WORKER_URLS no .env (URL do edge do worker R remoto)}"
+      R_WORKER_TOKEN: "${R_WORKER_TOKEN:?defina R_WORKER_TOKEN no .env (o mesmo token do edge)}"
+      R_WORKER_SYNC_DATASETS: "true"

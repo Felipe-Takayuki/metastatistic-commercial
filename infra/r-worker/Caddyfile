@@ -1,0 +1,5 @@
+# HTTPS automático (Let's Encrypt) na frente do edge do worker R. Exige que R_WORKER_DOMAIN aponte para esta máquina
+# e que as portas 80/443 estejam abertas.
+{$R_WORKER_DOMAIN} {
+	reverse_proxy r-worker-edge:8090
+}

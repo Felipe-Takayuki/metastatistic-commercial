@@ -228,6 +228,16 @@ Serviços acessíveis (a porta do gateway é parametrizável; padrão `8085`):
 * **Healthcheck Agregador**: `http://localhost:8085/health` — lista `auth_tenant_service`, `stat_orchestrator`, `data_engine`, `bi_report_service`, `export_service`, `data_api`, `billing_service` e `audit_service`
 * **Painel de Pagamentos Stripe (Mock/Live)**: Integrado diretamente no botão "Planos" da interface e no fluxo de upgrade.
 
+### Servidor pequeno (≈1 GB de RAM)
+Medido com carga leve, fora Docker/SO: `platform` ~78 MB, `stat-orchestrator` ~170 MB, `data-engine-service` ~110 MB, `api` ~140 MB (+28 MB do boto3), `gateway` ~66 MB, nginx ~7 MB. O que pesa é o **worker R** (limite de 1,5 GB), então a recomendação é rodá-lo em **outra máquina**:
+```bash
+# máquina do worker R (R_WORKER_TOKEN no .env; + --profile tls para HTTPS com Caddy)
+docker compose -f docker-compose.r-worker.yml up -d --build
+# servidor principal (R_WORKER_URLS e o mesmo R_WORKER_TOKEN no .env)
+docker compose -f docker-compose.yml -f docker-compose.remote-r.yml up -d --build
+```
+O worker remoto não enxerga o volume de datasets, então a `api` e o `stat-orchestrator` enviam o Parquet ao **edge** (`engines/r-worker-edge`: token Bearer, `PUT /datasets/{id}`, proxy de `/run`) antes da análise; o código R não muda. Sem worker remoto, limite o R com `R_WORKER_MEM_LIMIT` (ex.: `512m`).
+
 ### Configuração (`.env`)
 O compose lê um `.env` na raiz. Há um modelo versionado:
 ```bash

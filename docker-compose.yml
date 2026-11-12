@@ -6,7 +6,7 @@ x-r-worker: &r-worker
   image: metastatistic-r-worker:spike
   init: true
   restart: unless-stopped
-  mem_limit: 1536m
+  mem_limit: ${R_WORKER_MEM_LIMIT:-1536m}   # em VPS pequena, reduza (ex.: 512m)
   cpus: 2
   environment:
     ANALYSIS_TIMEOUT_S: "60"
@@ -84,7 +84,9 @@ services:
       - "127.0.0.1:8003:8003"
     environment:
       PORT: "8003"
-      R_WORKER_URLS: "http://r-worker-1:8000"
+      R_WORKER_URLS: "${R_WORKER_URLS:-http://r-worker-1:8000}"
+      R_WORKER_TOKEN: "${R_WORKER_TOKEN:-}"
+      R_WORKER_SYNC_DATASETS: "${R_WORKER_SYNC_DATASETS:-false}"
       DATA_DIR: "/data"
       CACHE_SIZE_MB: "64"
       CACHE_MAX_ENTRIES: "256"
@@ -93,7 +95,9 @@ services:
     volumes:
       - datasets:/data:ro
     depends_on:
-      - r-worker-1
+      r-worker-1:
+        condition: service_started
+        required: false   # fica de fora com docker-compose.remote-r.yml
     restart: unless-stopped
 
   data-engine-service:
@@ -118,7 +122,10 @@ services:
     ports:
       - "${API_PORT:-8020}:8000"
     environment:
-      R_WORKER_URLS: "http://r-worker-1:8000"
+      # worker R local por padrão; para um worker em outra máquina use docker-compose.remote-r.yml (ver .env.example)
+      R_WORKER_URLS: "${R_WORKER_URLS:-http://r-worker-1:8000}"
+      R_WORKER_TOKEN: "${R_WORKER_TOKEN:-}"
+      R_WORKER_SYNC_DATASETS: "${R_WORKER_SYNC_DATASETS:-false}"
       ANALYSIS_TIMEOUT_S: "60"
       DATA_DIR: "/data"
       AUTH_ENABLED: "${AUTH_ENABLED:-true}"
@@ -135,6 +142,7 @@ services:
     depends_on:
       r-worker-1:
         condition: service_started
+        required: false   # fica de fora com docker-compose.remote-r.yml
       garage-init:
         condition: service_completed_successfully
     restart: unless-stopped
