@@ -114,6 +114,14 @@ def test_determine_target_url():
     assert determine_target_url("/dashboards/dash_1") == f"{settings.bi_report_service_url}/dashboards/dash_1"
     assert determine_target_url("/ws/reports/rep_1") == f"{settings.bi_report_service_url}/ws/reports/rep_1"
 
+    # O app web fala /api/reports e /api/dashboards (sem /v1): isso é do apps/api, que guarda os blocos do editor intactos
+    assert determine_target_url("/api/reports") == f"{settings.data_api_url}/reports"
+    assert determine_target_url("/api/reports/rep_1") == f"{settings.data_api_url}/reports/rep_1"
+    assert determine_target_url("/api/reports/rep_1/collection") == f"{settings.data_api_url}/reports/rep_1/collection"
+    assert determine_target_url("/api/dashboards") == f"{settings.data_api_url}/dashboards"
+    assert determine_target_url("/api/dashboards/d1") == f"{settings.data_api_url}/dashboards/d1"
+    assert determine_target_url("/api/reportsfoo") != f"{settings.data_api_url}/reportsfoo"
+
     # Export Service
     assert determine_target_url("/api/v1/export/generate") == f"{settings.export_service_url}/export/generate"
     assert determine_target_url("/export/docx") == f"{settings.export_service_url}/export/docx"

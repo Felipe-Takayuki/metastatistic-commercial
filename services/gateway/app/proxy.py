@@ -61,6 +61,13 @@ def determine_target_url(path: str) -> str:
     ):
         return f"{settings.web_url.rstrip('/')}{clean_path if clean_path else '/'}"
 
+    # Relatórios e dashboards do app web (/api/reports, /api/dashboards, sem /v1) são do apps/api: lá moram o contrato do
+    # editor (blocos com sql/chart/markdown, coleções, dono, can_edit). O bi-report-service guarda blocos num formato
+    # próprio (content/order) e descartaria esses campos; ele continua atendendo /api/v1/reports e /api/v1/dashboards.
+    for resource in ("reports", "dashboards"):
+        if clean_path == f"/api/{resource}" or clean_path.startswith(f"/api/{resource}/"):
+            return f"{settings.data_api_url.rstrip('/')}{clean_path[4:]}"
+
     # Normaliza rotas /api/* legadas sem prefixo /v1 para /api/v1/*
     if clean_path.startswith("/api/") and not clean_path.startswith("/api/v1/"):
         clean_path = "/api/v1" + clean_path[4:]
