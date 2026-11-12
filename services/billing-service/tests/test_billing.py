@@ -3,9 +3,9 @@ import pytest
 import respx
 from httpx import ASGITransport, AsyncClient, Response
 
-from app.config import settings
-from app.db import BillingStore
-from app.main import app, get_billing_store
+from billing_service.config import settings
+from billing_service.db import BillingStore
+from billing_service.main import app, get_billing_store
 
 
 @pytest.fixture

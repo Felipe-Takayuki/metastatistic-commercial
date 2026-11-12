@@ -4,7 +4,7 @@ import docx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from export_service.main import app
 
 SAMPLE_PAYLOAD = {
     "title": "Clinical Trial Efficacy Evaluation",

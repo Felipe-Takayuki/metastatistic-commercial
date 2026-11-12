@@ -195,6 +195,8 @@ Roadmap completo e dívida técnica em [`PLAN.md`](PLAN.md); relatórios por fas
 O repositório está organizado como um monorepo moderno gerenciado via `pnpm-workspace.yaml`:
 
 ### Microsserviços e Backend
+> **Processo `platform`:** no `docker-compose.yml`, `auth-tenant`, `billing`, `bi-report`, `export` e `audit` rodam **no mesmo processo** (`services/platform-service`, sob os prefixos `/_auth`, `/_billing`, `/_bi`, `/_export`, `/_audit`). Cada um continua sendo um app FastAPI independente (com Dockerfile e banco próprios; o Helm segue implantando um a um); juntos economizam ~230 MB de RAM. As portas citadas abaixo valem para a execução individual. No modo `platform` os bancos são `AUTH_`/`AUDIT_`/`BILLING_`/`BI_DATABASE_URL`.
+
 * **`services/gateway`** (porta interna `8080`, exposta em `${GATEWAY_PORT:-8085}`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
 * **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados, SSO SAML 2.0 / OIDC e SCIM 2.0 (os eventos de auditoria são enviados ao `audit-service`).
 * **`services/stat-orchestrator`** (porta `8003`): Orquestrador de computação analítica com fila assíncrona priorizada por QoS (clientes VIP furam fila), cache determinístico LRU por hash SHA-256 e roteador inteligente Dual-Engine.

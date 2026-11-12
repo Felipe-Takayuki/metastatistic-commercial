@@ -4,12 +4,12 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
-from app.generators.docx_gen import generate_docx
-from app.generators.html_pdf_gen import generate_html
-from app.generators.latex_gen import generate_latex
-from app.generators.markdown_gen import generate_markdown
-from app.schemas import ExportFormat, ExportRequest, ExportResponse
+from export_service.config import settings
+from export_service.generators.docx_gen import generate_docx
+from export_service.generators.html_pdf_gen import generate_html
+from export_service.generators.latex_gen import generate_latex
+from export_service.generators.markdown_gen import generate_markdown
+from export_service.schemas import ExportFormat, ExportRequest, ExportResponse
 
 app = FastAPI(
     title="MetaStatistic Export Service",

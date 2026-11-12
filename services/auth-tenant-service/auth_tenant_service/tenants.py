@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.models import (
+from auth_tenant_service.models import (
     InvitationCreate,
     InvitationResponse,
     RoleType,

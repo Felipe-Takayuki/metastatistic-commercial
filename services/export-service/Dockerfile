@@ -13,4 +13,4 @@ ENV PORT=8006
 ENV TEMP_DIR=/tmp/export
 EXPOSE 8006
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8006}"]
+CMD ["sh", "-c", "uvicorn export_service.main:app --host 0.0.0.0 --port ${PORT:-8006}"]

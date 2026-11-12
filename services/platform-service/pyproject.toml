@@ -1,0 +1,24 @@
+[project]
+name = "metastatistic-platform-service"
+version = "1.0.0"
+description = "audit + auth-tenant + billing + bi-report + export em um único processo"
+requires-python = ">=3.12"
+# União das dependências dos cinco serviços.
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "httpx>=0.27",
+  "stripe>=10.0",
+  "websockets>=12.0",
+  "python-docx>=1.1.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# os cinco pacotes vivem nas pastas dos serviços; no Docker o PYTHONPATH aponta para /service
+pythonpath = [".", "../audit-service", "../auth-tenant-service", "../billing-service", "../bi-report-service", "../export-service"]

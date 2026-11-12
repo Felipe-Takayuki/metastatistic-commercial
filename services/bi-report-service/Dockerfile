@@ -13,4 +13,4 @@ ENV PORT=8005
 ENV DATA_DIR=/data
 EXPOSE 8005
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8005}"]
+CMD ["sh", "-c", "uvicorn bi_report_service.main:app --host 0.0.0.0 --port ${PORT:-8005}"]

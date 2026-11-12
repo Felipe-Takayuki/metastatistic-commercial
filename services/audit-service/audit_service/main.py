@@ -3,15 +3,15 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.audit_trail import (
+from audit_service.audit_trail import (
     AuditEventCreate,
     AuditEventResponse,
     AuditExportResponse,
     AuditTrailManager,
     AuditVerificationResult,
 )
-from app.config import settings
-from app.db import AuditDatabase
+from audit_service.config import settings
+from audit_service.db import AuditDatabase
 
 manager: Optional[AuditTrailManager] = None
 

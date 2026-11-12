@@ -1,0 +1,6 @@
+# Contexto do platform-service (./services): sem ambientes virtuais, caches nem bancos locais
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.db
+**/tests

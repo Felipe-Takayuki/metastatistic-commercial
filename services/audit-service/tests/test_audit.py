@@ -3,10 +3,10 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from app.audit_trail import GENESIS_HASH, AuditTrailManager
-from app.db import AuditDatabase
-from app.import_legacy import import_legacy
-from app.main import app, get_audit_manager
+from audit_service.audit_trail import GENESIS_HASH, AuditTrailManager
+from audit_service.db import AuditDatabase
+from audit_service.import_legacy import import_legacy
+from audit_service.main import app, get_audit_manager
 
 
 @pytest.fixture
@@ -144,7 +144,7 @@ def test_import_legacy_preserves_chain_and_is_idempotent(client, tmp_path):
     # Simula o auth_tenant.db antigo: mesma tabela audit_log, populada pelo gerenciador original
     legacy = AuditDatabase(str(tmp_path / "auth_tenant.db"))
     legacy_manager = AuditTrailManager(legacy.get_connection)
-    from app.audit_trail import AuditEventCreate
+    from audit_service.audit_trail import AuditEventCreate
     for i in range(3):
         legacy_manager.record_event(
             AuditEventCreate(tenant_id="t1", user_id="u", action="legacy.event", resource_type="x", details={"i": i})

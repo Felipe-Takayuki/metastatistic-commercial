@@ -3,7 +3,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from app.config import DEV_JWT_SECRET, Settings
+from auth_tenant_service.config import DEV_JWT_SECRET, Settings
 
 STRONG_SECRET = "a-very-strong-and-unique-secret-key-0123456789"
 
@@ -15,7 +15,7 @@ def clean_env(monkeypatch):
 
 
 def test_development_defaults_work_and_warn(caplog):
-    with caplog.at_level(logging.WARNING, logger="app.config"):
+    with caplog.at_level(logging.WARNING, logger="auth_tenant_service.config"):
         s = Settings()
     assert s.environment == "development" and s.jwt_secret_key == DEV_JWT_SECRET
     assert "JWT_SECRET_KEY não definido" in caplog.text
@@ -27,7 +27,7 @@ def test_empty_secret_behaves_as_unset(monkeypatch):
 
 
 def test_custom_secret_is_used_without_warning(caplog):
-    with caplog.at_level(logging.WARNING, logger="app.config"):
+    with caplog.at_level(logging.WARNING, logger="auth_tenant_service.config"):
         s = Settings(jwt_secret_key=STRONG_SECRET)
     assert s.jwt_secret_key == STRONG_SECRET
     assert caplog.text == ""

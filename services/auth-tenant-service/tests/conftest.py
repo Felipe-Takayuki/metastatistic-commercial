@@ -1,6 +1,6 @@
 import pytest
 
-from app.audit_client import AuditClient
+from auth_tenant_service.audit_client import AuditClient
 
 
 @pytest.fixture(autouse=True)

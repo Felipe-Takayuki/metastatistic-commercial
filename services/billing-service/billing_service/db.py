@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from app.models import InvoiceResponse, SubscriptionResponse, TierType, SubscriptionStatusType, InvoiceStatusType
+from billing_service.models import InvoiceResponse, SubscriptionResponse, TierType, SubscriptionStatusType, InvoiceStatusType
 
 
 class BillingStore:

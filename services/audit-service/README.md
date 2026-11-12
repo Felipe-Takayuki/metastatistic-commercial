@@ -27,13 +27,13 @@ O gateway roteia `/api/v1/audit/*` e `/audit/*` para este serviço (`AUDIT_SERVI
 Antes da extração os eventos ficavam na tabela `audit_log` do `auth_tenant.db`. Para trazê-los (com hashes preservados) **antes de o
 serviço receber tráfego**:
 ```bash
-python -m app.import_legacy /caminho/para/auth_tenant.db
+python -m audit_service.import_legacy /caminho/para/auth_tenant.db
 ```
 É idempotente e não altera o banco de origem.
 
 ## Execução Local
 ```bash
-uv run uvicorn app.main:app --port 8008 --reload
+uv run uvicorn audit_service.main:app --port 8008 --reload
 ```
 
 ## Testes

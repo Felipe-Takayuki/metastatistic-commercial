@@ -8,9 +8,9 @@ from urllib.parse import urlencode
 
 from pydantic import BaseModel, Field
 
-from app.jwt_auth import create_access_token
-from app.models import RoleType, TokenResponse
-from app.tenants import QuotaExceededError, TenantNotFoundError, TenantStore
+from auth_tenant_service.jwt_auth import create_access_token
+from auth_tenant_service.models import RoleType, TokenResponse
+from auth_tenant_service.tenants import QuotaExceededError, TenantNotFoundError, TenantStore
 
 SSOProviderType = Literal["saml", "oidc"]
 

@@ -4,7 +4,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 import stripe
-from app.config import PLANS, settings
+from billing_service.config import PLANS, settings
 
 logger = logging.getLogger(__name__)
 

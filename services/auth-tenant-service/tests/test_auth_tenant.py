@@ -1,10 +1,10 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.config import settings
-from app.jwt_auth import create_access_token, decode_access_token, InvalidTokenError, TokenExpiredError
-from app.main import app, get_store
-from app.tenants import TenantStore
+from auth_tenant_service.config import settings
+from auth_tenant_service.jwt_auth import create_access_token, decode_access_token, InvalidTokenError, TokenExpiredError
+from auth_tenant_service.main import app, get_store
+from auth_tenant_service.tenants import TenantStore
 
 
 @pytest.fixture

@@ -1,9 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import settings
-from app.db import init_db
-from app.main import app
+from bi_report_service.config import settings
+from bi_report_service.db import init_db
+from bi_report_service.main import app
 
 
 @pytest.fixture(autouse=True)

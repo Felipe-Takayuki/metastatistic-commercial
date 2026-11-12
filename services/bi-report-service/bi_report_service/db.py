@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from app.config import settings
-from app.schemas import (
+from bi_report_service.config import settings
+from bi_report_service.schemas import (
     Dashboard,
     DashboardIn,
     DashboardTile,

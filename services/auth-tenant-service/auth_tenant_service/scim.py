@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from app.models import RoleType
-from app.tenants import QuotaExceededError, TenantNotFoundError, TenantStore
+from auth_tenant_service.models import RoleType
+from auth_tenant_service.tenants import QuotaExceededError, TenantNotFoundError, TenantStore
 
 CORE_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
 SERVICE_PROVIDER_CONFIG_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"

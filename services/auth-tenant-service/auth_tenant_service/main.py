@@ -4,14 +4,14 @@ from fastapi import FastAPI, HTTPException, status, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
-from app.jwt_auth import (
+from auth_tenant_service.config import settings
+from auth_tenant_service.jwt_auth import (
     create_access_token,
     decode_access_token,
     InvalidTokenError,
     TokenExpiredError,
 )
-from app.models import (
+from auth_tenant_service.models import (
     AcceptInvitationRequest,
     InvitationCreate,
     InvitationResponse,
@@ -26,13 +26,13 @@ from app.models import (
     TokenResponse,
     VerifyTokenRequest,
 )
-from app.tenants import (
+from auth_tenant_service.tenants import (
     InvitationError,
     QuotaExceededError,
     TenantNotFoundError,
     TenantStore,
 )
-from app.sso import (
+from auth_tenant_service.sso import (
     OIDCCallbackRequest,
     SAMLACSRequest,
     SSOConfigCreate,
@@ -41,7 +41,7 @@ from app.sso import (
     SSOLoginResponse,
     SSOManager,
 )
-from app.scim import (
+from auth_tenant_service.scim import (
     SCIMError,
     SCIMListResponse,
     SCIMManager,
@@ -49,7 +49,7 @@ from app.scim import (
     SCIMUser,
     SCIMUserCreate,
 )
-from app.audit_client import AuditClient, AuditEventCreate, get_audit_manager
+from auth_tenant_service.audit_client import AuditClient, AuditEventCreate, get_audit_manager
 
 store: Optional[TenantStore] = None
 

@@ -3,8 +3,8 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app, get_store
-from app.tenants import TenantStore
+from auth_tenant_service.main import app, get_store
+from auth_tenant_service.tenants import TenantStore
 
 
 @pytest.fixture

@@ -6,9 +6,9 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import PLANS, settings
-from app.db import BillingStore
-from app.models import (
+from billing_service.config import PLANS, settings
+from billing_service.db import BillingStore
+from billing_service.models import (
     CheckoutSessionRequest,
     CheckoutSessionResponse,
     CustomerPortalRequest,
@@ -18,7 +18,7 @@ from app.models import (
     SubscriptionResponse,
     WebhookEventResponse,
 )
-from app.stripe_client import stripe_client
+from billing_service.stripe_client import stripe_client
 
 logger = logging.getLogger(__name__)
 

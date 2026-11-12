@@ -12,8 +12,8 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.config import settings
-from app.db import (
+from bi_report_service.config import settings
+from bi_report_service.db import (
     BiReportError,
     DashboardConflict,
     DashboardNotFound,
@@ -35,7 +35,7 @@ from app.db import (
     update_dashboard,
     update_report,
 )
-from app.schemas import (
+from bi_report_service.schemas import (
     Dashboard,
     DashboardIn,
     DashboardUpdate,
@@ -44,7 +44,7 @@ from app.schemas import (
     ReportSnapshot,
     ReportUpdate,
 )
-from app.websocket_manager import ws_manager
+from bi_report_service.websocket_manager import ws_manager
 
 
 @asynccontextmanager

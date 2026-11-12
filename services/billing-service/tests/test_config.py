@@ -3,7 +3,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from app.config import DEV_STRIPE_SECRET_KEY, DEV_STRIPE_WEBHOOK_SECRET, Settings
+from billing_service.config import DEV_STRIPE_SECRET_KEY, DEV_STRIPE_WEBHOOK_SECRET, Settings
 
 REAL = dict(stripe_secret_key="sk_live_abcdefghijklmnop", stripe_webhook_secret="whsec_real_secret_value",
             stripe_mock_mode=False)
@@ -16,7 +16,7 @@ def clean_env(monkeypatch):
 
 
 def test_development_defaults_work_and_warn(caplog):
-    with caplog.at_level(logging.WARNING, logger="app.config"):
+    with caplog.at_level(logging.WARNING, logger="billing_service.config"):
         s = Settings()
     assert s.stripe_mock_mode is True and s.stripe_secret_key == DEV_STRIPE_SECRET_KEY
     assert "STRIPE_MOCK_MODE ativo" in caplog.text

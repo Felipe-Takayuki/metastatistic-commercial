@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict
 
 from pydantic import field_validator, model_validator
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -14,12 +15,13 @@ PRODUCTION_ENVIRONMENTS = {"production", "prod"}
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, hide_input_in_errors=True)
+    model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, hide_input_in_errors=True, populate_by_name=True)
 
     environment: str = "development"
     port: int = 8007
     host: str = "0.0.0.0"
-    database_url: str = "sqlite:///./data/billing.db"
+    # BILLING_DATABASE_URL existe para o modo "platform" (vários serviços no mesmo processo, que não podem dividir DATABASE_URL)
+    database_url: str = Field(default="sqlite:///./data/billing.db", validation_alias=AliasChoices("BILLING_DATABASE_URL", "DATABASE_URL"))
     auth_service_url: str = "http://localhost:8002"
 
     # Stripe Keys & Secrets

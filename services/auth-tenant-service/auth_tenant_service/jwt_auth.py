@@ -4,7 +4,7 @@ import hmac
 import json
 import time
 from typing import Any, Dict
-from app.models import TokenPayload
+from auth_tenant_service.models import TokenPayload
 
 
 def _b64url_encode(data: bytes) -> str:

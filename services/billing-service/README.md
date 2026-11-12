@@ -16,7 +16,7 @@ Microsserviço de Gestão de Faturamento, Planos e Pagamentos Stripe para a plat
 
 ## Execução Local
 ```bash
-uv run uvicorn app.main:app --port 8007 --reload
+uv run uvicorn billing_service.main:app --port 8007 --reload
 ```
 
 ## Testes

@@ -1,9 +1,9 @@
 import httpx
 import respx
 
-from app.audit_client import AuditClient, AuditEventCreate
-from app.main import app, get_store
-from app.tenants import TenantStore
+from auth_tenant_service.audit_client import AuditClient, AuditEventCreate
+from auth_tenant_service.main import app, get_store
+from auth_tenant_service.tenants import TenantStore
 from fastapi.testclient import TestClient
 
 # Capturado na importação do módulo, antes de o conftest trocar o método por um fake.

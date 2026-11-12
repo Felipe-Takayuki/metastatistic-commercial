@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 import httpx
 from pydantic import BaseModel, Field
 
-from app.config import settings
+from auth_tenant_service.config import settings
 
 logger = logging.getLogger(__name__)
 
