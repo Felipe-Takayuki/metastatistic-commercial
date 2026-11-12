@@ -1,3 +1,6 @@
+# Segurança de rede: só `gateway` (GATEWAY_PORT) e `api` (API_PORT, com autenticação própria) ficam expostos. Os serviços
+# internos publicam apenas em 127.0.0.1 (depuração local): eles confiam em X-Tenant-ID/X-User-* injetados pelo gateway, então
+# NÃO podem ficar alcançáveis de fora.
 x-r-worker: &r-worker
   build: ./engines/r-worker
   image: metastatistic-r-worker:spike
@@ -48,7 +51,7 @@ services:
     build: ./services/auth-tenant-service
     image: metastatistic-auth-tenant-service:latest
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     environment:
       PORT: "8002"
       DATABASE_URL: "sqlite:///./data/auth_tenant.db"
@@ -65,7 +68,7 @@ services:
     build: ./services/stat-orchestrator
     image: metastatistic-stat-orchestrator:latest
     ports:
-      - "8003:8003"
+      - "127.0.0.1:8003:8003"
     environment:
       PORT: "8003"
       R_WORKER_URLS: "http://r-worker-1:8000"
@@ -84,7 +87,7 @@ services:
     build: ./services/data-engine-service
     image: metastatistic-data-engine-service:latest
     ports:
-      - "8014:8004"
+      - "127.0.0.1:8014:8004"
     environment:
       PORT: "8004"
       DATA_DIR: "/data"
@@ -96,7 +99,7 @@ services:
     build: ./services/bi-report-service
     image: metastatistic-bi-report-service:latest
     ports:
-      - "8015:8005"
+      - "127.0.0.1:8015:8005"
     environment:
       PORT: "8005"
       DATABASE_URL: "sqlite:///./data/bi_reports.db"
@@ -108,7 +111,7 @@ services:
     build: ./services/export-service
     image: metastatistic-export-service:latest
     ports:
-      - "8016:8006"
+      - "127.0.0.1:8016:8006"
     environment:
       PORT: "8006"
       TEMP_DIR: "/tmp/export"
@@ -118,7 +121,7 @@ services:
     build: ./services/billing-service
     image: metastatistic-billing-service:latest
     ports:
-      - "8017:8007"
+      - "127.0.0.1:8017:8007"
     environment:
       PORT: "8007"
       AUTH_SERVICE_URL: "http://auth-tenant-service:8002"
@@ -136,7 +139,7 @@ services:
     build: ./services/audit-service
     image: metastatistic-audit-service:latest
     ports:
-      - "8018:8008"
+      - "127.0.0.1:8018:8008"
     environment:
       PORT: "8008"
       DATABASE_URL: "sqlite:///./data/audit.db"
@@ -208,7 +211,7 @@ services:
   r-worker-1:
     <<: *r-worker
     ports:
-      - "${R_WORKER_PORT:-8011}:8000"
+      - "127.0.0.1:${R_WORKER_PORT:-8011}:8000"
 
   web:
     build: ./apps/web
