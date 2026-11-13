@@ -1,0 +1,12 @@
+# Testes automatizados — executados em 13/11/2026 12:49:28 (America/Sao_Paulo), commit d84fd8f + alterações locais
+services/billing-service          43 passed in 0.54s
+services/auth-tenant-service      29 passed, 1 warning in 0.34s
+services/gateway                  101 passed in 0.54s
+services/platform-service         4 passed, 1 warning in 0.33s
+services/audit-service            10 passed, 1 warning in 0.36s
+services/bi-report-service        6 passed, 1 warning in 0.31s
+services/export-service           6 passed, 1 warning in 0.43s
+services/stat-orchestrator        17 passed in 0.87s
+services/data-engine-service      10 passed, 1 warning in 0.42s
+apps/api                          364 passed, 66 skipped in 36.43s
+apps/web (vitest)                 Tests  274 passed (274)

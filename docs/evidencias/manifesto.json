@@ -1,0 +1,86 @@
+{
+  "gerado_em": "2026-11-13T15:49:08.160Z",
+  "base": "http://127.0.0.1:8080",
+  "prints": [
+    {
+      "arquivo": "10-01-landing-publica.png",
+      "atividade": 10,
+      "descricao": "Landing page pública, sem login",
+      "capturado_em": "2026-11-13T15:49:02.277Z",
+      "horario_local": "13/11/2026, 12:49:01",
+      "url": "http://127.0.0.1:8080/"
+    },
+    {
+      "arquivo": "10-06-landing-planos.png",
+      "atividade": 10,
+      "descricao": "Landing page: planos Free (R$ 0) e Pro (R$ 249/mês)",
+      "capturado_em": "2026-11-13T15:49:02.714Z",
+      "horario_local": "13/11/2026, 12:49:02",
+      "url": "http://127.0.0.1:8080/"
+    },
+    {
+      "arquivo": "10-02-dados-do-usuario-camila.png",
+      "atividade": 10,
+      "descricao": "Camila (editora) vê o dataset que ela enviou",
+      "capturado_em": "2026-11-13T15:49:03.603Z",
+      "horario_local": "13/11/2026, 12:49:03",
+      "url": "http://127.0.0.1:8080/"
+    },
+    {
+      "arquivo": "10-03-dados-isolados-rafael.png",
+      "atividade": 10,
+      "descricao": "Rafael, outro usuário, não vê o dataset da Camila (privado ao dono)",
+      "capturado_em": "2026-11-13T15:49:04.180Z",
+      "horario_local": "13/11/2026, 12:49:03",
+      "url": "http://127.0.0.1:8080/"
+    },
+    {
+      "arquivo": "10-04-papeis-usuarios.png",
+      "atividade": 10,
+      "descricao": "Administração de usuários e papéis (viewer, editor, admin)",
+      "capturado_em": "2026-11-13T15:49:04.784Z",
+      "horario_local": "13/11/2026, 12:49:04",
+      "url": "http://127.0.0.1:8080/#/users"
+    },
+    {
+      "arquivo": "10-05-eventos-de-negocio.png",
+      "atividade": 10,
+      "descricao": "Trilha de eventos de negócio: cadastros, logins e upload de dataset",
+      "capturado_em": "2026-11-13T15:49:05.272Z",
+      "horario_local": "13/11/2026, 12:49:04",
+      "url": "http://127.0.0.1:8080/#/users"
+    },
+    {
+      "arquivo": "11-01-planos-free-pro.png",
+      "atividade": 11,
+      "descricao": "Tela de planos: Free (atual) e Pro, R$ 249,00/mês",
+      "capturado_em": "2026-11-13T15:49:05.940Z",
+      "horario_local": "13/11/2026, 12:49:05",
+      "url": "http://127.0.0.1:8080/"
+    },
+    {
+      "arquivo": "11-02-limite-do-plano-na-api.png",
+      "atividade": 11,
+      "descricao": "Sexto dataset barrado pela API (402) com o limite e como liberar",
+      "capturado_em": "2026-11-13T15:49:06.782Z",
+      "horario_local": "13/11/2026, 12:49:06",
+      "url": "http://127.0.0.1:8080/"
+    },
+    {
+      "arquivo": "11-03-plano-pro-ativo.png",
+      "atividade": 11,
+      "descricao": "Organização com o Pro ativo: botão Gerenciar assinatura (portal do cliente)",
+      "capturado_em": "2026-11-13T15:49:07.526Z",
+      "horario_local": "13/11/2026, 12:49:07",
+      "url": "http://127.0.0.1:8080/"
+    },
+    {
+      "arquivo": "11-04-painel-admin.png",
+      "atividade": 11,
+      "descricao": "Painel admin: usuários por plano, assinaturas ativas, MRR de teste e últimos eventos",
+      "capturado_em": "2026-11-13T15:49:08.154Z",
+      "horario_local": "13/11/2026, 12:49:07",
+      "url": "http://127.0.0.1:8080/#/admin"
+    }
+  ]
+}

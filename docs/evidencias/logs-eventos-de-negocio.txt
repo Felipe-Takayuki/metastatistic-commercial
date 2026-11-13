@@ -1,0 +1,19 @@
+# Eventos de negócio no log do processo (uma linha JSON por evento)
+# Extraídos dos logs reais da execução de e2e/evidencias.mjs em 13/11/2026 12:49:13 (America/Sao_Paulo)
+# apps/api  (docker logs api | grep '"event"')
+{"event": "user.setup", "ts": "2026-11-13T15:49:02.759210+00:00", "user": "admin", "target": "619fbd05c66443c58e8005ce966db634", "detail": "administrador criado"}
+{"event": "user.register", "ts": "2026-11-13T15:49:02.811515+00:00", "user": "camila", "target": "6a4af043e798461e8a2fe7d6be087a9f", "detail": "novo cadastro (editor)"}
+{"event": "user.register", "ts": "2026-11-13T15:49:02.865773+00:00", "user": "rafael", "target": "43e6b583e7d141ed963c99dce33754c4", "detail": "novo cadastro (editor)"}
+{"event": "dataset.create", "ts": "2026-11-13T15:49:02.962644+00:00", "user": "camila", "target": "81904b1b96bf4032aa7bdfa4d1cf2de1", "detail": "ensaio_glicemia.csv (upload, 0.1 KB, plano Free)"}
+{"event": "dataset.create", "ts": "2026-11-13T15:49:06.031295+00:00", "user": "camila", "target": "22a9d1bd7b8f49c2acc41c9bcc92ad27", "detail": "ensaio_2.csv (upload, 0.1 KB, plano Free)"}
+{"event": "dataset.create", "ts": "2026-11-13T15:49:06.077957+00:00", "user": "camila", "target": "d1dad6ca766c472c829ac9d620847ef0", "detail": "ensaio_3.csv (upload, 0.1 KB, plano Free)"}
+{"event": "dataset.create", "ts": "2026-11-13T15:49:06.126373+00:00", "user": "camila", "target": "acbbfbf3ae4f4f3bbab486d05d34326a", "detail": "ensaio_4.csv (upload, 0.1 KB, plano Free)"}
+{"event": "dataset.create", "ts": "2026-11-13T15:49:06.172814+00:00", "user": "camila", "target": "59906591e79e4d41976e6989d30b271b", "detail": "ensaio_5.csv (upload, 0.1 KB, plano Free)"}
+
+# billing-service (docker logs platform | grep '"event"')
+{"event": "billing.checkout_created", "ts": "2026-11-13T15:49:06.792874+00:00", "tenant": "8a4a2460-1790-4e07-adcc-7dc7a9241265", "plan": "pro", "session_id": "cs_test_0dc95933ecce477e"}
+{"event": "billing.checkout.session.completed", "ts": "2026-11-13T15:49:06.816030+00:00", "tenant": "8a4a2460-1790-4e07-adcc-7dc7a9241265", "event_id": "evt_demo_checkout", "detail": "Subscription activated for tenant 8a4a2460-1790-4e07-adcc-7dc7a9241265 on plan pro"}
+{"event": "billing.webhook_duplicate", "ts": "2026-11-13T15:49:06.820689+00:00", "event_id": "evt_demo_checkout", "type": "checkout.session.completed"}
+{"event": "billing.checkout.session.completed", "ts": "2026-11-13T15:49:06.861562+00:00", "tenant": "2765c049-0ef2-4a88-a312-39f60f5551e7", "event_id": "evt_demo_checkout_2", "detail": "Subscription activated for tenant 2765c049-0ef2-4a88-a312-39f60f5551e7 on plan pro"}
+{"event": "billing.invoice.payment_failed", "ts": "2026-11-13T15:49:06.866971+00:00", "tenant": "2765c049-0ef2-4a88-a312-39f60f5551e7", "event_id": "evt_demo_failed_2", "detail": "Invoice in_demo_2 recorded as failed/past_due for tenant 2765c049-0ef2-4a88-a312-39f60f5551e7"}
+{"event": "billing.customer.subscription.updated", "ts": "2026-11-13T15:49:06.885898+00:00", "tenant": "8a4a2460-1790-4e07-adcc-7dc7a9241265", "event_id": "evt_demo_updated_1", "detail": "Subscription sub_demo_1 updated: status=active, plan=pro"}
