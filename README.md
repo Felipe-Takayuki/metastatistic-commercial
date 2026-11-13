@@ -5,7 +5,7 @@
 > **Projeto**: Metastatistic Commercial (B2B SaaS de Business Intelligence & Rigor Estatístico)  
 > **Repositório**: [metastatistic-commercial](https://github.com/Felipe-Takayuki/metastatistic-commercial)
 >
-> **Entregas**: [Atividade 9 — plano de negócio](docs/plano-de-negocio.md) · [Atividade 10 — negócio no ar](docs/atividade-10-negocio-no-ar.md) · [Atividade 11 — SaaS com Stripe](docs/atividade-11-saas-stripe.md) · [P2 — relatório consolidado](docs/p2/) · [Evidências (prints com data e hora)](docs/evidencias/)
+> **Entregas**: [Atividade 9 — plano de negócio](docs/plano-de-negocio.md) · [Atividade 10 — negócio no ar](docs/atividade-10-negocio-no-ar.md) · [Atividade 11 — SaaS com Stripe](docs/atividade-11-saas-stripe.md) · [P2 — relatório consolidado (PDF)](docs/P2_ISW055_Felipe_Takayuki_Tanaka_Takahashi.pdf) · [Evidências (prints com data e hora)](docs/evidencias/)
 
 ---
 
@@ -146,9 +146,9 @@ O backlog vive nas *issues* do repositório (rótulo `enhancement`). A entrega d
 | Issue | Tipo | Assunto |
 | :--- | :--- | :--- |
 | [#1](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/1) | Entrega | Atividade 9 — Fork e Plano de Negócio |
-| #ENT10 | Entrega | Atividade 10 — Seu negócio no ar |
-| #ENT11 | Entrega | Atividade 11 — SaaS completo com Stripe |
-| #ENTP2 | Entrega | P2 — Relatório consolidado |
+| [#9](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/9) | Entrega | Atividade 10 — Seu negócio no ar |
+| [#10](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/10) | Entrega | Atividade 11 — SaaS completo com Stripe |
+| [#11](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/11) | Entrega | P2 — Relatório consolidado |
 | [#2](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/2) | Backlog | Isolar os dados do `apps/api` por organização (tenant) |
 | [#3](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/3) | Backlog | Stripe real em modo de teste (produto Pro, preço, webhook e prints) |
 | [#4](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/4) | Backlog | Cota de armazenamento e medição de uso por plano |

@@ -1,0 +1,51 @@
+# Esteira de integração: testes de cada serviço Python (uv + pytest) e do front (tipos + vitest + build).
+# Nenhum segredo é necessário: o Stripe roda em modo mock nos testes e as chaves reais ficam só no ambiente de execução.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: pytest · ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - apps/api
+          - services/gateway
+          - services/auth-tenant-service
+          - services/billing-service
+          - services/audit-service
+          - services/platform-service
+          - services/bi-report-service
+          - services/export-service
+          - services/stat-orchestrator
+          - services/data-engine-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Testes
+        working-directory: ${{ matrix.project }}
+        run: uv run pytest -q
+
+  web:
+    name: web · tipos, testes e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @metastatistic/web run typecheck
+      - run: pnpm --filter @metastatistic/web run test
+      - run: pnpm --filter @metastatistic/web run build

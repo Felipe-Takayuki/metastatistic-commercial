@@ -108,4 +108,4 @@ git grep -nIE "sk_(live|test)_[A-Za-z0-9]{20,}|whsec_[A-Za-z0-9]{20,}|pk_(live|t
 
 ## 7. Testes
 
-Resultado completo em [`evidencias/testes.txt`](evidencias/testes.txt): billing 43, auth-tenant 29, gateway 101, apps/api 364 (66 pulados que dependem do worker R), web 274. CI no GitHub Actions: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+Resultado completo em [`evidencias/testes.txt`](evidencias/testes.txt): billing 43, auth-tenant 29, gateway 101, apps/api 364 (66 pulados que dependem do worker R), web 274. CI: o workflow do GitHub Actions está escrito em [`docs/ci/ci.yml`](ci/ci.yml), mas **ainda não foi publicado nem executado** — o push para `.github/workflows/` foi recusado porque o token do `gh` não tem o escopo `workflow`. Para ativar: `gh auth refresh -s workflow` e mover o arquivo para `.github/workflows/ci.yml`.
