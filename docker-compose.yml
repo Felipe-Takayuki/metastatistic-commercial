@@ -133,6 +133,8 @@ services:
       ANALYSIS_TIMEOUT_S: "60"
       DATA_DIR: "/data"
       AUTH_ENABLED: "${AUTH_ENABLED:-true}"
+      # dataset novo só é lido pelo dono (e administradores) até ele compartilhar em "Acesso…"; false = aberto a todos que entraram
+      DATASETS_PRIVATE_BY_DEFAULT: "${DATASETS_PRIVATE_BY_DEFAULT:-true}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       # fotos de perfil (e futuros objetos) vão para o bucket do Garage
       STORAGE_BACKEND: "s3"

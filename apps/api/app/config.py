@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     derived_dataset_max_rows: int = 2_000_000
     derived_dataset_timeout_s: float = 120.0
 
+    # SaaS: dataset novo nasce privado (só o dono e administradores leem) até o dono compartilhar em "Acesso…".
+    # Desligado = comportamento antigo (aberto a todos que entraram). O docker-compose liga por padrão.
+    datasets_private_by_default: bool = False
+
     # Autenticação: desligada por padrão (comportamento anterior: todos são administradores).
     # Ligada, tudo exige sessão; o primeiro acesso cria o administrador em POST /auth/setup.
     auth_enabled: bool = False

@@ -115,6 +115,14 @@ def set_config(dataset_id: str, restricted: bool, user_ids: list[str], rls: dict
     return get_config(dataset_id)
 
 
+def apply_default_visibility(dataset_id: str) -> None:
+    """Com DATASETS_PRIVATE_BY_DEFAULT, o dataset novo só é lido pelo dono e por administradores até ser compartilhado."""
+    if not settings.datasets_private_by_default or is_restricted(dataset_id):
+        return
+    cfg = get_config(dataset_id)
+    set_config(dataset_id, True, cfg["user_ids"], cfg["rls"])
+
+
 def forget_dataset(dataset_id: str) -> None:
     _drop_filtered_views(dataset_id)
     with closing(db.connect()) as con, con:

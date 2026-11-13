@@ -121,6 +121,8 @@ services:
       ANALYSIS_TIMEOUT_S: "60"
       DATA_DIR: "/data"
       AUTH_ENABLED: "${AUTH_ENABLED:-true}"
+      # dataset novo só é lido pelo dono (e administradores) até ele compartilhar em "Acesso…"; false = aberto a todos que entraram
+      DATASETS_PRIVATE_BY_DEFAULT: "${DATASETS_PRIVATE_BY_DEFAULT:-true}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       QUERY_MEMORY_LIMIT: "256MB"   # o padrão é 1GB, que estouraria o servidor pequeno
       QUERY_THREADS: "1"

@@ -55,6 +55,7 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
         created = datasets.ingest_csv(tmp_path, display)
         plan_limits.tag_dataset(created.id, plan.tenant_id)
         access.claim("dataset", created.id, user)
+        permissions.apply_default_visibility(created.id)
         audit.log(user, "create", "dataset", created.id, f"{created.name} (upload, {size // 1024} KB, plano {plan.name})")
         return _present([created], user)[0]
     except datasets.DatasetError as exc:
@@ -71,6 +72,7 @@ def create_from_query(body: DatasetFromQuery, user: auth.User = Depends(current_
         created = derive.create_dataset_from_query(body.name, body.sql, user=user)
         plan_limits.tag_dataset(created.id, plan.tenant_id)
         access.claim("dataset", created.id, user)
+        permissions.apply_default_visibility(created.id)
         audit.log(user, "create", "dataset", created.id, f"{created.name} (derivado)")
         return _present([created], user)[0]
     except datasets.DatasetError as exc:

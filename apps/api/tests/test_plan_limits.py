@@ -118,3 +118,38 @@ async def test_business_events_are_written_to_the_process_log(admin):
         audit.events_log.removeHandler(handler)
     ev = next(json.loads(r) for r in records if json.loads(r)["event"] == "dataset.create")
     assert ev["user"] == "ana" and "plano Free" in ev["detail"]
+
+
+# ---------- cada usuário vê só os próprios dados (dataset privado por padrão) ----------
+
+async def test_new_datasets_are_private_to_their_owner_when_configured(admin, monkeypatch):
+    from conftest import SALES_CSV as _csv  # noqa: F401
+    from test_auth import login, make_user
+
+    monkeypatch.setattr(settings, "datasets_private_by_default", True)
+    await make_user(admin, "ed1", "editor")
+    await make_user(admin, "ed2", "editor")
+    ed1, ed2 = await login("ed1"), await login("ed2")
+
+    mine = (await ed1.post("/datasets", files=csv("meu.csv"))).json()
+    assert mine["restricted"] is True
+
+    assert [d["id"] for d in (await ed1.get("/datasets")).json()] == [mine["id"]]     # o dono vê
+    assert (await ed2.get("/datasets")).json() == []                                   # outro usuário não vê
+    assert (await ed2.get(f"/datasets/{mine['id']}")).status_code == 404               # nem confirma que existe
+    assert len((await admin.get("/datasets")).json()) == 1                              # administrador vê
+
+    # o dono decide compartilhar
+    ed2_id = (await ed2.get("/auth/me")).json()["id"]
+    r = await ed1.put(f"/datasets/{mine['id']}/access", json={"restricted": True, "user_ids": [ed2_id], "rls": None})
+    assert r.status_code == 200
+    assert len((await ed2.get("/datasets")).json()) == 1
+
+
+async def test_datasets_stay_open_by_default_for_backward_compatibility(admin):
+    from test_auth import login, make_user
+
+    await make_user(admin, "ed3", "editor")
+    ed3 = await login("ed3")
+    await admin.post("/datasets", files=csv("aberto.csv"))
+    assert len((await ed3.get("/datasets")).json()) == 1

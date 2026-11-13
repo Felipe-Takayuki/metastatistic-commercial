@@ -53,6 +53,7 @@ def save(body: SaveIn, user: auth.User = Depends(current_user),
         raise HTTPException(422, str(exc)) from exc
     plan_limits.tag_dataset(created.id, plan.tenant_id)
     access.claim("dataset", created.id, user)
+    permissions.apply_default_visibility(created.id)
     transforms.save_recipe(created.id, body.recipe, compiled.sql)
     transforms.carry_measurements(created.id, body.recipe.source_id)
     audit.log(user, "create", "dataset", created.id, f"{created.name} (receita, {len(body.recipe.steps)} passos)")
