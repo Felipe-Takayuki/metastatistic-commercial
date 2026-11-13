@@ -17,33 +17,11 @@ function generateSlug(text: string): string {
     .slice(0, 40);
 }
 
-const TIERS: { id: PlanTier; name: string; badge: string; desc: string }[] = [
-  {
-    id: "community",
-    name: "Community",
-    badge: "Gratuito",
-    desc: "Até 3 usuários, 10 datasets e análises estatísticas completas.",
-  },
-  {
-    id: "team",
-    name: "Team",
-    badge: "Colaborativo",
-    desc: "Até 15 usuários, 100 datasets, conectores SQL e suporte prioritário.",
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    badge: "Corporativo",
-    desc: "Usuários e dados ilimitados, SSO SAML, SCIM 2.0 e FDA Audit Trail.",
-  },
-];
-
 export function CreateOrganizationModal({ onClose, onCreated }: CreateOrganizationModalProps) {
   const { user } = useSession();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
-  const [tier, setTier] = useState<PlanTier>("community");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,7 +58,7 @@ export function CreateOrganizationModal({ onClose, onCreated }: CreateOrganizati
       const created = await api.createTenant({
         name: finalName,
         slug: finalSlug,
-        tier,
+        tier: "community" as PlanTier,
         owner_id: user?.id || "admin",
         owner_email: user?.username ? `${user.username}@metastatistic.local` : undefined,
       });
@@ -189,62 +167,10 @@ export function CreateOrganizationModal({ onClose, onCreated }: CreateOrganizati
               </div>
             </label>
 
-            <div className="field">
-              <span style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 4 }}>
-                Plano / Tier Inicial
-              </span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {TIERS.map((t) => {
-                  const selected = tier === t.id;
-                  return (
-                    <label
-                      key={t.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 12,
-                        padding: "10px 14px",
-                        borderRadius: "8px",
-                        border: selected ? "1.5px solid var(--accent)" : "1px solid var(--border)",
-                        background: selected ? "var(--accent-wash)" : "var(--surface-1)",
-                        cursor: "pointer",
-                        transition: "all .12s",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="tenant_tier"
-                        value={t.id}
-                        checked={selected}
-                        onChange={() => setTier(t.id)}
-                        disabled={busy}
-                        style={{ marginTop: 3, accentColor: "var(--accent)" }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                          <strong style={{ fontSize: 14 }}>{t.name}</strong>
-                          <span
-                            className="chip"
-                            style={{
-                              fontSize: 10,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.04em",
-                              background: selected ? "var(--accent)" : "var(--surface-2)",
-                              color: selected ? "var(--on-accent)" : "var(--text-muted)",
-                            }}
-                          >
-                            {t.badge}
-                          </span>
-                        </div>
-                        <span className="muted small" style={{ display: "block" }}>
-                          {t.desc}
-                        </span>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+            <p className="muted small" style={{ margin: 0 }}>
+              A organização começa no plano <strong>Free</strong> (até 3 usuários e 5 datasets). Para liberar mais, assine o Pro em
+              Planos depois de criar.
+            </p>
           </div>
 
           <div

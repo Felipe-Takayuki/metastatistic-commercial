@@ -47,6 +47,7 @@ class Policy:
     tenant_from: str = "header"            # "header" | "path" | "query"
     path_ref: Optional[str] = None         # tenant extraído do path quando tenant_from == "path"
     body_user_field: Optional[str] = None  # campo do corpo que deve ser o próprio usuário autenticado
+    free_tier_only: bool = False           # criação de organização: só nasce no Free; o upgrade é pelo checkout do Stripe
     soft_tenant: bool = False              # SESSION que, se o usuário é membro do tenant pedido, também repassa o plano dele
 
 
@@ -155,7 +156,7 @@ def classify(method: str, cp: str, service: str) -> Policy:
 
     # --- auth-tenant-service ---
     if m == "POST" and cp == "/tenants":
-        return Policy(Access.SESSION, body_user_field="owner_id")
+        return Policy(Access.SESSION, body_user_field="owner_id", free_tier_only=True)
     if m == "GET" and cp.startswith("/tenants/by-slug/"):
         return Policy(Access.SESSION)
     if m == "POST" and _ACCEPT_INVITE.match(cp):
@@ -288,6 +289,14 @@ async def authorize(
             return deny(400, "invalid JSON body")
         if str(claimed) != identity.user_id:
             return deny(403, f"{policy.body_user_field} must be the authenticated user")
+
+    if policy.free_tier_only:
+        try:
+            tier = (json.loads(body or b"{}") or {}).get("tier", "community")
+        except (ValueError, AttributeError):
+            return deny(400, "invalid JSON body")
+        if tier != "community":  # senão qualquer um criaria uma organização Team/Enterprise sem pagar
+            return deny(403, "new organizations start on the Free plan; subscribe to Pro through the billing checkout")
 
     if policy.access is Access.SESSION:
         if policy.soft_tenant:

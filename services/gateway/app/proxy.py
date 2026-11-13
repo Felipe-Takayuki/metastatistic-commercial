@@ -307,7 +307,9 @@ async def proxy_request(request: Request, path: str, client: Optional[httpx.Asyn
         resp_headers = {}
         for key, value in downstream_resp.headers.items():
             low_k = key.lower()
-            if low_k not in HOP_BY_HOP_HEADERS and low_k not in {"x-tenant-id", "x-tenant-slug"}:
+            # content-encoding: o httpx já descomprimiu o corpo em `aread()`; repassar o cabeçalho faria o navegador
+            # tentar descomprimir de novo (ERR_CONTENT_DECODING_FAILED)
+            if low_k not in HOP_BY_HOP_HEADERS and low_k not in {"x-tenant-id", "x-tenant-slug", "content-encoding"}:
                 resp_headers[key] = value
 
         resp_headers["X-Tenant-ID"] = tenant_id

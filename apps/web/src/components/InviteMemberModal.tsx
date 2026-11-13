@@ -14,8 +14,8 @@ const ROLES: { id: string; label: string; desc: string }[] = [
 ];
 
 const TIER_LIMITS: Record<string, { label: string; maxUsers: number; hint: string }> = {
-  community: { label: "Community", maxUsers: 3, hint: "Limite de até 3 membros no plano gratuito." },
-  team: { label: "Team", maxUsers: 15, hint: "Limite de até 15 membros no plano Team." },
+  community: { label: "Free", maxUsers: 3, hint: "Limite de até 3 membros no plano Free." },
+  team: { label: "Pro", maxUsers: 15, hint: "Limite de até 15 membros no plano Pro." },
   enterprise: { label: "Enterprise", maxUsers: 999999, hint: "Usuários ilimitados no plano Enterprise." },
 };
 

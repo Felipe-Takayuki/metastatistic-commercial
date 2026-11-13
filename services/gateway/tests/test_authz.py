@@ -464,3 +464,26 @@ async def test_non_member_gets_no_plan_and_falls_back_to_default_workspace():
     sent = upstream.calls.last.request.headers
     assert "x-tenant-tier" not in sent and "x-tenant-quotas" not in sent
     assert sent["x-tenant-id"] == settings.default_tenant_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", ["team", "enterprise", "ouro"])
+async def test_new_organizations_cannot_start_on_a_paid_tier(tier):
+    with respx.mock(assert_all_called=False) as mock:
+        mock_session(mock, ALICE)
+        create = mock.post(f"{settings.auth_service_url}/tenants").mock(return_value=httpx.Response(201, json={"id": "x"}))
+        async with gateway() as client:
+            resp = await client.post("/api/v1/tenants", headers=COOKIE, json={"name": "Lab", "tier": tier, "owner_id": "u_alice"})
+    assert resp.status_code == 403 and "Free plan" in resp.json()["detail"]
+    assert not create.called
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extra", [{}, {"tier": "community"}])
+async def test_new_organizations_start_on_free(extra):
+    with respx.mock(assert_all_called=False) as mock:
+        mock_session(mock, ALICE)
+        create = mock.post(f"{settings.auth_service_url}/tenants").mock(return_value=httpx.Response(201, json={"id": "x"}))
+        async with gateway() as client:
+            resp = await client.post("/api/v1/tenants", headers=COOKIE, json={"name": "Lab", "owner_id": "u_alice", **extra})
+    assert resp.status_code == 201 and create.called

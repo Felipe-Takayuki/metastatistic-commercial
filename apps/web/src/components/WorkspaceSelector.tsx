@@ -7,6 +7,7 @@ import {
   type ActiveTenant,
   type PlanTier,
 } from "../api";
+import { planName } from "../lib/billing";
 import { CreateOrganizationModal } from "./CreateOrganizationModal";
 import { InviteMemberModal } from "./InviteMemberModal";
 
@@ -152,7 +153,7 @@ export function WorkspaceSelector() {
             border: `1px solid ${tierStyle.border}`,
           }}
         >
-          {tier}
+          {planName(tier)}
         </span>
 
         {/* Chevron */}
@@ -210,7 +211,7 @@ export function WorkspaceSelector() {
                   border: `1px solid ${tierStyle.border}`,
                 }}
               >
-                {tier}
+                {planName(tier)}
               </span>
             </div>
             {active.slug && (
@@ -313,7 +314,7 @@ export function WorkspaceSelector() {
                           color: itemTierStyle.color,
                         }}
                       >
-                        {itemTier}
+                        {planName(itemTier)}
                       </span>
                     </button>
                   );

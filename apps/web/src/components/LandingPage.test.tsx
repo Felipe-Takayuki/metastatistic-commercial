@@ -41,9 +41,11 @@ describe("LandingPage", () => {
     expect(html).toContain("SSO &amp; SCIM 2.0");
 
     // Planos
-    expect(html).toContain("Community");
-    expect(html).toContain("Team");
-    expect(html).toContain("Enterprise");
-    expect(html).toContain("$0");
+    expect(html).toContain("Free");
+    expect(html).toContain("Pro");
+    expect(html).toContain("R$ 0");
+    expect(html).toContain("R$ 249");
+    expect(html).not.toContain("US$");
+    expect(html).not.toContain("Faturamento Anual");
   });
 });

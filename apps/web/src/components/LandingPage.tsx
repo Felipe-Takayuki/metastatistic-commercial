@@ -19,7 +19,6 @@ const NEXT_THEME: Record<ThemeMode, ThemeMode> = {
 
 export function LandingPage({ onOpenAuth }: LandingPageProps) {
   const [theme, setTheme] = useState<ThemeMode>(loadThemeMode);
-  const [pricingPeriod, setPricingPeriod] = useState<"monthly" | "yearly">("yearly");
   const [activeTab, setActiveTab] = useState<"ttest" | "anova" | "bayes">("ttest");
 
   useEffect(() => {
@@ -627,33 +626,17 @@ export function LandingPage({ onOpenAuth }: LandingPageProps) {
           <span className="landing-section-tag">Preços Transparentes</span>
           <h2 className="landing-section-title">Escolha o Plano Ideal para a sua Equipe</h2>
           <p className="landing-section-desc">
-            Comece gratuitamente sem cartão de crédito e faça upgrade conforme o crescimento da sua demanda estatística.
+            Comece grátis, sem cartão de crédito, e assine o Pro quando a sua equipe precisar de mais espaço.
+            Cobrança mensal em reais; cancele quando quiser.
           </p>
-
-          <div className="landing-cycle-toggle">
-            <button
-              type="button"
-              className={`landing-cycle-btn ${pricingPeriod === "monthly" ? "active" : ""}`}
-              onClick={() => setPricingPeriod("monthly")}
-            >
-              Faturamento Mensal
-            </button>
-            <button
-              type="button"
-              className={`landing-cycle-btn ${pricingPeriod === "yearly" ? "active" : ""}`}
-              onClick={() => setPricingPeriod("yearly")}
-            >
-              Faturamento Anual <span className="landing-discount-chip">2 Meses Grátis</span>
-            </button>
-          </div>
         </div>
 
         <div className="landing-pricing-grid">
-          {/* Card Community */}
-          <div className="landing-pricing-card card">
-            <div className="landing-pricing-tier">Community</div>
+          {/* Card Free */}
+          <div className="landing-pricing-card card" data-plan="free">
+            <div className="landing-pricing-tier">Free</div>
             <div className="landing-pricing-cost">
-              <span className="landing-amount">$0</span>
+              <span className="landing-amount">R$ 0</span>
               <span className="landing-period">/ para sempre</span>
             </div>
             <p className="landing-pricing-desc">
@@ -670,83 +653,47 @@ export function LandingPage({ onOpenAuth }: LandingPageProps) {
               <strong>Recursos incluídos:</strong>
               <ul>
                 <li>✓ Até 3 usuários na organização</li>
-                <li>✓ Até 10 datasets armazenados</li>
-                <li>✓ 500 MB de armazenamento em nuvem</li>
-                <li>✓ Análise estatística completa (R Worker Engine)</li>
+                <li>✓ Até 5 datasets (10 MB cada)</li>
+                <li>✓ Análises estatísticas essenciais</li>
                 <li>✓ Dashboards e relatórios fundamentais</li>
                 <li>✓ Exportação em HTML e Markdown</li>
               </ul>
             </div>
           </div>
 
-          {/* Card Team */}
-          <div className="landing-pricing-card card featured">
-            <div className="landing-popular-badge">Mais Popular</div>
-            <div className="landing-pricing-tier">Team</div>
+          {/* Card Pro */}
+          <div className="landing-pricing-card card featured" data-plan="pro">
+            <div className="landing-popular-badge">Recomendado</div>
+            <div className="landing-pricing-tier">Pro</div>
             <div className="landing-pricing-cost">
-              <span className="landing-amount">
-                {pricingPeriod === "yearly" ? "$40" : "$49"}
-              </span>
-              <span className="landing-period">/ mês {pricingPeriod === "yearly" ? "(cobrado anualmente)" : ""}</span>
+              <span className="landing-amount">R$ 249</span>
+              <span className="landing-period">/ mês</span>
             </div>
             <p className="landing-pricing-desc">
-              Para laboratórios de pesquisa, clínicas, universidades e equipes analíticas corporativas.
+              Para laboratórios de pesquisa, clínicas, universidades e equipes analíticas.
             </p>
             <button
               type="button"
               className="btn primary landing-plan-btn"
               onClick={() => onOpenAuth("register")}
             >
-              Iniciar Teste Gratuito
+              Criar Conta e Assinar o Pro
             </button>
             <div className="landing-pricing-features">
-              <strong>Tudo do Community mais:</strong>
+              <strong>Tudo do Free mais:</strong>
               <ul>
                 <li>✓ Até 15 usuários ativos</li>
-                <li>✓ Até 100 datasets simultâneos</li>
-                <li>✓ 10 GB de armazenamento ultrarrápido</li>
-                <li>✓ Conectores SQL nativos (Postgres, MySQL, Snowflake)</li>
-                <li>✓ Compartilhamento de coleções e workspaces</li>
-                <li>✓ Exportação multi-formato (PDF A4, Word DOCX)</li>
-                <li>✓ Suporte técnico prioritário por e-mail</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Card Enterprise */}
-          <div className="landing-pricing-card card">
-            <div className="landing-enterprise-badge">Corporativo & Regulatório</div>
-            <div className="landing-pricing-tier">Enterprise</div>
-            <div className="landing-pricing-cost">
-              <span className="landing-amount">
-                {pricingPeriod === "yearly" ? "$249" : "$299"}
-              </span>
-              <span className="landing-period">/ mês {pricingPeriod === "yearly" ? "(cobrado anualmente)" : ""}</span>
-            </div>
-            <p className="landing-pricing-desc">
-              Para hospitais, CROs farmacêuticas, instituições financeiras e grandes corporações.
-            </p>
-            <button
-              type="button"
-              className="btn landing-plan-btn"
-              onClick={() => onOpenAuth("register")}
-            >
-              Falar com Especialistas
-            </button>
-            <div className="landing-pricing-features">
-              <strong>Tudo do Team mais:</strong>
-              <ul>
-                <li>✓ Usuários e datasets ilimitados</li>
-                <li>✓ Armazenamento corporativo sem limites</li>
-                <li>✓ Single Sign-On (SSO SAML 2.0 / OIDC)</li>
-                <li>✓ Provisionamento SCIM 2.0 automático</li>
-                <li>✓ Trilha de auditoria imutável (FDA 21 CFR Part 11)</li>
-                <li>✓ Engine B de alta performance (&gt;100k linhas)</li>
-                <li>✓ SLA de 99.9% e suporte 24/7 com gerente dedicado</li>
+                <li>✓ Até 100 datasets (200 MB cada)</li>
+                <li>✓ Catálogo completo: ANOVA, ANCOVA, não paramétricos e Bayes</li>
+                <li>✓ Conectores SQL e compartilhamento entre equipes</li>
+                <li>✓ Exportação multi-formato (PDF, Word DOCX)</li>
               </ul>
             </div>
           </div>
         </div>
+        <p className="landing-section-desc" style={{ textAlign: "center", marginTop: 20 }}>
+          Hospitais e CROs que precisam de SSO, SCIM 2.0 e trilha de auditoria regulatória: o plano Enterprise é contratado sob medida.
+        </p>
       </section>
 
       {/* 8. Call to Action Pré-Footer */}

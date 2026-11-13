@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { api, TENANT_CHANGED_EVENT, type Dataset } from "./api";
+import { api, getActiveTenant, setActiveTenant, TENANT_CHANGED_EVENT, type Dataset } from "./api";
 import { DataTab } from "./components/DataTab";
 import { useCan } from "./components/AuthGate";
 import { Sidebar } from "./components/Sidebar";
@@ -55,8 +55,44 @@ export default function App() {
   const canEdit = useCan("editor");
   const [accessOpen, setAccessOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  const [planVersion, setPlanVersion] = useState(0); // muda quando o plano da organização muda: o modal de planos recarrega
 
   useEffect(() => applyThemeMode(theme), [theme]);
+
+  // Plano da organização ativa: o que está no navegador pode estar velho (assinou, cancelou ou o pagamento falhou em outro lugar).
+  // Na volta do Stripe Checkout (?billing=success) o webhook pode chegar alguns segundos depois do redirecionamento: consulta de novo.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const returned = params.get("billing");
+    if (returned) history.replaceState(null, "", location.pathname + location.hash);
+
+    const sync = async (): Promise<string | undefined> => {
+      const current = getActiveTenant();
+      if (current.id === "default") return undefined;
+      try {
+        const info = await api.getTenant(current.id);
+        if (info.tier !== current.tier) {
+          setActiveTenant({ ...current, tier: info.tier });
+          setPlanVersion((v) => v + 1);
+        }
+        return info.tier;
+      } catch {
+        return undefined;
+      }
+    };
+    void sync();
+
+    if (returned === "canceled") setError("Assinatura cancelada: nenhuma cobrança foi feita.");
+    if (returned !== "success") return;
+    setPricingOpen(true);
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      const tier = await sync();
+      if (tier === "team" || tries >= 8) clearInterval(timer);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, []);
 
   const refresh = useCallback(async (select?: string) => {
     try {
@@ -138,7 +174,7 @@ export default function App() {
         <UserMenu />
       </header>
 
-      {pricingOpen && <PricingModal onClose={() => setPricingOpen(false)} />}
+      {pricingOpen && <PricingModal key={planVersion} onClose={() => setPricingOpen(false)} />}
 
       {route.name === "explore" && <Sidebar datasets={datasets} selectedId={selectedId} busy={busy} onSelect={(id) => { setSelectedId(id); remember("dataset", id); }} onUpload={upload} onDelete={remove} canEdit={canEdit} />}
 

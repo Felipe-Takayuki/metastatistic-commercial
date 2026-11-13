@@ -559,3 +559,19 @@ async def test_proxy_routing_to_web_frontend():
             assert resp_spa.status_code == 200
             assert "SPA Fallback" in resp_spa.text
             assert spa_route.called
+
+
+@pytest.mark.asyncio
+async def test_compressed_upstream_is_not_double_decoded_by_the_browser(monkeypatch):
+    """O gateway lê o corpo já descomprimido: repassar `Content-Encoding: gzip` quebraria o navegador."""
+    import gzip
+
+    monkeypatch.setattr(settings, "authz_enabled", False)
+    body = b"<html>Metastatistic</html>"
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get(f"{settings.web_url}/").mock(return_value=httpx.Response(
+            200, content=gzip.compress(body), headers={"content-encoding": "gzip", "content-type": "text/html"}))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+            resp = await client.get("/")
+    assert resp.status_code == 200 and resp.content == body
+    assert "content-encoding" not in resp.headers
