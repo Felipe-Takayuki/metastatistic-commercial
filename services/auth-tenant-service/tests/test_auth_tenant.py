@@ -275,7 +275,11 @@ async def test_tenant_access_endpoint(memory_store):
 
         by_id = await client.get(f"/tenants/{created['id']}/access/u_owner")
         assert by_id.status_code == 200
-        assert by_id.json() == {"tenant_id": created["id"], "tenant_slug": created["slug"], "tier": "team", "role": "owner"}
+        body = by_id.json()
+        assert {k: body[k] for k in ("tenant_id", "tenant_slug", "tier", "role")} == {
+            "tenant_id": created["id"], "tenant_slug": created["slug"], "tier": "team", "role": "owner"}
+        # as cotas do plano seguem junto: o gateway as repassa à API para ela aplicar os limites
+        assert body["quotas"]["max_datasets"] == 100 and body["quotas"]["max_upload_mb"] == 200
 
         by_slug = await client.get(f"/tenants/{created['slug']}/access/u_owner")
         assert by_slug.status_code == 200 and by_slug.json()["tenant_id"] == created["id"]
