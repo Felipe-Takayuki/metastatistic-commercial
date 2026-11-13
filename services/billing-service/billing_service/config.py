@@ -35,14 +35,11 @@ class Settings(BaseSettings):
     # BILLING_*_URL_DEFAULT explícitas continuam valendo. Sem APP_URL, valem os padrões de desenvolvimento abaixo.
     app_url: str = ""
 
-    # IDs de preço do Stripe (criados no painel). STRIPE_PRICE_ID (um preço só, nome usado em outros projetos) vale como o preço
-    # MENSAL do plano Team, a menos que STRIPE_PRICE_TEAM_MONTHLY exista. Sem nada definido ficam os IDs de exemplo
-    # (price_team_monthly...), que só funcionam no modo mock.
+    # ID do preço mensal (em R$) do plano Pro, criado no painel do Stripe em modo de teste. STRIPE_PRICE_ID e
+    # STRIPE_PRICE_PRO_MONTHLY são sinônimos (o específico ganha). Sem nenhum fica o ID de exemplo (price_pro_monthly),
+    # que só funciona no modo mock.
     stripe_price_id: str = ""
-    stripe_price_team_monthly: str = ""
-    stripe_price_team_yearly: str = ""
-    stripe_price_enterprise_monthly: str = ""
-    stripe_price_enterprise_yearly: str = ""
+    stripe_price_pro_monthly: str = ""
 
     # Frontend Redirection URLs
     billing_success_url_default: str = "http://localhost:3000/billing/success?session_id={CHECKOUT_SESSION_ID}"
@@ -102,93 +99,78 @@ class Settings(BaseSettings):
             if missing:
                 logger.warning(
                     "Stripe real ligado, mas estes preços ainda são IDs de exemplo (o checkout deles não vai funcionar): %s. "
-                    "Defina STRIPE_PRICE_ID (Team mensal) ou STRIPE_PRICE_TEAM_MONTHLY/_YEARLY e STRIPE_PRICE_ENTERPRISE_MONTHLY/_YEARLY.",
+                    "Defina STRIPE_PRICE_ID (ou STRIPE_PRICE_PRO_MONTHLY) com o ID do preço mensal do plano Pro.",
                     ", ".join(missing),
                 )
         return self
 
 
 PLACEHOLDER_PRICES = {
-    "team_monthly": "price_team_monthly",
-    "team_yearly": "price_team_yearly",
-    "enterprise_monthly": "price_enterprise_monthly",
-    "enterprise_yearly": "price_enterprise_yearly",
+    "pro_monthly": "price_pro_monthly",
 }
 
 
 def stripe_price_ids(s: Settings) -> Dict[str, str]:
-    """ID de preço efetivo de cada plano pago/ciclo: o específico, depois (só Team mensal) STRIPE_PRICE_ID, depois o exemplo."""
+    """ID de preço efetivo de cada plano pago: o específico, depois STRIPE_PRICE_ID, depois o exemplo (só no mock)."""
     return {
-        "team_monthly": s.stripe_price_team_monthly.strip() or s.stripe_price_id.strip() or PLACEHOLDER_PRICES["team_monthly"],
-        "team_yearly": s.stripe_price_team_yearly.strip() or PLACEHOLDER_PRICES["team_yearly"],
-        "enterprise_monthly": s.stripe_price_enterprise_monthly.strip() or PLACEHOLDER_PRICES["enterprise_monthly"],
-        "enterprise_yearly": s.stripe_price_enterprise_yearly.strip() or PLACEHOLDER_PRICES["enterprise_yearly"],
+        "pro_monthly": s.stripe_price_pro_monthly.strip() or s.stripe_price_id.strip() or PLACEHOLDER_PRICES["pro_monthly"],
     }
 
 
 settings = Settings()
 _PRICES = stripe_price_ids(settings)
 
+# Catálogo vendido: Free e Pro, assinatura mensal em reais (centavos). `tier` é o nome interno que o auth-tenant-service,
+# o gateway e o stat-orchestrator já usam (community = Free, team = Pro); `enterprise` segue existindo como contrato sob medida,
+# fora do Stripe. As cotas daqui são as exibidas na tela de planos; quem as aplica é o auth-tenant-service (`TIER_QUOTAS`), que a API consulta.
 PLANS: Dict[str, Dict[str, Any]] = {
-    "community": {
-        "id": "community",
-        "name": "Community Open-Source",
-        "description": "Essential statistical analysis & BI for individuals and small research teams",
+    "free": {
+        "id": "free",
+        "name": "Free",
+        "description": "Para conhecer a plataforma: análises estatísticas essenciais para um pesquisador ou grupo pequeno.",
         "tier": "community",
         "price_monthly": 0,
         "price_yearly": 0,
-        "currency": "usd",
+        "currency": "brl",
         "stripe_price_id_monthly": None,
         "stripe_price_id_yearly": None,
-        "features": ["jasp_engine", "csv_import", "sqlite_export"],
+        "features": [
+            "Até 3 usuários",
+            "Até 5 datasets (10 MB cada)",
+            "Análises estatísticas essenciais",
+            "Relatórios e dashboards básicos",
+        ],
         "quotas": {
             "max_users": 3,
-            "max_datasets": 10,
-            "max_storage_mb": 500,
+            "max_datasets": 5,
+            "max_upload_mb": 10,
+            "max_storage_mb": 50,
             "rate_limit_per_min": 60,
         },
     },
-    "team": {
-        "id": "team",
-        "name": "Team Commercial",
-        "description": "Collaborative analysis, team sharing, external PostgreSQL and higher limits",
+    "pro": {
+        "id": "pro",
+        "name": "Pro",
+        "description": "Para laboratórios e equipes: mais usuários, datasets maiores e catálogo estatístico completo.",
         "tier": "team",
-        "price_monthly": 4900,  # $49.00 USD in cents
-        "price_yearly": 49000,  # $490.00 USD in cents (2 months free)
-        "currency": "usd",
-        "stripe_price_id_monthly": _PRICES["team_monthly"],
-        "stripe_price_id_yearly": _PRICES["team_yearly"],
-        "features": ["jasp_engine", "csv_import", "postgres_connector", "team_sharing"],
+        "price_monthly": 24900,  # R$ 249,00 em centavos
+        "price_yearly": 0,       # só cobrança mensal
+        "currency": "brl",
+        "stripe_price_id_monthly": _PRICES["pro_monthly"],
+        "stripe_price_id_yearly": None,
+        "features": [
+            "Até 15 usuários",
+            "Até 100 datasets (200 MB cada)",
+            "Catálogo completo: ANOVA, ANCOVA, não paramétricos e Bayes",
+            "Conectores SQL e compartilhamento entre equipes",
+            "Exportação multi-formato (HTML, PDF, DOCX)",
+        ],
         "quotas": {
             "max_users": 15,
             "max_datasets": 100,
+            "max_upload_mb": 200,
             "max_storage_mb": 10000,
             "rate_limit_per_min": 300,
-        },
-    },
-    "enterprise": {
-        "id": "enterprise",
-        "name": "Enterprise High-Scale",
-        "description": "Dual-engine (Python AGPL-free + R), SAML SSO, SCIM 2.0, audit trail and VIP queues",
-        "tier": "enterprise",
-        "price_monthly": 29900,  # $299.00 USD in cents
-        "price_yearly": 299000,  # $2990.00 USD in cents
-        "currency": "usd",
-        "stripe_price_id_monthly": _PRICES["enterprise_monthly"],
-        "stripe_price_id_yearly": _PRICES["enterprise_yearly"],
-        "features": [
-            "jasp_engine",
-            "proprietary_engine",
-            "all_connectors",
-            "sso_saml",
-            "audit_log",
-            "unlimited",
-        ],
-        "quotas": {
-            "max_users": 1_000_000,
-            "max_datasets": 1_000_000,
-            "max_storage_mb": 10_000_000,
-            "rate_limit_per_min": 5000,
         },
     },
 }

@@ -70,13 +70,10 @@ services:
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
       STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY:-}"
       STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
-      # URL pública do app (retorno do checkout/portal do Stripe) e IDs de preço; STRIPE_PRICE_ID = preço mensal do plano Team
+      # URL pública do app (retorno do checkout/portal do Stripe) e IDs de preço; STRIPE_PRICE_ID = preço mensal (R$) do plano Pro
       APP_URL: "${APP_URL:-}"
       STRIPE_PRICE_ID: "${STRIPE_PRICE_ID:-}"
-      STRIPE_PRICE_TEAM_MONTHLY: "${STRIPE_PRICE_TEAM_MONTHLY:-}"
-      STRIPE_PRICE_TEAM_YEARLY: "${STRIPE_PRICE_TEAM_YEARLY:-}"
-      STRIPE_PRICE_ENTERPRISE_MONTHLY: "${STRIPE_PRICE_ENTERPRISE_MONTHLY:-}"
-      STRIPE_PRICE_ENTERPRISE_YEARLY: "${STRIPE_PRICE_ENTERPRISE_YEARLY:-}"
+      STRIPE_PRICE_PRO_MONTHLY: "${STRIPE_PRICE_PRO_MONTHLY:-}"
     volumes:
       - auth_data:/srv/data/auth
       - audit_data:/srv/data/audit

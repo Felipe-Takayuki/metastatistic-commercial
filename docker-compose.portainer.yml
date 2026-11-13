@@ -14,7 +14,7 @@
 #   JWT_SECRET_KEY  openssl rand -hex 32   (ou JWT_SECRET, o nome usado em outros projetos)
 # Opcionais: GATEWAY_PORT (8085), ENVIRONMENT (development), AUTH_ENABLED (true), COOKIE_SECURE (true atrás de HTTPS),
 #   Stripe: STRIPE_MOCK_MODE (true = simulado; false = Stripe real), STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET,
-#   STRIPE_PRICE_ID (preço mensal do plano Team) ou STRIPE_PRICE_TEAM_/ENTERPRISE_ + MONTHLY/YEARLY, APP_URL (URL pública do app),
+#   STRIPE_PRICE_ID (preço mensal em R$ do plano Pro) ou STRIPE_PRICE_PRO_MONTHLY, APP_URL (URL pública do app),
 #   S3_ACCESS_KEY/S3_SECRET_KEY/GARAGE_RPC_SECRET/GARAGE_ADMIN_TOKEN (Garage interno; ver .env.example).
 
 services:
@@ -68,13 +68,10 @@ services:
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
       STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY:-}"
       STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
-      # URL pública do app (retorno do checkout/portal do Stripe) e IDs de preço; STRIPE_PRICE_ID = preço mensal do plano Team
+      # URL pública do app (retorno do checkout/portal do Stripe) e IDs de preço; STRIPE_PRICE_ID = preço mensal (R$) do plano Pro
       APP_URL: "${APP_URL:-}"
       STRIPE_PRICE_ID: "${STRIPE_PRICE_ID:-}"
-      STRIPE_PRICE_TEAM_MONTHLY: "${STRIPE_PRICE_TEAM_MONTHLY:-}"
-      STRIPE_PRICE_TEAM_YEARLY: "${STRIPE_PRICE_TEAM_YEARLY:-}"
-      STRIPE_PRICE_ENTERPRISE_MONTHLY: "${STRIPE_PRICE_ENTERPRISE_MONTHLY:-}"
-      STRIPE_PRICE_ENTERPRISE_YEARLY: "${STRIPE_PRICE_ENTERPRISE_YEARLY:-}"
+      STRIPE_PRICE_PRO_MONTHLY: "${STRIPE_PRICE_PRO_MONTHLY:-}"
     volumes:
       - auth_data:/srv/data/auth
       - audit_data:/srv/data/audit

@@ -135,6 +135,12 @@ def create_tenant(
     return tenant
 
 
+@app.get("/tenants/stats/plans")
+def tenant_plan_stats(tenant_store: TenantStore = Depends(get_store)):
+    """Interno (o gateway não expõe): organizações e usuários por tier, para o painel admin do billing-service."""
+    return tenant_store.stats_by_tier()
+
+
 @app.get("/tenants/{tenant_id}", response_model=TenantResponse)
 def get_tenant(tenant_id: str, tenant_store: TenantStore = Depends(get_store)):
     tenant = tenant_store.get_tenant(tenant_id)
@@ -156,7 +162,7 @@ def get_tenant_access(tenant_ref: str, user_id: str, tenant_store: TenantStore =
     member = tenant_store.get_member(tenant.id, user_id) if tenant else None
     if not tenant or not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not a member of this tenant")
-    return TenantAccessResponse(tenant_id=tenant.id, tenant_slug=tenant.slug, tier=tenant.tier, role=member.role)
+    return TenantAccessResponse(tenant_id=tenant.id, tenant_slug=tenant.slug, tier=tenant.tier, role=member.role, quotas=tenant.quotas)
 
 
 @app.get("/tenants/by-slug/{slug}", response_model=TenantResponse)

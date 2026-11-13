@@ -7,9 +7,14 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import hashlib
+
 from billing_service.config import PLANS, settings
 from billing_service.db import BillingStore
 from billing_service.models import (
+    AdminEventRow,
+    AdminPlanRow,
+    AdminSummary,
     CheckoutSessionRequest,
     CheckoutSessionResponse,
     CustomerPortalRequest,
@@ -104,7 +109,7 @@ def health():
 
 @app.get("/billing/plans", response_model=List[PlanInfo])
 def list_plans():
-    """Retorna os planos comerciais disponíveis (Community, Team e Enterprise)."""
+    """Retorna os planos vendidos: Free (grátis) e Pro (assinatura mensal em R$)."""
     return [PlanInfo(**plan_data) for plan_data in PLANS.values()]
 
 
@@ -118,19 +123,19 @@ def get_subscription(
     x_tenant_id: str = Header(default="default", alias="X-Tenant-ID"),
     store: BillingStore = Depends(get_billing_store),
 ):
-    """Retorna a assinatura ativa do tenant ou o plano Community gratuito padrão."""
+    """Retorna a assinatura ativa do tenant ou o plano Free padrão."""
     sub = store.get_subscription_by_tenant(x_tenant_id)
     if sub:
         return sub
 
-    # Se não houver assinatura registrada, retorna o estado padrão (Community)
+    # Se não houver assinatura registrada, retorna o estado padrão (Free)
     now_iso = datetime.now(timezone.utc).isoformat()
     return SubscriptionResponse(
-        id=f"sub_community_{x_tenant_id}",
+        id=f"sub_free_{x_tenant_id}",
         tenant_id=x_tenant_id,
         customer_id=f"cus_{x_tenant_id}",
         stripe_subscription_id=None,
-        plan_id="community",
+        plan_id="free",
         tier="community",
         status="active",
         current_period_start=None,
@@ -159,10 +164,15 @@ def create_checkout(
             detail=f"Invalid plan_id '{payload.plan_id}'. Valid options: {list(PLANS.keys())}",
         )
 
-    if payload.plan_id == "community":
+    if payload.plan_id == "free":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Community plan is free and does not require checkout. Downgrade via subscription cancel.",
+            detail="Free plan is free and does not require checkout. Downgrade via subscription cancel (portal).",
+        )
+    if payload.billing_cycle != "monthly":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only the monthly billing cycle is available for the Pro plan.",
         )
 
     plan = PLANS[payload.plan_id]
@@ -234,6 +244,149 @@ def list_invoices(
 # Stripe Webhooks
 # ==========================================
 
+WEBHOOK_EVENT_TYPES = (
+    "checkout.session.completed",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "invoice.payment_failed",
+    "invoice.payment_succeeded",  # não é um dos quatro pedidos; alimenta o histórico de faturas
+)
+
+
+def _tenant_for(store: BillingStore, existing_sub, customer_id) -> str:
+    if existing_sub:
+        return existing_sub.tenant_id
+    return (store.get_tenant_by_customer_id(customer_id) if customer_id else None) or "default"
+
+
+def _plan_from_price(items: list, default_plan: str) -> str:
+    if default_plan not in PLANS:  # assinatura gravada antes do catálogo Free/Pro (team/enterprise)
+        default_plan = "pro"
+    for item in items:
+        price_id = item.get("price", {}).get("id")
+        for pid, pdata in PLANS.items():
+            if price_id and price_id == pdata.get("stripe_price_id_monthly"):
+                return pid
+    return default_plan
+
+
+async def _handle_checkout_completed(store: BillingStore, data: dict) -> tuple[str, str]:
+    customer_id = data.get("customer")
+    metadata = data.get("metadata") or {}
+    tenant_id = (
+        data.get("client_reference_id")
+        or metadata.get("tenant_id")
+        or (store.get_tenant_by_customer_id(customer_id) if customer_id else None)
+        or "default"
+    )
+    plan_id = metadata.get("plan_id", "pro")
+    if plan_id not in PLANS or plan_id == "free":
+        plan_id = "pro"
+    tier = PLANS[plan_id]["tier"]
+    if customer_id:
+        store.save_customer(tenant_id, customer_id)
+    store.upsert_subscription(
+        tenant_id=tenant_id,
+        customer_id=customer_id or f"cus_{tenant_id}",
+        plan_id=plan_id,
+        tier=tier,
+        status="active",
+        stripe_subscription_id=data.get("subscription"),
+    )
+    await notify_tenant_tier_change(tenant_id, tier)
+    return tenant_id, f"Subscription activated for tenant {tenant_id} on plan {plan_id}"
+
+
+async def _handle_subscription_updated(store: BillingStore, data: dict) -> tuple[str, str]:
+    stripe_sub_id = data.get("id")
+    customer_id = data.get("customer")
+    status_sub = data.get("status", "active")
+    period_start, period_end = data.get("current_period_start"), data.get("current_period_end")
+    start_iso = datetime.fromtimestamp(period_start, timezone.utc).isoformat() if period_start else None
+    end_iso = datetime.fromtimestamp(period_end, timezone.utc).isoformat() if period_end else None
+
+    existing_sub = store.get_subscription_by_stripe_id(stripe_sub_id) if stripe_sub_id else None
+    tenant_id = _tenant_for(store, existing_sub, customer_id)
+    plan_id = _plan_from_price(data.get("items", {}).get("data", []), existing_sub.plan_id if existing_sub else "pro")
+    tier = PLANS[plan_id]["tier"]
+
+    store.upsert_subscription(
+        tenant_id=tenant_id,
+        customer_id=customer_id or (existing_sub.customer_id if existing_sub else f"cus_{tenant_id}"),
+        plan_id=plan_id,
+        tier=tier,
+        status=status_sub,
+        stripe_subscription_id=stripe_sub_id,
+        current_period_start=start_iso,
+        current_period_end=end_iso,
+        cancel_at_period_end=bool(data.get("cancel_at_period_end", False)),
+    )
+    if status_sub == "active":
+        await notify_tenant_tier_change(tenant_id, tier)
+    return tenant_id, f"Subscription {stripe_sub_id} updated: status={status_sub}, plan={plan_id}"
+
+
+async def _handle_subscription_deleted(store: BillingStore, data: dict) -> tuple[str, str]:
+    stripe_sub_id = data.get("id")
+    existing_sub = store.get_subscription_by_stripe_id(stripe_sub_id) if stripe_sub_id else None
+    tenant_id = _tenant_for(store, existing_sub, data.get("customer"))
+    if existing_sub:
+        store.upsert_subscription(
+            tenant_id=tenant_id,
+            customer_id=existing_sub.customer_id,
+            plan_id=existing_sub.plan_id,
+            tier=existing_sub.tier,
+            status="canceled",
+            stripe_subscription_id=stripe_sub_id,
+        )
+    await notify_tenant_tier_change(tenant_id, "community")
+    return tenant_id, f"Subscription {stripe_sub_id} deleted. Tenant {tenant_id} downgraded to Free"
+
+
+def _record_invoice(store: BillingStore, data: dict, invoice_status: str):
+    sub_id = data.get("subscription")
+    existing_sub = store.get_subscription_by_stripe_id(sub_id) if sub_id else None
+    tenant_id = _tenant_for(store, existing_sub, data.get("customer"))
+    store.save_invoice(
+        tenant_id=tenant_id,
+        amount_due=data.get("amount_due", 0),
+        amount_paid=data.get("amount_paid", 0),
+        status=invoice_status,
+        subscription_id=sub_id,
+        stripe_invoice_id=data.get("id"),
+        currency=data.get("currency", "brl"),
+        hosted_invoice_url=data.get("hosted_invoice_url"),
+    )
+    return tenant_id, existing_sub, sub_id
+
+
+async def _handle_invoice_succeeded(store: BillingStore, data: dict) -> tuple[str, str]:
+    tenant_id, _, _ = _record_invoice(store, data, "paid")
+    return tenant_id, f"Invoice {data.get('id')} recorded as paid for tenant {tenant_id}"
+
+
+async def _handle_invoice_failed(store: BillingStore, data: dict) -> tuple[str, str]:
+    tenant_id, existing_sub, sub_id = _record_invoice(store, data, "open")
+    if existing_sub:  # o plano continua (o Stripe ainda retenta a cobrança); se esgotar, vem subscription.deleted
+        store.upsert_subscription(
+            tenant_id=tenant_id,
+            customer_id=existing_sub.customer_id,
+            plan_id=existing_sub.plan_id,
+            tier=existing_sub.tier,
+            status="past_due",
+            stripe_subscription_id=sub_id,
+        )
+    return tenant_id, f"Invoice {data.get('id')} recorded as failed/past_due for tenant {tenant_id}"
+
+
+_WEBHOOK_HANDLERS = {
+    "checkout.session.completed": _handle_checkout_completed,
+    "customer.subscription.updated": _handle_subscription_updated,
+    "customer.subscription.deleted": _handle_subscription_deleted,
+    "invoice.payment_failed": _handle_invoice_failed,
+    "invoice.payment_succeeded": _handle_invoice_succeeded,
+}
+
 
 @app.post("/billing/webhook", response_model=WebhookEventResponse)
 async def stripe_webhook(
@@ -242,12 +395,13 @@ async def stripe_webhook(
     store: BillingStore = Depends(get_billing_store),
 ):
     """
-    Processa webhooks oficiais do Stripe:
-    - checkout.session.completed: ativa assinatura e atualiza tier no auth-tenant-service
-    - customer.subscription.updated: sincroniza status/tier
-    - customer.subscription.deleted: cancela assinatura e rebaixa tenant para community
-    - invoice.payment_succeeded: registra fatura paga
-    - invoice.payment_failed: registra falha de pagamento e marca past_due
+    Webhook do Stripe, validado pela assinatura (`Stripe-Signature`) e idempotente pelo `event.id`:
+    - checkout.session.completed: ativa o plano Pro e atualiza o tier no auth-tenant-service
+    - customer.subscription.updated: sincroniza status, período e plano
+    - customer.subscription.deleted: cancela e rebaixa o tenant para Free
+    - invoice.payment_failed: registra a fatura em aberto e marca a assinatura como past_due
+    (+ invoice.payment_succeeded: registra a fatura paga)
+    O Stripe reentrega eventos (timeout, retentativa): a segunda entrega responde 200 sem repetir o efeito.
     """
     body = await request.body()
     try:
@@ -259,191 +413,79 @@ async def stripe_webhook(
         )
 
     event_type = event.get("type", "unknown")
-    event_data = event.get("data", {}).get("object", {})
+    event_data = (event.get("data") or {}).get("object") or {}
+    # eventos reais sempre têm id; sem ele (testes/mock) o hash do corpo faz o papel, então a mesma carga não vale duas vezes
+    event_id = str(event.get("id") or "body_" + hashlib.sha256(body).hexdigest()[:32])
 
-    processed = False
-    detail = None
-
-    if event_type == "checkout.session.completed":
-        customer_id = event_data.get("customer")
-        metadata = event_data.get("metadata", {})
-        tenant_id = (
-            event_data.get("client_reference_id")
-            or metadata.get("tenant_id")
-            or (store.get_tenant_by_customer_id(customer_id) if customer_id else None)
-            or "default"
-        )
-        plan_id = metadata.get("plan_id", "team")
-        tier = metadata.get("tier") or PLANS.get(plan_id, {}).get("tier", "team")
-        stripe_sub_id = event_data.get("subscription")
-
-        if customer_id:
-            store.save_customer(tenant_id, customer_id)
-
-        store.upsert_subscription(
-            tenant_id=tenant_id,
-            customer_id=customer_id or f"cus_{tenant_id}",
-            plan_id=plan_id,
-            tier=tier,
-            status="active",
-            stripe_subscription_id=stripe_sub_id,
+    if not store.claim_event(event_id, event_type):
+        logger.info("webhook %s (%s) já recebido: ignorado (idempotência)", event_id, event_type)
+        previous = store.get_event(event_id) or {}
+        return WebhookEventResponse(
+            received=True, event_type=event_type, processed=previous.get("status") == "processed", duplicate=True,
+            event_id=event_id, detail=f"Duplicate delivery of {event_id}: already {previous.get('status', 'received')}",
         )
 
-        # Notifica auth-tenant-service para aplicar o novo tier
-        await notify_tenant_tier_change(tenant_id, tier)
-        processed = True
-        detail = f"Subscription activated for tenant {tenant_id} on tier {tier}"
-
-    elif event_type == "customer.subscription.updated":
-        stripe_sub_id = event_data.get("id")
-        customer_id = event_data.get("customer")
-        status_sub = event_data.get("status", "active")
-        cancel_at_period_end = bool(event_data.get("cancel_at_period_end", False))
-        period_start = event_data.get("current_period_start")
-        period_end = event_data.get("current_period_end")
-
-        start_iso = datetime.fromtimestamp(period_start, timezone.utc).isoformat() if period_start else None
-        end_iso = datetime.fromtimestamp(period_end, timezone.utc).isoformat() if period_end else None
-
-        existing_sub = store.get_subscription_by_stripe_id(stripe_sub_id) if stripe_sub_id else None
-        tenant_id = (
-            existing_sub.tenant_id
-            if existing_sub
-            else (store.get_tenant_by_customer_id(customer_id) if customer_id else "default")
-        )
-
-        plan_id = existing_sub.plan_id if existing_sub else "team"
-        tier = existing_sub.tier if existing_sub else "team"
-
-        # Verifica se os itens contêm novo plan_id
-        items = event_data.get("items", {}).get("data", [])
-        if items:
-            price_id = items[0].get("price", {}).get("id")
-            for pid, pdata in PLANS.items():
-                if price_id in (pdata.get("stripe_price_id_monthly"), pdata.get("stripe_price_id_yearly")):
-                    plan_id = pid
-                    tier = pdata["tier"]
-                    break
-
-        store.upsert_subscription(
-            tenant_id=tenant_id,
-            customer_id=customer_id or (existing_sub.customer_id if existing_sub else f"cus_{tenant_id}"),
-            plan_id=plan_id,
-            tier=tier,
-            status=status_sub,
-            stripe_subscription_id=stripe_sub_id,
-            current_period_start=start_iso,
-            current_period_end=end_iso,
-            cancel_at_period_end=cancel_at_period_end,
-        )
-
-        if status_sub == "active":
-            await notify_tenant_tier_change(tenant_id, tier)
-
-        processed = True
-        detail = f"Subscription {stripe_sub_id} updated: status={status_sub}, tier={tier}"
-
-    elif event_type == "customer.subscription.deleted":
-        stripe_sub_id = event_data.get("id")
-        customer_id = event_data.get("customer")
-        existing_sub = store.get_subscription_by_stripe_id(stripe_sub_id) if stripe_sub_id else None
-        tenant_id = (
-            existing_sub.tenant_id
-            if existing_sub
-            else (store.get_tenant_by_customer_id(customer_id) if customer_id else "default")
-        )
-
-        if existing_sub:
-            store.upsert_subscription(
-                tenant_id=tenant_id,
-                customer_id=existing_sub.customer_id,
-                plan_id=existing_sub.plan_id,
-                tier=existing_sub.tier,
-                status="canceled",
-                stripe_subscription_id=stripe_sub_id,
-            )
-
-        # Rebaixa tenant para tier community
-        await notify_tenant_tier_change(tenant_id, "community")
-        processed = True
-        detail = f"Subscription {stripe_sub_id} deleted. Tenant {tenant_id} downgraded to community"
-
-    elif event_type == "invoice.payment_succeeded":
-        stripe_inv_id = event_data.get("id")
-        customer_id = event_data.get("customer")
-        sub_id = event_data.get("subscription")
-        amount_due = event_data.get("amount_due", 0)
-        amount_paid = event_data.get("amount_paid", 0)
-        currency = event_data.get("currency", "usd")
-        hosted_url = event_data.get("hosted_invoice_url")
-
-        existing_sub = store.get_subscription_by_stripe_id(sub_id) if sub_id else None
-        tenant_id = (
-            existing_sub.tenant_id
-            if existing_sub
-            else (store.get_tenant_by_customer_id(customer_id) if customer_id else "default")
-        )
-
-        store.save_invoice(
-            tenant_id=tenant_id,
-            amount_due=amount_due,
-            amount_paid=amount_paid,
-            status="paid",
-            subscription_id=sub_id,
-            stripe_invoice_id=stripe_inv_id,
-            currency=currency,
-            hosted_invoice_url=hosted_url,
-        )
-        processed = True
-        detail = f"Invoice {stripe_inv_id} recorded as paid for tenant {tenant_id}"
-
-    elif event_type == "invoice.payment_failed":
-        stripe_inv_id = event_data.get("id")
-        customer_id = event_data.get("customer")
-        sub_id = event_data.get("subscription")
-        amount_due = event_data.get("amount_due", 0)
-        amount_paid = event_data.get("amount_paid", 0)
-        currency = event_data.get("currency", "usd")
-        hosted_url = event_data.get("hosted_invoice_url")
-
-        existing_sub = store.get_subscription_by_stripe_id(sub_id) if sub_id else None
-        tenant_id = (
-            existing_sub.tenant_id
-            if existing_sub
-            else (store.get_tenant_by_customer_id(customer_id) if customer_id else "default")
-        )
-
-        store.save_invoice(
-            tenant_id=tenant_id,
-            amount_due=amount_due,
-            amount_paid=amount_paid,
-            status="open",
-            subscription_id=sub_id,
-            stripe_invoice_id=stripe_inv_id,
-            currency=currency,
-            hosted_invoice_url=hosted_url,
-        )
-
-        # Marca assinatura como past_due se existir
-        if existing_sub:
-            store.upsert_subscription(
-                tenant_id=tenant_id,
-                customer_id=existing_sub.customer_id,
-                plan_id=existing_sub.plan_id,
-                tier=existing_sub.tier,
-                status="past_due",
-                stripe_subscription_id=sub_id,
-            )
-
-        processed = True
-        detail = f"Invoice {stripe_inv_id} recorded as failed/past_due for tenant {tenant_id}"
-
-    else:
+    handler = _WEBHOOK_HANDLERS.get(event_type)
+    if handler is None:
         detail = f"Unhandled event type: {event_type}"
+        store.finish_event(event_id, "ignored", detail)
+        return WebhookEventResponse(received=True, event_type=event_type, processed=False, event_id=event_id, detail=detail)
 
-    return WebhookEventResponse(
-        received=True,
-        event_type=event_type,
-        processed=processed,
-        detail=detail,
+    try:
+        tenant_id, detail = await handler(store, event_data)
+    except Exception as exc:
+        # libera o evento: o Stripe vai reenviar (resposta 500) e a nova tentativa precisa poder processar
+        logger.exception("webhook %s (%s) falhou", event_id, event_type)
+        store.finish_event(event_id, "failed", f"{type(exc).__name__}: {exc}"[:300])
+        raise HTTPException(status_code=500, detail="Webhook processing failed; the event can be retried") from exc
+
+    store.finish_event(event_id, "processed", detail, tenant_id)
+    logger.info("business_event=billing.%s tenant=%s event_id=%s", event_type, tenant_id, event_id)
+    return WebhookEventResponse(received=True, event_type=event_type, processed=True, event_id=event_id, detail=detail)
+
+
+# ==========================================
+# Painel admin (só o admin da plataforma; o gateway barra os demais)
+# ==========================================
+
+
+async def _fetch_plan_stats() -> Optional[dict]:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{settings.auth_service_url.rstrip('/')}/tenants/stats/plans")
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning("auth-tenant-service respondeu %s em /tenants/stats/plans", resp.status_code)
+    except Exception as exc:
+        logger.warning("Não consegui consultar as estatísticas do auth-tenant-service: %s", exc)
+    return None
+
+
+@app.get("/billing/admin/summary", response_model=AdminSummary)
+async def admin_summary(store: BillingStore = Depends(get_billing_store)):
+    """Usuários por plano, assinaturas ativas, MRR de teste e os últimos eventos do Stripe."""
+    counts = store.subscription_counts()
+    active = {pid: n for (pid, st), n in counts.items() if st in ("active", "trialing") and pid != "free"}
+    past_due = sum(n for (pid, st), n in counts.items() if st == "past_due" and pid != "free")
+    mrr = sum(PLANS[pid]["price_monthly"] * n for pid, n in active.items() if pid in PLANS)
+
+    stats = await _fetch_plan_stats()
+    by_plan = []
+    for pid, plan in PLANS.items():
+        tenants = users = None
+        if stats:
+            tier = plan["tier"]
+            tenants = stats.get("tenants_by_tier", {}).get(tier, 0)
+            users = stats.get("users_by_tier", {}).get(tier, 0)
+        by_plan.append(AdminPlanRow(plan_id=pid, name=plan["name"], tenants=tenants, users=users))
+
+    return AdminSummary(
+        test_mode=settings.stripe_mock_mode or settings.stripe_secret_key.startswith("sk_test_"),
+        mock_mode=settings.stripe_mock_mode,
+        active_subscriptions=sum(active.values()),
+        past_due_subscriptions=past_due,
+        mrr_cents=mrr,
+        users_total=stats.get("users_total") if stats else None,
+        by_plan=by_plan,
+        last_events=[AdminEventRow(**{k: e[k] for k in AdminEventRow.model_fields}) for e in store.list_events(20)],
     )

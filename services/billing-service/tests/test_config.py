@@ -92,44 +92,38 @@ def test_explicit_redirect_url_wins_over_app_url(monkeypatch):
     assert s.billing_success_url_default.startswith("https://app.exemplo.com/")   # os demais seguem o APP_URL
 
 
-def test_stripe_price_id_is_the_team_monthly_price_only(monkeypatch):
+def test_stripe_price_id_is_the_pro_monthly_price(monkeypatch):
     monkeypatch.setenv("STRIPE_PRICE_ID", "price_1ABC")
-    ids = stripe_price_ids(Settings())
-    assert ids["team_monthly"] == "price_1ABC"
-    # um preço só não vira os outros três: o anual/Enterprise ficam como estavam (nunca cobrar o preço errado)
-    assert ids["team_yearly"] == PLACEHOLDER_PRICES["team_yearly"]
-    assert ids["enterprise_monthly"] == PLACEHOLDER_PRICES["enterprise_monthly"]
+    assert stripe_price_ids(Settings()) == {"pro_monthly": "price_1ABC"}
 
 
-def test_specific_price_vars_override_and_cover_every_plan(monkeypatch):
+def test_specific_price_var_overrides_the_generic_one(monkeypatch):
     monkeypatch.setenv("STRIPE_PRICE_ID", "price_generic")
-    for var, value in (("TEAM_MONTHLY", "price_tm"), ("TEAM_YEARLY", "price_ty"), ("ENTERPRISE_MONTHLY", "price_em"), ("ENTERPRISE_YEARLY", "price_ey")):
-        monkeypatch.setenv(f"STRIPE_PRICE_{var}", value)
-    assert stripe_price_ids(Settings()) == {"team_monthly": "price_tm", "team_yearly": "price_ty", "enterprise_monthly": "price_em", "enterprise_yearly": "price_ey"}
+    monkeypatch.setenv("STRIPE_PRICE_PRO_MONTHLY", "price_pm")
+    assert stripe_price_ids(Settings()) == {"pro_monthly": "price_pm"}
 
 
 def test_blank_price_vars_behave_as_unset(monkeypatch):
     monkeypatch.setenv("STRIPE_PRICE_ID", "  ")
-    monkeypatch.setenv("STRIPE_PRICE_TEAM_MONTHLY", "")
+    monkeypatch.setenv("STRIPE_PRICE_PRO_MONTHLY", "")
     assert stripe_price_ids(Settings()) == PLACEHOLDER_PRICES
 
 
 def test_real_stripe_with_placeholder_prices_warns(caplog):
     with caplog.at_level(logging.WARNING, logger="billing_service.config"):
         Settings(environment="production", **REAL)
-    assert "IDs de exemplo" in caplog.text and "team_monthly" in caplog.text
+    assert "IDs de exemplo" in caplog.text and "pro_monthly" in caplog.text
 
 
-def test_real_stripe_with_all_prices_does_not_warn(caplog):
-    prices = dict(stripe_price_team_monthly="p1", stripe_price_team_yearly="p2", stripe_price_enterprise_monthly="p3", stripe_price_enterprise_yearly="p4")
+def test_real_stripe_with_the_price_does_not_warn(caplog):
     with caplog.at_level(logging.WARNING, logger="billing_service.config"):
-        Settings(environment="production", **REAL, **prices)
+        Settings(environment="production", **REAL, stripe_price_pro_monthly="price_real")
     assert "IDs de exemplo" not in caplog.text
 
 
-def test_plans_use_the_configured_prices_at_import():
+def test_plans_use_the_configured_price_at_import():
     import os, subprocess, sys
-    code = "from billing_service.config import PLANS; print(PLANS['team']['stripe_price_id_monthly'], PLANS['enterprise']['stripe_price_id_yearly'])"
+    code = "from billing_service.config import PLANS; print(PLANS['pro']['stripe_price_id_monthly'])"
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
-                         env={**os.environ, "STRIPE_PRICE_ID": "price_1ABC", "STRIPE_PRICE_ENTERPRISE_YEARLY": "price_ey"}).stdout.split()
-    assert out == ["price_1ABC", "price_ey"]
+                         env={**os.environ, "STRIPE_PRICE_ID": "price_1ABC"}).stdout.split()
+    assert out == ["price_1ABC"]

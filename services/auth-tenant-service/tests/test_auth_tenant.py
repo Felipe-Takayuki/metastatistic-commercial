@@ -176,7 +176,9 @@ async def test_invitations_and_tier_quota_enforcement(memory_store):
             json={"email": "user4@lab.com", "role": "viewer"},
         )
         assert inv3.status_code == 403
-        assert "quota exceeded" in inv3.json()["detail"].lower()
+        detail = inv3.json()["detail"]
+        # a mensagem diz o limite do plano e como liberar mais
+        assert "plano Free" in detail and "3 usuários" in detail and "plano Pro" in detail
 
 
 @pytest.mark.asyncio
@@ -281,3 +283,17 @@ async def test_tenant_access_endpoint(memory_store):
         # não-membro e tenant inexistente são indistinguíveis (404)
         assert (await client.get(f"/tenants/{created['id']}/access/u_stranger")).status_code == 404
         assert (await client.get("/tenants/nao-existe/access/u_owner")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_plan_stats_for_admin_panel(memory_store):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/tenants", json={"name": "Lab Free", "tier": "community", "owner_id": "u1"})
+        pro = await client.post("/tenants", json={"name": "Lab Pro", "tier": "team", "owner_id": "u2"})
+        inv = await client.post(f"/tenants/{pro.json()['id']}/invitations", json={"email": "c@lab.com", "role": "analyst"})
+        await client.post(f"/tenants/invitations/{inv.json()['token']}/accept", json={"user_id": "u3", "email": "c@lab.com"})
+
+        stats = (await client.get("/tenants/stats/plans")).json()
+        assert stats["tenants_by_tier"] == {"community": 1, "team": 1}
+        assert stats["users_by_tier"] == {"community": 1, "team": 2}
+        assert stats["users_total"] == 3

@@ -18,16 +18,18 @@ from auth_tenant_service.models import (
 )
 
 TIER_QUOTAS: Dict[str, Dict[str, Any]] = {
-    "community": {
+    "community": {  # plano Free
         "max_users": 3,
-        "max_datasets": 10,
-        "max_storage_mb": 500,
+        "max_datasets": 5,
+        "max_upload_mb": 10,
+        "max_storage_mb": 50,
         "features": ["jasp_engine", "csv_import", "sqlite_export"],
         "rate_limit_per_min": 60,
     },
-    "team": {
+    "team": {  # plano Pro
         "max_users": 15,
         "max_datasets": 100,
+        "max_upload_mb": 200,
         "max_storage_mb": 10000,
         "features": ["jasp_engine", "csv_import", "postgres_connector", "team_sharing"],
         "rate_limit_per_min": 300,
@@ -35,11 +37,27 @@ TIER_QUOTAS: Dict[str, Dict[str, Any]] = {
     "enterprise": {
         "max_users": 1_000_000,
         "max_datasets": 1_000_000,
+        "max_upload_mb": 10_000,
         "max_storage_mb": 10_000_000,
         "features": ["jasp_engine", "proprietary_engine", "all_connectors", "sso_saml", "audit_log", "unlimited"],
         "rate_limit_per_min": 5000,
     },
 }
+
+PLAN_NAMES = {"community": "Free", "team": "Pro", "enterprise": "Enterprise"}
+
+
+def users_quota_message(tier: str, limit: int) -> str:
+    """Mensagem do limite de usuários: diz o limite do plano e como liberar mais."""
+    name = PLAN_NAMES.get(tier, tier)
+    if tier == "community":
+        upgrade = f"Faça upgrade para o plano Pro (Planos > Assinar o Pro) para liberar até {TIER_QUOTAS['team']['max_users']} usuários."
+    elif tier == "team":
+        upgrade = "Para mais usuários, fale com a nossa equipe sobre o plano Enterprise."
+    else:
+        upgrade = "Remova um membro ou convite pendente para liberar uma vaga."
+    return f"Limite do plano {name}: até {limit} usuários por organização. {upgrade}"
+
 
 VALID_ROLES: set[RoleType] = {"owner", "admin", "statistician", "analyst", "viewer"}
 
@@ -198,6 +216,20 @@ class TenantStore:
             members_count=1,
         )
 
+    def stats_by_tier(self) -> Dict[str, Any]:
+        """Organizações e usuários por tier, para o painel admin do billing (usuário em duas organizações conta em cada uma)."""
+        with self._get_connection() as conn:
+            tenants = {r["tier"]: r["n"] for r in conn.execute("SELECT tier, COUNT(*) AS n FROM tenants GROUP BY tier")}
+            users = {
+                r["tier"]: r["n"]
+                for r in conn.execute(
+                    "SELECT t.tier AS tier, COUNT(DISTINCT m.user_id) AS n FROM tenant_members m "
+                    "JOIN tenants t ON t.id = m.tenant_id GROUP BY t.tier"
+                )
+            }
+            total = conn.execute("SELECT COUNT(DISTINCT user_id) AS n FROM tenant_members").fetchone()["n"]
+        return {"tenants_by_tier": tenants, "users_by_tier": users, "users_total": total}
+
     def get_tenant(self, tenant_id: str) -> Optional[TenantResponse]:
         with self._get_connection() as conn:
             row = conn.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
@@ -290,9 +322,7 @@ class TenantStore:
         tier_quota = tenant.quotas.get("max_users", 3)
         current_users = self.count_effective_users(tenant_id)
         if current_users >= tier_quota:
-            raise QuotaExceededError(
-                f"Tier quota exceeded: maximum users ({tier_quota}) reached for tier '{tenant.tier}'"
-            )
+            raise QuotaExceededError(users_quota_message(tenant.tier, tier_quota))
 
         inv_id = str(uuid.uuid4())
         token = secrets.token_urlsafe(32)
@@ -365,9 +395,7 @@ class TenantStore:
                     "SELECT COUNT(*) as c FROM tenant_members WHERE tenant_id = ?", (tenant_id,)
                 ).fetchone()["c"]
                 if current_members >= tier_quota:
-                    raise QuotaExceededError(
-                        f"Tier quota exceeded: maximum users ({tier_quota}) reached for tier '{tenant_row['tier']}'"
-                    )
+                    raise QuotaExceededError(users_quota_message(tenant_row["tier"], tier_quota))
 
                 cursor.execute(
                     """

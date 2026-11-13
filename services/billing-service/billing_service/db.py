@@ -61,13 +61,25 @@ class BillingStore:
                     stripe_invoice_id TEXT UNIQUE,
                     amount_due INTEGER,
                     amount_paid INTEGER,
-                    currency TEXT DEFAULT 'usd',
+                    currency TEXT DEFAULT 'brl',
                     status TEXT NOT NULL,
                     hosted_invoice_url TEXT,
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_inv_tenant ON invoices(tenant_id);
                 CREATE INDEX IF NOT EXISTS idx_inv_stripe ON invoices(stripe_invoice_id);
+
+                -- um registro por evento recebido do Stripe: a chave primária é o idempotency guard do webhook
+                CREATE TABLE IF NOT EXISTS webhook_events (
+                    event_id TEXT PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    tenant_id TEXT,
+                    status TEXT NOT NULL,          -- processing | processed | ignored | failed
+                    detail TEXT,
+                    received_at TEXT NOT NULL,
+                    processed_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_evt_received ON webhook_events(received_at);
             """)
             conn.commit()
 
@@ -223,7 +235,7 @@ class BillingStore:
         status: InvoiceStatusType,
         subscription_id: Optional[str] = None,
         stripe_invoice_id: Optional[str] = None,
-        currency: str = "usd",
+        currency: str = "brl",
         hosted_invoice_url: Optional[str] = None,
     ) -> InvoiceResponse:
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -269,6 +281,58 @@ class BillingStore:
                 (tenant_id,),
             ).fetchall()
             return [self._row_to_invoice(r) for r in rows]
+
+    # ---------- webhooks: idempotência e histórico ----------
+
+    def claim_event(self, event_id: str, event_type: str) -> bool:
+        """Reserva o evento para processamento. False = já foi (ou está sendo) processado: é uma reentrega do Stripe.
+
+        Evento que falhou antes (`failed`) pode ser reivindicado de novo, para a retentativa do Stripe funcionar.
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            inserted = conn.execute(
+                "INSERT OR IGNORE INTO webhook_events (event_id, event_type, status, received_at) VALUES (?, ?, 'processing', ?)",
+                (event_id, event_type, now_iso),
+            ).rowcount
+            if inserted:
+                conn.commit()
+                return True
+            reclaimed = conn.execute(
+                "UPDATE webhook_events SET status = 'processing', detail = NULL WHERE event_id = ? AND status = 'failed'",
+                (event_id,),
+            ).rowcount
+            conn.commit()
+            return bool(reclaimed)
+
+    def finish_event(self, event_id: str, status: str, detail: Optional[str] = None, tenant_id: Optional[str] = None) -> None:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE webhook_events SET status = ?, detail = ?, tenant_id = COALESCE(?, tenant_id), processed_at = ? WHERE event_id = ?",
+                (status, detail, tenant_id, now_iso, event_id),
+            )
+            conn.commit()
+
+    def get_event(self, event_id: str) -> Optional[dict]:
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM webhook_events WHERE event_id = ?", (event_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_events(self, limit: int = 20) -> List[dict]:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM webhook_events ORDER BY received_at DESC, rowid DESC LIMIT ?", (min(max(limit, 1), 200),)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    # ---------- painel admin ----------
+
+    def subscription_counts(self) -> dict:
+        """Assinaturas por plano e status (uma linha por tenant: `upsert_subscription` mantém uma só)."""
+        with self._get_connection() as conn:
+            rows = conn.execute("SELECT plan_id, status, COUNT(*) AS n FROM subscriptions GROUP BY plan_id, status").fetchall()
+            return {(r["plan_id"], r["status"]): r["n"] for r in rows}
 
     def _row_to_sub(self, row: sqlite3.Row) -> SubscriptionResponse:
         return SubscriptionResponse(

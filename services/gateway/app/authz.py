@@ -29,7 +29,7 @@ ADMIN_TENANT_ROLES = {"owner", "admin"}
 INTERNAL_TIMEOUT_S = 5.0
 
 # Headers de identidade que só o gateway pode definir.
-SPOOFABLE_HEADERS = {"x-tenant-id", "x-tenant-slug", "x-tenant-role", "x-user-id", "x-user-role"}
+SPOOFABLE_HEADERS = {"x-tenant-id", "x-tenant-slug", "x-tenant-role", "x-tenant-tier", "x-tenant-quotas", "x-user-id", "x-user-role"}
 
 
 class Access(Enum):
@@ -38,6 +38,7 @@ class Access(Enum):
     SESSION = "session"    # qualquer usuário autenticado
     MEMBER = "member"      # membro do tenant pedido
     ADMIN = "admin"        # owner/admin do tenant pedido
+    PLATFORM_ADMIN = "platform_admin"  # administrador da plataforma (papel `admin` do apps/api), não de um tenant
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class Policy:
     tenant_from: str = "header"            # "header" | "path" | "query"
     path_ref: Optional[str] = None         # tenant extraído do path quando tenant_from == "path"
     body_user_field: Optional[str] = None  # campo do corpo que deve ser o próprio usuário autenticado
+    soft_tenant: bool = False              # SESSION que, se o usuário é membro do tenant pedido, também repassa o plano dele
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,8 @@ class Decision:
     tenant_id: Optional[str] = None
     tenant_slug: Optional[str] = None
     tenant_role: Optional[str] = None
+    tenant_tier: Optional[str] = None
+    tenant_quotas: Optional[dict] = None
     query_overrides: Dict[str, str] = field(default_factory=dict)
 
 
@@ -117,6 +121,7 @@ FRONTEND_PUBLIC = {"/auth/status", "/auth/login", "/auth/logout", "/auth/setup",
 SSO_PUBLIC = {"/auth/sso/login", "/auth/sso/saml/acs", "/auth/sso/oidc/callback"}
 
 _TIER_UPDATE = re.compile(r"^/tenants/[^/]+/tier$")
+_TENANT_STATS = re.compile(r"^/tenants/stats(/|$)")
 _ACCESS_CHECK = re.compile(r"^/tenants/[^/]+/access(/|$)")
 _ACCEPT_INVITE = re.compile(r"^/tenants/invitations/[^/]+/accept$")
 _TENANT_ONLY = re.compile(r"^/tenants/([^/]+)$")
@@ -133,6 +138,7 @@ def classify(method: str, cp: str, service: str) -> Policy:
     # Somente serviço-a-serviço (billing -> auth atualiza tier; auth -> audit grava eventos; gateway -> auth checa acesso)
     if (
         (m == "PATCH" and _TIER_UPDATE.match(cp))
+        or _TENANT_STATS.match(cp)  # estatísticas globais por plano: só o billing-service consulta
         or _ACCESS_CHECK.match(cp)
         or cp == "/auth/token"  # emite token sem autenticar o chamador; ver PLAN.md §7
         or (service == "audit" and m != "GET")
@@ -144,8 +150,8 @@ def classify(method: str, cp: str, service: str) -> Policy:
     if m == "POST" and cp == "/billing/webhook":  # autenticado pela assinatura do Stripe, no billing-service
         return Policy(Access.PUBLIC)
 
-    if service == "data_api":  # o apps/api aplica seus próprios papéis/propriedade; aqui só exigimos sessão
-        return Policy(Access.SESSION)
+    if service == "data_api":  # o apps/api aplica seus próprios papéis/propriedade; aqui só exigimos sessão (+ plano do tenant)
+        return Policy(Access.SESSION, soft_tenant=True)
 
     # --- auth-tenant-service ---
     if m == "POST" and cp == "/tenants":
@@ -170,6 +176,8 @@ def classify(method: str, cp: str, service: str) -> Policy:
     # --- demais serviços ---
     if service == "audit":  # só GET chega aqui
         return Policy(Access.ADMIN, "query")
+    if service == "billing" and cp.startswith("/billing/admin"):  # painel com dados de TODAS as organizações
+        return Policy(Access.PLATFORM_ADMIN)
     if service == "billing" and m == "POST" and cp in {"/billing/checkout", "/billing/portal"}:
         return Policy(Access.ADMIN)
     return Policy(Access.MEMBER)  # padrão fechado: precisa ser membro do tenant pedido
@@ -232,6 +240,21 @@ async def fetch_access(client: httpx.AsyncClient, tenant_ref: str, user_id: str)
 # Decisão
 # ---------------------------------------------------------------------------
 
+async def _soft_tenant(client: httpx.AsyncClient, identity: Identity, headers: dict, host: Optional[str]) -> Decision:
+    """Nunca recusa: só descobre o plano. Membro do tenant pedido -> repassa o tenant, o plano e as cotas verificados.
+    Não membro, tenant inexistente ou workspace padrão -> segue como `default`, sem plano (a API aplica os limites do Free),
+    então ninguém ganha limites maiores dizendo ser de um tenant Pro."""
+    requested, _ = resolve_tenant(headers, host=host)
+    if requested and requested != settings.default_tenant_id:
+        access, failure = await fetch_access(client, requested, identity.user_id)
+        if access:
+            return Decision(
+                allowed=True, identity=identity, tenant_id=access["tenant_id"], tenant_slug=access["tenant_slug"],
+                tenant_role=access["role"], tenant_tier=access.get("tier"), tenant_quotas=access.get("quotas") or None,
+            )
+    return Decision(allowed=True, identity=identity, tenant_id=settings.default_tenant_id)
+
+
 async def authorize(
     *,
     method: str,
@@ -267,6 +290,12 @@ async def authorize(
             return deny(403, f"{policy.body_user_field} must be the authenticated user")
 
     if policy.access is Access.SESSION:
+        if policy.soft_tenant:
+            return await _soft_tenant(client, identity, headers, host)
+        return Decision(allowed=True, identity=identity)
+    if policy.access is Access.PLATFORM_ADMIN:
+        if identity.role != "admin":
+            return deny(403, "platform administrator role required")
         return Decision(allowed=True, identity=identity)
 
     # --- tenant pedido (NÃO confiável até a checagem abaixo) ---
@@ -294,6 +323,6 @@ async def authorize(
         return deny(403, "tenant owner/admin role required")
     return Decision(
         allowed=True, identity=identity, tenant_id=access["tenant_id"], tenant_slug=access["tenant_slug"],
-        tenant_role=access["role"],
+        tenant_role=access["role"], tenant_tier=access.get("tier"), tenant_quotas=access.get("quotas") or None,
         query_overrides={"tenant_id": access["tenant_id"]} if policy.tenant_from == "query" else {},
     )

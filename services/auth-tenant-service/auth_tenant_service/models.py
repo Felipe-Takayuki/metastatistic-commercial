@@ -51,6 +51,7 @@ class TenantAccessResponse(BaseModel):
     tenant_slug: str
     tier: str
     role: RoleType
+    quotas: Dict[str, Any] = {}  # cotas do plano do tenant; o gateway as repassa à API
 
 
 class MemberRoleUpdate(BaseModel):

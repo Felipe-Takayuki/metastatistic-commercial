@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 import httpx
 from fastapi import Request, Response
@@ -282,6 +283,10 @@ async def proxy_request(request: Request, path: str, client: Optional[httpx.Asyn
             fwd_headers["X-User-Role"] = decision.identity.role
             if decision.tenant_role:
                 fwd_headers["X-Tenant-Role"] = decision.tenant_role
+            if decision.tenant_tier:  # plano e cotas verificados no auth-tenant-service: a API aplica os limites com eles
+                fwd_headers["X-Tenant-Tier"] = decision.tenant_tier
+            if decision.tenant_quotas:
+                fwd_headers["X-Tenant-Quotas"] = json.dumps(decision.tenant_quotas, separators=(",", ":"))
 
         # Headers de proxy reverso
         client_host = request.client.host if request.client else "unknown"

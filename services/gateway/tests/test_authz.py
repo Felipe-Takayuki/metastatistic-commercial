@@ -85,6 +85,8 @@ def test_unsafe_paths_are_rejected(path):
     ("GET", "/scim/v2/tenants/t1/Users", "auth", Access.ADMIN),
     ("POST", "/billing/checkout", "billing", Access.ADMIN),
     ("GET", "/billing/subscription", "billing", Access.MEMBER),
+    ("GET", "/billing/admin/summary", "billing", Access.PLATFORM_ADMIN),
+    ("GET", "/tenants/stats/plans", "auth", Access.DENY),
     ("GET", "/reports", "bi_report", Access.MEMBER),
     ("POST", "/analyses/run", "stat", Access.MEMBER),
     ("POST", "/export/pdf", "export", Access.MEMBER),
@@ -396,3 +398,69 @@ async def test_authz_disabled_keeps_legacy_behaviour(monkeypatch):
         async with gateway() as client:
             resp = await client.get("/api/v1/billing/plans", headers={"X-Tenant-ID": "qualquer"})
     assert resp.status_code == 200 and plans.calls.last.request.headers["x-tenant-id"] == "qualquer"
+
+
+# ---------------------------------------------------------------------------
+# Painel admin do billing: só o administrador da plataforma
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_billing_admin_summary_requires_platform_admin():
+    with respx.mock(assert_all_called=False) as mock:
+        summary = mock.get(f"{settings.billing_service_url}/billing/admin/summary").mock(return_value=httpx.Response(200, json={"ok": 1}))
+        mock_session(mock, ALICE)  # editor, mesmo sendo owner de um tenant
+        async with gateway() as client:
+            denied = await client.get("/api/v1/billing/admin/summary", headers={**COOKIE, "X-Tenant-ID": TENANT_A})
+        assert denied.status_code == 403 and not summary.called
+
+    with respx.mock(assert_all_called=False) as mock:
+        summary = mock.get(f"{settings.billing_service_url}/billing/admin/summary").mock(return_value=httpx.Response(200, json={"ok": 1}))
+        mock_session(mock, ADMIN)
+        async with gateway() as client:
+            allowed = await client.get("/api/v1/billing/admin/summary", headers=COOKIE)
+        assert allowed.status_code == 200 and summary.called
+
+
+@pytest.mark.asyncio
+async def test_tenant_stats_are_internal_only():
+    with respx.mock(assert_all_called=False) as mock:
+        stats = mock.get(f"{settings.auth_service_url}/tenants/stats/plans").mock(return_value=httpx.Response(200, json={}))
+        mock_session(mock, ADMIN)
+        async with gateway() as client:
+            resp = await client.get("/api/v1/tenants/stats/plans", headers=COOKIE)
+    assert resp.status_code == 403 and not stats.called
+
+
+# ---------------------------------------------------------------------------
+# Plano e cotas verificados seguem para a API; o cliente não consegue forjá-los
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_verified_plan_is_forwarded_and_client_cannot_forge_it():
+    quotas = {"max_datasets": 5, "max_upload_mb": 10}
+    with respx.mock(assert_all_called=False) as mock:
+        mock_session(mock, ALICE)
+        mock.get(f"{settings.auth_service_url}/tenants/{TENANT_A}/access/u_alice").mock(return_value=httpx.Response(
+            200, json={"tenant_id": TENANT_A, "tenant_slug": "lab", "tier": "community", "role": "editor", "quotas": quotas}))
+        upstream = mock.get(f"{settings.data_api_url}/datasets").mock(return_value=httpx.Response(200, json=[]))
+        async with gateway() as client:
+            resp = await client.get("/api/v1/datasets", headers={
+                **COOKIE, "X-Tenant-ID": TENANT_A, "X-Tenant-Tier": "enterprise", "X-Tenant-Quotas": '{"max_datasets":999999}'})
+    assert resp.status_code == 200
+    sent = upstream.calls.last.request.headers
+    assert sent["x-tenant-tier"] == "community"          # o do auth-tenant-service, não o que o cliente mandou
+    assert json.loads(sent["x-tenant-quotas"]) == quotas
+
+
+@pytest.mark.asyncio
+async def test_non_member_gets_no_plan_and_falls_back_to_default_workspace():
+    with respx.mock(assert_all_called=False) as mock:
+        mock_session(mock, ALICE)
+        mock_not_member(mock, TENANT_B, "u_alice")
+        upstream = mock.get(f"{settings.data_api_url}/datasets").mock(return_value=httpx.Response(200, json=[]))
+        async with gateway() as client:
+            resp = await client.get("/api/v1/datasets", headers={**COOKIE, "X-Tenant-ID": TENANT_B})
+    assert resp.status_code == 200                       # a API não recusa: só aplica os limites do Free
+    sent = upstream.calls.last.request.headers
+    assert "x-tenant-tier" not in sent and "x-tenant-quotas" not in sent
+    assert sent["x-tenant-id"] == settings.default_tenant_id
