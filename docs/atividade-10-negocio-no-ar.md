@@ -41,7 +41,7 @@ Print: [`10-04-papeis-usuarios.png`](evidencias/10-04-papeis-usuarios.png).
 
 Prints: [`10-02-dados-do-usuario-camila.png`](evidencias/10-02-dados-do-usuario-camila.png) (a Camila vê o dataset que ela enviou) e [`10-03-dados-isolados-rafael.png`](evidencias/10-03-dados-isolados-rafael.png) (o Rafael, outro usuário, não vê nada; `GET /api/datasets` dele devolve `[]`).
 
-> **Limitação conhecida:** a separação é **por usuário**. Os dados do `apps/api` ainda não são particionados **por organização** (a coluna `tenant_id` hoje só alimenta a contagem do limite do plano). Está no backlog: [#2](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/2).
+> **Atualização (13/11/2026, depois da entrega):** além da separação por usuário, os dados do `apps/api` agora também são separados **por organização** (issue [#2](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/2), `apps/api/tests/test_tenant_isolation.py`): uma organização não lista, abre, consulta por SQL, edita nem apaga o que é de outra. Os prints desta atividade foram tirados antes dessa mudança. Dados anteriores ficam no workspace `default`.
 
 ## 4. Eventos de negócio no log
 

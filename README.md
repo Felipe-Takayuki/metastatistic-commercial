@@ -149,13 +149,13 @@ O backlog vive nas *issues* do repositório (rótulo `enhancement`). A entrega d
 | [#9](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/9) | Entrega | Atividade 10 — Seu negócio no ar |
 | [#10](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/10) | Entrega | Atividade 11 — SaaS completo com Stripe |
 | [#11](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/11) | Entrega | P2 — Relatório consolidado |
-| [#2](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/2) | Backlog | Isolar os dados do `apps/api` por organização (tenant) |
-| [#3](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/3) | Backlog | Stripe real em modo de teste (produto Pro, preço, webhook e prints) |
-| [#4](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/4) | Backlog | Cota de armazenamento e medição de uso por plano |
-| [#5](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/5) | Backlog | Unificar identidade (usuários do `apps/api` × `auth-tenant-service`) |
-| [#6](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/6) | Backlog | PostgreSQL com migrações no lugar dos SQLite por serviço |
-| [#7](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/7) | Backlog | Observabilidade (logs estruturados, correlation id e métricas) |
-| [#8](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/8) | Backlog | Reconciliação dos webhooks do Stripe (eventos fora de ordem e falhas) |
+| [#2](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/2) | Backlog ✅ | Isolar os dados do `apps/api` por organização (tenant) — feito |
+| [#3](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/3) | Backlog ⏳ | Stripe real em modo de teste — depende das chaves de teste do Stripe |
+| [#4](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/4) | Backlog ✅ | Cota de armazenamento e medição de uso por plano — feito (`GET /plan/usage`) |
+| [#5](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/5) | Backlog 🟡 | Unificar identidade — papel por organização feito; cadastro único ainda não |
+| [#6](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/6) | Backlog 🟡 | PostgreSQL com migrações — só o backup/restauração dos SQLite (`scripts/sqlite_backup.py`) foi feito |
+| [#7](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/7) | Backlog ✅ | Observabilidade (correlation id, log de acesso JSON, `/metrics`) — feito |
+| [#8](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/8) | Backlog ✅ | Reconciliação dos webhooks do Stripe (ordem, reconciliação e alerta) — feito |
 
 Já entregues e que aparecem nas fichas das atividades: modelagem e ingestão com DuckDB, RBAC e isolamento por usuário, landing page pública, billing com Stripe, motor dual-engine e trilha de auditoria (`services/audit-service`, cadeia SHA-256 com `GET /audit/verify`).
 
@@ -250,6 +250,13 @@ Em desenvolvimento tudo é opcional: o que ficar vazio usa valores de desenvolvi
 | `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_WEBHOOK_SECRET` | credenciais de dev | Stripe real |
 
 **Produção.** Com `ENVIRONMENT=production`, `auth-tenant-service`, `gateway` e `billing-service` **recusam iniciar** (o container entra em restart com a causa no log) se: `JWT_SECRET_KEY` estiver ausente, for um valor padrão do repositório ou tiver menos de 32 caracteres; `STRIPE_MOCK_MODE=true` (no modo mock o webhook aceita qualquer `Stripe-Signature`, o que permitiria promover um tenant sem pagar); ou as credenciais do Stripe forem as de desenvolvimento. No Helm, defina `secrets.jwtSecretKey`, `secrets.stripeSecretKey` e `secrets.stripeWebhookSecret` (o `values.yaml` vem com placeholders de propósito).
+
+### Observabilidade, backup e reconciliação
+- **Correlation id:** todo pedido ganha um `X-Correlation-ID` no gateway (ou usa o do cliente, se válido); ele volta na resposta e aparece no log de acesso JSON do gateway e nos eventos de negócio da api e do billing. Para seguir uma requisição: `docker compose logs | grep <id>`.
+- **Métricas:** `GET /metrics` no gateway (formato Prometheus) com `Authorization: Bearer $METRICS_TOKEN`; sem a variável o endpoint não existe. O billing expõe `/metrics` só na rede interna.
+- **Stripe:** `POST /billing/admin/reconcile` (botão "Reconciliar com o Stripe" no painel de assinaturas) corrige assinaturas divergentes; `RECONCILE_INTERVAL_MINUTES` liga a rotina periódica. Evento antigo que chega depois de um mais novo é ignorado.
+- **Backup dos bancos SQLite:** `python3 scripts/sqlite_backup.py backup <dados> <destino>` (cópia consistente + `integrity_check`), `verify` e `restore` (com o serviço parado; o banco atual vira `.antes-da-restauracao`).
+- **Isolamento:** cada organização só enxerga os próprios datasets, relatórios, dashboards e coleções; os dados anteriores à partição ficam no workspace `default`.
 
 ### Testes
 Cada serviço Python tem seu ambiente `uv`:
