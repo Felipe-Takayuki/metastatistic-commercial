@@ -4,7 +4,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime, timezone
 
-from . import db
+from . import db, tenancy
 from .schemas import Report, ReportIn, ReportUpdate
 
 
@@ -38,13 +38,14 @@ def _dump_blocks(rep: ReportIn) -> str:
 def create_report(rep: ReportIn) -> Report:
     report_id, now = uuid.uuid4().hex, _now()
     with closing(db.connect()) as con, con:
-        con.execute("INSERT INTO reports (id, title, blocks_json, version, created_at, updated_at) VALUES (?,?,?,?,?,?)", [report_id, rep.title, _dump_blocks(rep), 1, now, now])
+        con.execute("INSERT INTO reports (id, title, blocks_json, version, created_at, updated_at, tenant_id) VALUES (?,?,?,?,?,?,?)", [report_id, rep.title, _dump_blocks(rep), 1, now, now, tenancy.current_or_default()])
     return get_report(report_id)
 
 
 def get_report(report_id: str) -> Report:
     with closing(db.connect()) as con:
-        row = con.execute("SELECT * FROM reports WHERE id = ?", [report_id]).fetchone()
+        clause, args = tenancy.and_clause()
+        row = con.execute(f"SELECT * FROM reports WHERE id = ?{clause}", [report_id, *args]).fetchone()
     if row is None:
         raise ReportNotFound(f"report not found: {report_id}")
     return _row_to_report(row)
@@ -53,7 +54,8 @@ def get_report(report_id: str) -> Report:
 def list_reports() -> list[dict]:
     """Resumo (sem os blocos): a lista não precisa carregar o conteúdo de todos os relatórios."""
     with closing(db.connect()) as con:
-        rows = con.execute("SELECT id, title, blocks_json, version, updated_at FROM reports ORDER BY updated_at DESC").fetchall()
+        clause, args = tenancy.and_clause()
+        rows = con.execute(f"SELECT id, title, blocks_json, version, updated_at FROM reports WHERE 1=1{clause} ORDER BY updated_at DESC", args).fetchall()
     return [
         {"id": r["id"], "title": r["title"], "n_blocks": len(json.loads(r["blocks_json"])), "version": r["version"], "updated_at": r["updated_at"]}
         for r in rows
@@ -62,10 +64,11 @@ def list_reports() -> list[dict]:
 
 def update_report(report_id: str, rep: ReportUpdate) -> Report:
     """UPDATE condicional na versão: se outro cliente salvou antes, 0 linhas mudam e devolvemos conflito."""
+    clause, args = tenancy.and_clause()
     with closing(db.connect()) as con, con:
         cur = con.execute(
-            "UPDATE reports SET title = ?, blocks_json = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?",
-            [rep.title, _dump_blocks(rep), _now(), report_id, rep.version],
+            f"UPDATE reports SET title = ?, blocks_json = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?{clause}",
+            [rep.title, _dump_blocks(rep), _now(), report_id, rep.version, *args],
         )
         changed = cur.rowcount
     if changed == 0:
@@ -76,6 +79,7 @@ def update_report(report_id: str, rep: ReportUpdate) -> Report:
 
 def delete_report(report_id: str) -> None:
     with closing(db.connect()) as con, con:
-        cur = con.execute("DELETE FROM reports WHERE id = ?", [report_id])
+        clause, args = tenancy.and_clause()
+        cur = con.execute(f"DELETE FROM reports WHERE id = ?{clause}", [report_id, *args])
         if cur.rowcount == 0:
             raise ReportNotFound(f"report not found: {report_id}")

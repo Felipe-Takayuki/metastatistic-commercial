@@ -51,7 +51,6 @@ def save(body: SaveIn, user: auth.User = Depends(current_user),
         raise HTTPException(422, str(exc)) from exc
     except queries.QueryError as exc:
         raise HTTPException(422, str(exc)) from exc
-    plan_limits.tag_dataset(created.id, plan.tenant_id)
     access.claim("dataset", created.id, user)
     permissions.apply_default_visibility(created.id)
     transforms.save_recipe(created.id, body.recipe, compiled.sql)

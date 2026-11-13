@@ -11,7 +11,7 @@ from typing import Any, Iterable
 
 from pydantic import BaseModel
 
-from . import auth, db
+from . import auth, db, tenancy
 
 KINDS = ("dataset", "report", "dashboard")
 
@@ -100,25 +100,27 @@ def _now() -> str:
 def create_collection(name: str, user: auth.User) -> dict:
     cid = uuid.uuid4().hex
     with closing(db.connect()) as con, con:
-        con.execute("INSERT INTO collections (id, name, owner_id, created_at) VALUES (?,?,?,?)", [cid, name, _owner_of(user), _now()])
+        con.execute("INSERT INTO collections (id, name, owner_id, created_at, tenant_id) VALUES (?,?,?,?,?)", [cid, name, _owner_of(user), _now(), tenancy.current_or_default()])
     return get_collection(cid)
 
 
 def get_collection(cid: str) -> dict:
     with closing(db.connect()) as con:
-        row = con.execute("SELECT * FROM collections WHERE id = ?", [cid]).fetchone()
+        clause, args = tenancy.and_clause()
+        row = con.execute(f"SELECT * FROM collections WHERE id = ?{clause}", [cid, *args]).fetchone()
     if row is None:
         raise CollectionNotFound(f"collection not found: {cid}")
     return dict(row)
 
 
 def list_collections(user: auth.User) -> list[dict]:
+    clause, args = tenancy.and_clause("c.tenant_id")
     with closing(db.connect()) as con:
         rows = con.execute(
             "SELECT c.id, c.name, c.owner_id, u.display_name AS owner_name, "
             " (SELECT COUNT(*) FROM resources r WHERE r.collection_id = c.id AND r.kind = 'report') AS n_reports, "
             " (SELECT COUNT(*) FROM resources r WHERE r.collection_id = c.id AND r.kind = 'dashboard') AS n_dashboards "
-            "FROM collections c LEFT JOIN users u ON u.id = c.owner_id ORDER BY lower(c.name)").fetchall()
+            f"FROM collections c LEFT JOIN users u ON u.id = c.owner_id WHERE 1=1{clause} ORDER BY lower(c.name)", args).fetchall()
     return [{"id": r["id"], "name": r["name"], "owner_name": r["owner_name"], "n_reports": r["n_reports"],
              "n_dashboards": r["n_dashboards"], "can_edit": may_modify(user, r["owner_id"])} for r in rows]
 

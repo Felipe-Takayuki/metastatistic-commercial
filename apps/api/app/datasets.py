@@ -9,7 +9,7 @@ from pathlib import Path
 
 import duckdb
 
-from . import db
+from . import db, tenancy
 from .config import settings
 from .schemas import Column, Dataset
 
@@ -73,12 +73,14 @@ def _unique_table_name(con: sqlite3.Connection, base: str) -> str:
 
 def list_datasets() -> list[Dataset]:
     with closing(_db()) as con:
-        return [_row_to_dataset(r) for r in con.execute("SELECT * FROM datasets ORDER BY created_at DESC")]
+        clause, args = tenancy.and_clause()
+        return [_row_to_dataset(r) for r in con.execute(f"SELECT * FROM datasets WHERE 1=1{clause} ORDER BY created_at DESC", args)]
 
 
 def get_dataset(dataset_id: str) -> Dataset:
     with closing(_db()) as con:
-        row = con.execute("SELECT * FROM datasets WHERE id = ?", [dataset_id]).fetchone()
+        clause, args = tenancy.and_clause()
+        row = con.execute(f"SELECT * FROM datasets WHERE id = ?{clause}", [dataset_id, *args]).fetchone()
     if row is None:
         raise DatasetNotFound(f"dataset not found: {dataset_id}")
     return _row_to_dataset(row)
@@ -134,8 +136,9 @@ def register(dataset_id: str, name: str, n_rows: int, columns: list[Column]) -> 
     with closing(_db()) as db, db:
         table_name = _unique_table_name(db, slugify(name))
         db.execute(
-            "INSERT INTO datasets (id, name, table_name, n_rows, columns_json, created_at) VALUES (?,?,?,?,?,?)",
-            [dataset_id, name, table_name, n_rows, json.dumps([c.model_dump() for c in columns]), datetime.now(timezone.utc).isoformat()],
+            "INSERT INTO datasets (id, name, table_name, n_rows, columns_json, created_at, tenant_id) VALUES (?,?,?,?,?,?,?)",
+            [dataset_id, name, table_name, n_rows, json.dumps([c.model_dump() for c in columns]), datetime.now(timezone.utc).isoformat(),
+             tenancy.current_or_default()],
         )
     return get_dataset(dataset_id)
 

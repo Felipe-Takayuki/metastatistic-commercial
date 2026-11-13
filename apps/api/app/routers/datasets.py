@@ -53,7 +53,6 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
             tmp.write(chunk)
     try:
         created = datasets.ingest_csv(tmp_path, display)
-        plan_limits.tag_dataset(created.id, plan.tenant_id)
         access.claim("dataset", created.id, user)
         permissions.apply_default_visibility(created.id)
         audit.log(user, "create", "dataset", created.id, f"{created.name} (upload, {size / 1024:.1f} KB, plano {plan.name})")
@@ -70,7 +69,6 @@ def create_from_query(body: DatasetFromQuery, user: auth.User = Depends(current_
     """Salva o resultado de uma consulta SQL (somente leitura) como um novo dataset analisável."""
     try:
         created = derive.create_dataset_from_query(body.name, body.sql, user=user)
-        plan_limits.tag_dataset(created.id, plan.tenant_id)
         access.claim("dataset", created.id, user)
         permissions.apply_default_visibility(created.id)
         audit.log(user, "create", "dataset", created.id, f"{created.name} (derivado)")

@@ -4,7 +4,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime, timezone
 
-from . import db
+from . import db, tenancy
 from .schemas import Dashboard, DashboardIn, DashboardUpdate
 
 
@@ -38,14 +38,15 @@ def create_dashboard(d: DashboardIn) -> Dashboard:
     dash_id, now = uuid.uuid4().hex, _now()
     with closing(db.connect()) as con, con:
         tiles, filters = _dump(d)
-        con.execute("INSERT INTO dashboards (id, title, tiles_json, version, created_at, updated_at, filters_json) VALUES (?,?,?,?,?,?,?)",
-                    [dash_id, d.title, tiles, 1, now, now, filters])
+        con.execute("INSERT INTO dashboards (id, title, tiles_json, version, created_at, updated_at, filters_json, tenant_id) VALUES (?,?,?,?,?,?,?,?)",
+                    [dash_id, d.title, tiles, 1, now, now, filters, tenancy.current_or_default()])
     return get_dashboard(dash_id)
 
 
 def get_dashboard(dash_id: str) -> Dashboard:
     with closing(db.connect()) as con:
-        row = con.execute("SELECT * FROM dashboards WHERE id = ?", [dash_id]).fetchone()
+        clause, args = tenancy.and_clause()
+        row = con.execute(f"SELECT * FROM dashboards WHERE id = ?{clause}", [dash_id, *args]).fetchone()
     if row is None:
         raise DashboardNotFound(f"dashboard not found: {dash_id}")
     return _row(row)
@@ -54,17 +55,19 @@ def get_dashboard(dash_id: str) -> Dashboard:
 def list_dashboards() -> list[dict]:
     """Resumo (sem os tiles)."""
     with closing(db.connect()) as con:
-        rows = con.execute("SELECT id, title, tiles_json, version, updated_at FROM dashboards ORDER BY updated_at DESC").fetchall()
+        clause, args = tenancy.and_clause()
+        rows = con.execute(f"SELECT id, title, tiles_json, version, updated_at FROM dashboards WHERE 1=1{clause} ORDER BY updated_at DESC", args).fetchall()
     return [{"id": r["id"], "title": r["title"], "n_tiles": len(json.loads(r["tiles_json"])), "version": r["version"], "updated_at": r["updated_at"]} for r in rows]
 
 
 def update_dashboard(dash_id: str, d: DashboardUpdate) -> Dashboard:
     """UPDATE condicional na versão: se outro cliente salvou antes, 0 linhas mudam e devolvemos conflito."""
     tiles, filters = _dump(d)
+    clause, args = tenancy.and_clause()
     with closing(db.connect()) as con, con:
         changed = con.execute(
-            "UPDATE dashboards SET title = ?, tiles_json = ?, filters_json = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?",
-            [d.title, tiles, filters, _now(), dash_id, d.version],
+            f"UPDATE dashboards SET title = ?, tiles_json = ?, filters_json = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?{clause}",
+            [d.title, tiles, filters, _now(), dash_id, d.version, *args],
         ).rowcount
     if changed == 0:
         current = get_dashboard(dash_id)  # 404 se não existe
@@ -74,5 +77,6 @@ def update_dashboard(dash_id: str, d: DashboardUpdate) -> Dashboard:
 
 def delete_dashboard(dash_id: str) -> None:
     with closing(db.connect()) as con, con:
-        if con.execute("DELETE FROM dashboards WHERE id = ?", [dash_id]).rowcount == 0:
+        clause, args = tenancy.and_clause()
+        if con.execute(f"DELETE FROM dashboards WHERE id = ?{clause}", [dash_id, *args]).rowcount == 0:
             raise DashboardNotFound(f"dashboard not found: {dash_id}")

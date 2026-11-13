@@ -2,8 +2,10 @@ from fastapi import FastAPI
 
 from .routers import analyses, collections, dashboards, datasets, queries, reports, transforms
 from .routers import auth as auth_router
+from .tenancy import TenantMiddleware
 
 app = FastAPI(title="Metastatistic API", version="0.1.0")
+app.add_middleware(TenantMiddleware)  # organização verificada pelo gateway (X-Tenant-ID); ver tenancy.py
 app.include_router(auth_router.router)
 app.include_router(auth_router.users_router)
 app.include_router(auth_router.audit_router)

@@ -85,9 +85,3 @@ def upload_too_big(plan: Plan) -> HTTPException:
     return HTTPException(
         402, f"Limite do plano {plan.name}: arquivos de até {plan.max_upload_mb} MB por dataset. " + _upgrade_hint(plan)
     )
-
-
-def tag_dataset(dataset_id: str, tenant_id: str) -> None:
-    """Marca o dataset recém-criado como da organização (é por essa marca que `count_datasets` conta)."""
-    with closing(db.connect()) as con, con:
-        con.execute("UPDATE datasets SET tenant_id = ? WHERE id = ?", [tenant_id, dataset_id])
