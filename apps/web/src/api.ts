@@ -71,7 +71,7 @@ export interface TransformPreview extends QueryResult { total_rows: number; sql:
 export interface SavedRecipe { recipe: Recipe; sql: string; created_at: string }
 
 export type PlanTier = "community" | "team" | "enterprise";
-export type BillingCycle = "monthly" | "yearly";
+export type BillingCycle = "monthly";
 
 export interface PlanInfo {
   id: string;
@@ -85,6 +85,7 @@ export interface PlanInfo {
   quotas: {
     max_users?: number;
     max_datasets?: number;
+    max_upload_mb?: number;
     max_storage_mb?: number;
     export_formats?: string[];
     [key: string]: unknown;
@@ -116,6 +117,7 @@ export interface TenantInfo {
   quotas: {
     max_users?: number;
     max_datasets?: number;
+    max_upload_mb?: number;
     max_storage_mb?: number;
     features?: string[];
     rate_limit_per_min?: number;
@@ -216,6 +218,20 @@ export function getRecentTenants(): ActiveTenant[] {
     // ignore
   }
   return [];
+}
+
+export interface AdminPlanRow { plan_id: string; name: string; tenants: number | null; users: number | null }
+export interface AdminEventRow { event_id: string; event_type: string; tenant_id: string | null; status: string; detail: string | null; received_at: string; processed_at: string | null }
+export interface AdminSummary {
+  currency: string;
+  test_mode: boolean;
+  mock_mode: boolean;
+  active_subscriptions: number;
+  past_due_subscriptions: number;
+  mrr_cents: number;
+  users_total: number | null;
+  by_plan: AdminPlanRow[];
+  last_events: AdminEventRow[];
 }
 
 export interface CheckoutSession {
@@ -350,6 +366,7 @@ export const api = {
     request<AnalysisResponse>("/analyses/run", json("POST", { analysis, dataset_id, options })),
   getBillingPlans: () => request<PlanInfo[]>("/billing/plans"),
   getSubscription: () => request<SubscriptionInfo>("/billing/subscription"),
+  getBillingAdminSummary: () => request<AdminSummary>("/billing/admin/summary"),
   createCheckoutSession: (planId: string, billingCycle: BillingCycle = "monthly") =>
     request<CheckoutSession>("/billing/checkout", json("POST", { plan_id: planId, billing_cycle: billingCycle })),
   createPortalSession: (returnUrl?: string) =>

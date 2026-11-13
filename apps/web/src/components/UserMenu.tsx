@@ -38,6 +38,14 @@ export function UsersLink({ current }: { current: boolean }) {
   return <a href={routeHref({ name: "users" })} aria-current={current ? "page" : undefined}>Usuários</a>;
 }
 
+/** Link "Assinaturas" (painel do SaaS: usuários por plano, MRR, eventos do Stripe) — só o administrador da plataforma. */
+export function BillingAdminLink({ current }: { current: boolean }) {
+  const admin = useCan("admin");
+  const { authEnabled } = useSession();
+  if (!admin || !authEnabled) return null;
+  return <a href={routeHref({ name: "admin" })} aria-current={current ? "page" : undefined}>Assinaturas</a>;
+}
+
 function PasswordDialog({ username, onClose }: { username: string; onClose: () => void }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");

@@ -4,7 +4,8 @@ import { DataTab } from "./components/DataTab";
 import { useCan } from "./components/AuthGate";
 import { Sidebar } from "./components/Sidebar";
 import { DatasetAccess } from "./components/DatasetAccess";
-import { ProfileLink, UserMenu, UsersLink } from "./components/UserMenu";
+import { BillingAdminLink, ProfileLink, UserMenu, UsersLink } from "./components/UserMenu";
+import { BillingAdminPage } from "./components/BillingAdminPage";
 import { UsersPage } from "./components/UsersPage";
 import { ProfilePage } from "./components/ProfilePage";
 import { DashboardsPage } from "./components/DashboardsPage";
@@ -129,6 +130,7 @@ export default function App() {
           <a href={routeHref({ name: "dashboards" })} aria-current={route.name === "dashboards" || route.name === "dashboard" ? "page" : undefined}>Dashboards</a>
           <ProfileLink current={route.name === "profile"} />
           <UsersLink current={route.name === "users"} />
+          <BillingAdminLink current={route.name === "admin"} />
         </nav>
         <span className="spacer" />
         <button className="btn sm" onClick={() => setPricingOpen(true)} title="Ver planos comerciais e fazer upgrade">Planos</button>
@@ -153,6 +155,8 @@ export default function App() {
             <ProfilePage />
           ) : route.name === "users" ? (
             <UsersPage />
+          ) : route.name === "admin" ? (
+            <BillingAdminPage />
           ) : route.name === "dashboard" ? (
             <Suspense fallback={<div className="empty"><span className="spinner" aria-label="Carregando" /></div>}>
               <DashboardPage key={route.id} id={route.id} datasets={datasets} />

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type Route = { name: "explore" } | { name: "reports" } | { name: "report"; id: string } | { name: "dashboards" } | { name: "dashboard"; id: string } | { name: "users" } | { name: "profile" };
+export type Route = { name: "explore" } | { name: "reports" } | { name: "report"; id: string } | { name: "dashboards" } | { name: "dashboard"; id: string } | { name: "users" } | { name: "profile" } | { name: "admin" };
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
@@ -8,11 +8,12 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "dashboards") return parts[1] && /^[0-9a-f]{32}$/.test(parts[1]) ? { name: "dashboard", id: parts[1] } : { name: "dashboards" };
   if (parts[0] === "users") return { name: "users" };
   if (parts[0] === "profile") return { name: "profile" };
+  if (parts[0] === "admin") return { name: "admin" };
   return { name: "explore" };
 }
 
 export const routeHref = (r: Route): string =>
-  r.name === "explore" ? "#/" : r.name === "reports" ? "#/reports" : r.name === "report" ? `#/reports/${r.id}` : r.name === "dashboards" ? "#/dashboards" : r.name === "users" ? "#/users" : r.name === "profile" ? "#/profile" : `#/dashboards/${r.id}`;
+  r.name === "explore" ? "#/" : r.name === "reports" ? "#/reports" : r.name === "report" ? `#/reports/${r.id}` : r.name === "dashboards" ? "#/dashboards" : r.name === "users" ? "#/users" : r.name === "profile" ? "#/profile" : r.name === "admin" ? "#/admin" : `#/dashboards/${r.id}`;
 
 export function navigate(r: Route): void {
   location.hash = routeHref(r);

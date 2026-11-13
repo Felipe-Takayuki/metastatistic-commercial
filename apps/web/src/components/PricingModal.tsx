@@ -1,83 +1,45 @@
 import { useEffect, useState } from "react";
 import { api, type BillingCycle, type PlanInfo, type SubscriptionInfo } from "../api";
+import { formatBRL, planName } from "../lib/billing";
 
 interface PricingModalProps {
   onClose: () => void;
 }
 
+// Só aparece enquanto /billing/plans não responde; os números oficiais vêm do billing-service.
 const DEFAULT_PLANS: PlanInfo[] = [
   {
-    id: "community",
-    name: "Community",
-    description: "Ideal para pesquisadores individuais e pequenas equipes acadêmicas.",
+    id: "free",
+    name: "Free",
+    description: "Para conhecer a plataforma: análises essenciais para um pesquisador ou grupo pequeno.",
     tier: "community",
     price_monthly: 0,
     price_yearly: 0,
-    currency: "usd",
-    features: [
-      "Até 3 usuários",
-      "Até 10 datasets",
-      "500 MB de armazenamento",
-      "Análise estatística completa R Worker (Engine A)",
-      "Visualização e Dashboards básicos",
-      "Exportação em HTML e Markdown",
-    ],
-    quotas: {
-      max_users: 3,
-      max_datasets: 10,
-      max_storage_mb: 500,
-    },
+    currency: "brl",
+    features: ["Até 3 usuários", "Até 5 datasets (10 MB cada)", "Análises estatísticas essenciais", "Relatórios e dashboards básicos"],
+    quotas: { max_users: 3, max_datasets: 5, max_upload_mb: 10 },
   },
   {
-    id: "team",
-    name: "Team",
-    description: "Para laboratórios de pesquisa, clínicas e equipes em crescimento.",
+    id: "pro",
+    name: "Pro",
+    description: "Para laboratórios e equipes: mais usuários, datasets maiores e catálogo estatístico completo.",
     tier: "team",
-    price_monthly: 4900,
-    price_yearly: 49000,
-    currency: "usd",
+    price_monthly: 24900,
+    price_yearly: 0,
+    currency: "brl",
     features: [
       "Até 15 usuários",
-      "Até 100 datasets",
-      "10 GB de armazenamento",
-      "Conectores SQL nativos (PostgreSQL, MySQL, Snowflake)",
-      "Compartilhamento seguro entre equipes e coleções",
+      "Até 100 datasets (200 MB cada)",
+      "Catálogo completo: ANOVA, ANCOVA, não paramétricos e Bayes",
+      "Conectores SQL e compartilhamento entre equipes",
       "Exportação multi-formato (HTML, PDF, DOCX)",
-      "Suporte prioritário por email",
     ],
-    quotas: {
-      max_users: 15,
-      max_datasets: 100,
-      max_storage_mb: 10240,
-    },
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    description: "Para hospitais, CROs farmacêuticas e corporações com conformidade rigorosa.",
-    tier: "enterprise",
-    price_monthly: 29900,
-    price_yearly: 299000,
-    currency: "usd",
-    features: [
-      "Usuários e Datasets ilimitados",
-      "Armazenamento ilimitado",
-      "Single Sign-On corporativo (SSO SAML / OIDC)",
-      "Provisionamento automático SCIM 2.0 (Okta, Entra ID)",
-      "Trilha de Auditoria Imutável (FDA 21 CFR Part 11)",
-      "Engine B proprietário de alta performance (100k+ linhas)",
-      "SLA garantido de 99.9% e suporte 24/7",
-    ],
-    quotas: {
-      max_users: -1,
-      max_datasets: -1,
-      max_storage_mb: -1,
-    },
+    quotas: { max_users: 15, max_datasets: 100, max_upload_mb: 200 },
   },
 ];
 
 export function PricingModal({ onClose }: PricingModalProps) {
-  const [cycle, setCycle] = useState<BillingCycle>("monthly");
+  const cycle: BillingCycle = "monthly"; // só há cobrança mensal
   const [plans, setPlans] = useState<PlanInfo[]>(DEFAULT_PLANS);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,7 +90,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
         setActionBusy(null);
       }
     } catch (err) {
-      setError((err as Error).message || "Erro ao iniciar processo de upgrade.");
+      setError((err as Error).message || "Erro ao iniciar a assinatura.");
       setActionBusy(null);
     }
   };
@@ -146,12 +108,13 @@ export function PricingModal({ onClose }: PricingModalProps) {
         setActionBusy(null);
       }
     } catch (err) {
-      setError((err as Error).message || "Erro ao abrir portal de assinatura.");
+      setError((err as Error).message || "Erro ao abrir o portal de assinatura.");
       setActionBusy(null);
     }
   };
 
   const currentTier = subscription?.tier || "community";
+  const paid = currentTier !== "community";
 
   return (
     <div
@@ -163,8 +126,8 @@ export function PricingModal({ onClose }: PricingModalProps) {
         className="modal card wide"
         role="dialog"
         aria-modal="true"
-        aria-label="Planos e Faturamento MetaStatistic"
-        style={{ maxWidth: 980 }}
+        aria-label="Planos e assinatura Metastatistic"
+        style={{ maxWidth: 760 }}
       >
         <div className="modal-head">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -172,7 +135,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
               <rect x="2" y="5" width="20" height="14" rx="2" />
               <line x1="2" y1="10" x2="22" y2="10" />
             </svg>
-            <strong>Planos & Assinatura MetaStatistic</strong>
+            <strong>Planos e assinatura</strong>
           </div>
           <span className="spacer" />
           {loading && (
@@ -181,16 +144,19 @@ export function PricingModal({ onClose }: PricingModalProps) {
           {!loading && subscription && (
             <span
               className="chip"
+              data-testid="current-plan"
               style={{
                 textTransform: "uppercase",
                 letterSpacing: "0.05em",
                 fontWeight: 600,
                 fontSize: 11,
-                background: currentTier === "community" ? "var(--surface-2)" : "var(--accent-wash)",
-                color: currentTier === "community" ? "var(--text-secondary)" : "var(--accent)",
+                background: paid ? "var(--accent-wash)" : "var(--surface-2)",
+                color: paid ? "var(--accent)" : "var(--text-secondary)",
               }}
             >
-              Plano Atual: {currentTier}
+              Plano atual: {planName(currentTier)}
+              {subscription.status === "past_due" ? " · pagamento em atraso" : ""}
+              {subscription.cancel_at_period_end ? " · cancela no fim do ciclo" : ""}
             </span>
           )}
           <button className="btn ghost sm" onClick={onClose} aria-label="Fechar modal">
@@ -206,43 +172,6 @@ export function PricingModal({ onClose }: PricingModalProps) {
             </div>
           )}
 
-          {/* Toggle de Ciclo de Faturamento */}
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: cycle === "monthly" ? "var(--text-primary)" : "var(--text-muted)" }}>
-              Mensal
-            </span>
-            <div
-              style={{
-                display: "inline-flex",
-                background: "var(--surface-2)",
-                padding: "3px",
-                borderRadius: "20px",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <button
-                type="button"
-                className={`btn sm ${cycle === "monthly" ? "primary" : "ghost"}`}
-                style={{ borderRadius: "16px", padding: "4px 14px", height: "auto" }}
-                onClick={() => setCycle("monthly")}
-              >
-                Mensal
-              </button>
-              <button
-                type="button"
-                className={`btn sm ${cycle === "yearly" ? "primary" : "ghost"}`}
-                style={{ borderRadius: "16px", padding: "4px 14px", height: "auto" }}
-                onClick={() => setCycle("yearly")}
-              >
-                Anual <span style={{ fontSize: 11, opacity: 0.9 }}>(-17%)</span>
-              </button>
-            </div>
-            <span style={{ fontSize: 13, fontWeight: 500, color: cycle === "yearly" ? "var(--text-primary)" : "var(--text-muted)" }}>
-              Anual <span className="chip" style={{ fontSize: 10, background: "var(--accent-wash)", color: "var(--accent)" }}>2 meses grátis</span>
-            </span>
-          </div>
-
-          {/* Grid de Planos */}
           <div
             style={{
               display: "grid",
@@ -253,31 +182,31 @@ export function PricingModal({ onClose }: PricingModalProps) {
           >
             {plans.map((plan) => {
               const isCurrent = currentTier === plan.tier;
-              const isTeam = plan.id === "team";
-              const price = cycle === "monthly" ? plan.price_monthly : plan.price_yearly;
-              const formattedPrice = price === 0 ? "$0" : `$${(price / 100).toFixed(0)}`;
-              const periodLabel = price === 0 ? "gratuito" : cycle === "monthly" ? "/mês" : "/ano";
+              const isPro = plan.id === "pro";
+              const price = plan.price_monthly;
+              const periodLabel = price === 0 ? "para sempre" : "/mês";
 
               return (
                 <div
                   key={plan.id}
                   className="card"
+                  data-testid={`plan-${plan.id}`}
                   style={{
                     position: "relative",
                     display: "flex",
                     flexDirection: "column",
                     padding: 20,
                     borderRadius: 10,
-                    border: isTeam
+                    border: isPro
                       ? "2px solid var(--accent)"
                       : isCurrent
                       ? "2px solid var(--series-3)"
                       : "1px solid var(--border)",
-                    background: isTeam ? "var(--surface-1)" : "var(--surface-1)",
-                    boxShadow: isTeam ? "0 4px 20px rgba(0,0,0,0.08)" : "none",
+                    background: "var(--surface-1)",
+                    boxShadow: isPro ? "0 4px 20px rgba(0,0,0,0.08)" : "none",
                   }}
                 >
-                  {isTeam && (
+                  {isPro && (
                     <div
                       style={{
                         position: "absolute",
@@ -294,7 +223,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
                         letterSpacing: "0.06em",
                       }}
                     >
-                      Mais Popular
+                      Recomendado
                     </div>
                   )}
 
@@ -322,7 +251,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
 
                   <div style={{ margin: "10px 0 16px" }}>
                     <span style={{ fontSize: 32, fontWeight: 750, letterSpacing: "-0.02em" }}>
-                      {formattedPrice}
+                      {formatBRL(price)}
                     </span>
                     <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: 4 }}>
                       {periodLabel}
@@ -357,24 +286,16 @@ export function PricingModal({ onClose }: PricingModalProps) {
 
                   <div>
                     {isCurrent ? (
-                      <button
-                        className="btn ghost sm"
-                        style={{ width: "100%", cursor: "default", opacity: 0.8 }}
-                        disabled
-                      >
-                        ✓ Plano Atual
+                      <button className="btn ghost sm" style={{ width: "100%", cursor: "default", opacity: 0.8 }} disabled>
+                        ✓ Plano atual
                       </button>
-                    ) : plan.id === "community" ? (
-                      <button
-                        className="btn ghost sm"
-                        style={{ width: "100%", cursor: "default", opacity: 0.6 }}
-                        disabled
-                      >
+                    ) : plan.id === "free" ? (
+                      <button className="btn ghost sm" style={{ width: "100%", cursor: "default", opacity: 0.6 }} disabled>
                         Incluído
                       </button>
                     ) : (
                       <button
-                        className={`btn sm ${isTeam ? "primary" : ""}`}
+                        className={`btn sm ${isPro ? "primary" : ""}`}
                         style={{ width: "100%" }}
                         onClick={() => handleUpgrade(plan.id)}
                         disabled={actionBusy !== null}
@@ -385,7 +306,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
                             Processando...
                           </>
                         ) : (
-                          `Fazer Upgrade para ${plan.name}`
+                          `Assinar o ${plan.name}`
                         )}
                       </button>
                     )}
@@ -395,7 +316,6 @@ export function PricingModal({ onClose }: PricingModalProps) {
             })}
           </div>
 
-          {/* Rodapé com Gerenciador de Assinatura */}
           <div
             style={{
               display: "flex",
@@ -408,15 +328,15 @@ export function PricingModal({ onClose }: PricingModalProps) {
             }}
           >
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Pagamentos processados com segurança via Stripe Checkout com criptografia TLS de 256 bits.
+              Cobrança mensal em reais, processada pelo Stripe Checkout. Cancele quando quiser em “Gerenciar assinatura”.
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              {currentTier !== "community" && (
+              {paid && (
                 <button
                   className="btn sm"
                   onClick={handlePortal}
                   disabled={actionBusy !== null}
-                  title="Gerenciar cartão de crédito, faturas e cancelamento via Stripe"
+                  title="Gerenciar cartão, faturas e cancelamento no portal do Stripe"
                 >
                   {actionBusy === "portal" ? (
                     <>
@@ -424,7 +344,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
                       Abrindo...
                     </>
                   ) : (
-                    "Gerenciar Assinatura"
+                    "Gerenciar assinatura"
                   )}
                 </button>
               )}
