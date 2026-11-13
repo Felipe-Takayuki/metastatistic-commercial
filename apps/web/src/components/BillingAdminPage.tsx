@@ -11,9 +11,19 @@ export function BillingAdminPage() {
   const isAdmin = useCan("admin");
   const [data, setData] = useState<AdminSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   const load = () => api.getBillingAdminSummary().then((d) => { setData(d); setError(null); }).catch((e) => setError(e.message));
   useEffect(() => { if (isAdmin) void load(); }, [isAdmin]);
+
+  const reconcile = async () => {
+    setNote(null);
+    try {
+      const r = await api.reconcileBilling();
+      setNote(r.mode === "mock" ? (r.detail ?? "Stripe simulado.") : `${r.checked} assinaturas conferidas, ${r.fixes.length} correção(ões)${r.fixes.length ? ": " + r.fixes.map((f) => f.action).join("; ") : "."}`);
+      await load();
+    } catch (e) { setError((e as Error).message); }
+  };
 
   if (!isAdmin) return <div className="card empty"><h2>Sem permissão</h2><p>Apenas o administrador da plataforma vê o painel de assinaturas.</p></div>;
 
@@ -25,9 +35,17 @@ export function BillingAdminPage() {
           ? <span className="chip" title="STRIPE_MOCK_MODE=true: checkout e webhooks simulados, sem chamar o Stripe">Stripe simulado (mock)</span>
           : data?.test_mode && <span className="chip" title="Chaves de teste do Stripe: nenhum valor é cobrado de verdade">Stripe em modo de teste</span>}
         <span className="spacer" />
+        <button className="btn ghost sm" onClick={() => void reconcile()} title="Compara as assinaturas do Stripe com as do sistema e corrige divergências">Reconciliar com o Stripe</button>
         <button className="btn ghost sm" onClick={() => void load()}>Atualizar</button>
       </div>
       {error && <div className="alert" role="alert">{error}</div>}
+      {note && <div className="muted small" role="status" style={{ marginBottom: 8 }}>{note}</div>}
+      {data && (data.failed_events > 0 || data.stuck_events > 0) && (
+        <div className="alert" role="alert">
+          {data.failed_events > 0 && <>{data.failed_events} webhook(s) falharam e aguardam a retentativa do Stripe. </>}
+          {data.stuck_events > 0 && <>{data.stuck_events} webhook(s) estão “em processamento” há mais de 5 minutos.</>}
+        </div>
+      )}
       {!data && !error && <div className="empty"><span className="spinner" aria-label="Carregando" /></div>}
       {data && (
         <>

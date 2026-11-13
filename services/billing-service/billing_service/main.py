@@ -7,7 +7,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import asyncio
 import hashlib
+from contextlib import asynccontextmanager
 import json
 
 from billing_service.config import PLANS, settings
@@ -25,6 +27,7 @@ from billing_service.models import (
     SubscriptionResponse,
     WebhookEventResponse,
 )
+from billing_service.reconcile import reconcile
 from billing_service.stripe_client import StripeUnavailable, stripe_client
 
 logger = logging.getLogger(__name__)
@@ -53,7 +56,29 @@ def get_billing_store() -> BillingStore:
     return billing_store_instance
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Com RECONCILE_INTERVAL_MINUTES > 0, compara o Stripe com o banco de tempos em tempos (cobre webhook perdido)."""
+    task = None
+    if settings.reconcile_interval_minutes > 0 and not settings.stripe_mock_mode:
+        async def loop():
+            while True:
+                await asyncio.sleep(settings.reconcile_interval_minutes * 60)
+                try:
+                    remote = stripe_client.list_subscription_states()
+                    if remote is not None:
+                        fixes = await reconcile(get_billing_store(), remote, notify_tenant_tier_change)
+                        business_event("billing.reconciled", checked=len(remote), fixes=len(fixes), scheduled=True)
+                except Exception:
+                    logger.exception("reconciliação periódica falhou")
+        task = asyncio.create_task(loop())
+    yield
+    if task:
+        task.cancel()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="MetaStatistic Billing Service",
     version="0.1.0",
     description="Stripe Subscriptions & Invoicing Microservice for MetaStatistic Commercial",
@@ -287,7 +312,7 @@ def _plan_from_price(items: list, default_plan: str) -> str:
     return default_plan
 
 
-async def _handle_checkout_completed(store: BillingStore, data: dict) -> tuple[str, str]:
+async def _handle_checkout_completed(store: BillingStore, data: dict, created: Optional[int] = None, event_id: Optional[str] = None) -> tuple[str, str]:
     customer_id = data.get("customer")
     metadata = data.get("metadata") or {}
     tenant_id = (
@@ -296,6 +321,8 @@ async def _handle_checkout_completed(store: BillingStore, data: dict) -> tuple[s
         or (store.get_tenant_by_customer_id(customer_id) if customer_id else None)
         or "default"
     )
+    if store.is_stale(tenant_id, created):
+        return tenant_id, "Stale event ignored: a newer subscription event was already applied"
     plan_id = metadata.get("plan_id", "pro")
     if plan_id not in PLANS or plan_id == "free":
         plan_id = "pro"
@@ -311,10 +338,11 @@ async def _handle_checkout_completed(store: BillingStore, data: dict) -> tuple[s
         stripe_subscription_id=data.get("subscription"),
     )
     await notify_tenant_tier_change(tenant_id, tier)
+    store.advance_clock(tenant_id, created, event_id)
     return tenant_id, f"Subscription activated for tenant {tenant_id} on plan {plan_id}"
 
 
-async def _handle_subscription_updated(store: BillingStore, data: dict) -> tuple[str, str]:
+async def _handle_subscription_updated(store: BillingStore, data: dict, created: Optional[int] = None, event_id: Optional[str] = None) -> tuple[str, str]:
     stripe_sub_id = data.get("id")
     customer_id = data.get("customer")
     status_sub = data.get("status", "active")
@@ -324,6 +352,8 @@ async def _handle_subscription_updated(store: BillingStore, data: dict) -> tuple
 
     existing_sub = store.get_subscription_by_stripe_id(stripe_sub_id) if stripe_sub_id else None
     tenant_id = _tenant_for(store, existing_sub, customer_id)
+    if store.is_stale(tenant_id, created):
+        return tenant_id, "Stale event ignored: a newer subscription event was already applied"
     plan_id = _plan_from_price(data.get("items", {}).get("data", []), existing_sub.plan_id if existing_sub else "pro")
     tier = PLANS[plan_id]["tier"]
 
@@ -340,13 +370,16 @@ async def _handle_subscription_updated(store: BillingStore, data: dict) -> tuple
     )
     if status_sub == "active":
         await notify_tenant_tier_change(tenant_id, tier)
+    store.advance_clock(tenant_id, created, event_id)
     return tenant_id, f"Subscription {stripe_sub_id} updated: status={status_sub}, plan={plan_id}"
 
 
-async def _handle_subscription_deleted(store: BillingStore, data: dict) -> tuple[str, str]:
+async def _handle_subscription_deleted(store: BillingStore, data: dict, created: Optional[int] = None, event_id: Optional[str] = None) -> tuple[str, str]:
     stripe_sub_id = data.get("id")
     existing_sub = store.get_subscription_by_stripe_id(stripe_sub_id) if stripe_sub_id else None
     tenant_id = _tenant_for(store, existing_sub, data.get("customer"))
+    if store.is_stale(tenant_id, created):
+        return tenant_id, "Stale event ignored: a newer subscription event was already applied"
     if existing_sub:
         store.upsert_subscription(
             tenant_id=tenant_id,
@@ -357,6 +390,7 @@ async def _handle_subscription_deleted(store: BillingStore, data: dict) -> tuple
             stripe_subscription_id=stripe_sub_id,
         )
     await notify_tenant_tier_change(tenant_id, "community")
+    store.advance_clock(tenant_id, created, event_id)
     return tenant_id, f"Subscription {stripe_sub_id} deleted. Tenant {tenant_id} downgraded to Free"
 
 
@@ -377,13 +411,15 @@ def _record_invoice(store: BillingStore, data: dict, invoice_status: str):
     return tenant_id, existing_sub, sub_id
 
 
-async def _handle_invoice_succeeded(store: BillingStore, data: dict) -> tuple[str, str]:
+async def _handle_invoice_succeeded(store: BillingStore, data: dict, created: Optional[int] = None, event_id: Optional[str] = None) -> tuple[str, str]:
     tenant_id, _, _ = _record_invoice(store, data, "paid")
     return tenant_id, f"Invoice {data.get('id')} recorded as paid for tenant {tenant_id}"
 
 
-async def _handle_invoice_failed(store: BillingStore, data: dict) -> tuple[str, str]:
+async def _handle_invoice_failed(store: BillingStore, data: dict, created: Optional[int] = None, event_id: Optional[str] = None) -> tuple[str, str]:
     tenant_id, existing_sub, sub_id = _record_invoice(store, data, "open")
+    if store.is_stale(tenant_id, created):  # a fatura fica registrada, mas o status não volta atrás
+        return tenant_id, "Stale event ignored: invoice recorded, subscription status kept (a newer event was already applied)"
     if existing_sub:  # o plano continua (o Stripe ainda retenta a cobrança); se esgotar, vem subscription.deleted
         store.upsert_subscription(
             tenant_id=tenant_id,
@@ -393,6 +429,7 @@ async def _handle_invoice_failed(store: BillingStore, data: dict) -> tuple[str, 
             status="past_due",
             stripe_subscription_id=sub_id,
         )
+    store.advance_clock(tenant_id, created, event_id)
     return tenant_id, f"Invoice {data.get('id')} recorded as failed/past_due for tenant {tenant_id}"
 
 
@@ -449,7 +486,7 @@ async def stripe_webhook(
         return WebhookEventResponse(received=True, event_type=event_type, processed=False, event_id=event_id, detail=detail)
 
     try:
-        tenant_id, detail = await handler(store, event_data)
+        tenant_id, detail = await handler(store, event_data, event.get("created"), event_id)
     except Exception as exc:
         # libera o evento: o Stripe vai reenviar (resposta 500) e a nova tentativa precisa poder processar
         logger.exception("webhook %s (%s) falhou", event_id, event_type)
@@ -457,6 +494,10 @@ async def stripe_webhook(
         store.finish_event(event_id, "failed", f"{type(exc).__name__}: {exc}"[:300])
         raise HTTPException(status_code=500, detail="Webhook processing failed; the event can be retried") from exc
 
+    if detail.startswith("Stale event ignored"):
+        store.finish_event(event_id, "ignored", detail, tenant_id)
+        business_event("billing.webhook_stale", tenant=tenant_id, event_id=event_id, type=event_type)
+        return WebhookEventResponse(received=True, event_type=event_type, processed=False, event_id=event_id, detail=detail)
     store.finish_event(event_id, "processed", detail, tenant_id)
     business_event(f"billing.{event_type}", tenant=tenant_id, event_id=event_id, detail=detail)
     return WebhookEventResponse(received=True, event_type=event_type, processed=True, event_id=event_id, detail=detail)
@@ -477,6 +518,17 @@ async def _fetch_plan_stats() -> Optional[dict]:
     except Exception as exc:
         logger.warning("Não consegui consultar as estatísticas do auth-tenant-service: %s", exc)
     return None
+
+
+@app.post("/billing/admin/reconcile")
+async def admin_reconcile(store: BillingStore = Depends(get_billing_store)):
+    """Compara as assinaturas do Stripe com as do banco e corrige as divergências (evento perdido ou fora de ordem)."""
+    remote = stripe_client.list_subscription_states()
+    if remote is None:
+        return {"mode": "mock", "checked": 0, "fixes": [], "detail": "Stripe simulado: não há assinaturas reais para comparar."}
+    fixes = await reconcile(store, remote, notify_tenant_tier_change)
+    business_event("billing.reconciled", checked=len(remote), fixes=len(fixes))
+    return {"mode": "stripe", "checked": len(remote), "fixes": fixes}
 
 
 @app.get("/billing/admin/summary", response_model=AdminSummary)
@@ -500,6 +552,8 @@ async def admin_summary(store: BillingStore = Depends(get_billing_store)):
     return AdminSummary(
         test_mode=settings.stripe_mock_mode or settings.stripe_secret_key.startswith("sk_test_"),
         mock_mode=settings.stripe_mock_mode,
+        failed_events=store.count_events("failed"),
+        stuck_events=store.count_events("processing", older_than_s=300),
         active_subscriptions=sum(active.values()),
         past_due_subscriptions=past_due,
         mrr_cents=mrr,

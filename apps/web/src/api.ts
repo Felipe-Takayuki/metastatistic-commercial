@@ -226,6 +226,8 @@ export interface AdminSummary {
   currency: string;
   test_mode: boolean;
   mock_mode: boolean;
+  failed_events: number;
+  stuck_events: number;
   active_subscriptions: number;
   past_due_subscriptions: number;
   mrr_cents: number;
@@ -376,6 +378,7 @@ export const api = {
   getBillingPlans: () => request<PlanInfo[]>("/billing/plans"),
   getSubscription: () => request<SubscriptionInfo>("/billing/subscription"),
   getPlanUsage: () => request<PlanUsage>("/plan/usage"),
+  reconcileBilling: () => request<{ mode: string; checked: number; fixes: { subscription: string; action: string }[]; detail?: string }>("/billing/admin/reconcile", { method: "POST" }),
   getBillingAdminSummary: () => request<AdminSummary>("/billing/admin/summary"),
   createCheckoutSession: (planId: string, billingCycle: BillingCycle = "monthly") =>
     request<CheckoutSession>("/billing/checkout", json("POST", { plan_id: planId, billing_cycle: billingCycle })),

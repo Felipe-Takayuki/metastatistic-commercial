@@ -104,6 +104,8 @@ class AdminSummary(BaseModel):
     currency: str = "brl"
     test_mode: bool
     mock_mode: bool = False        # True = Stripe simulado (STRIPE_MOCK_MODE), nenhuma chamada real ao Stripe
+    failed_events: int = 0         # webhooks que falharam e esperam a retentativa do Stripe
+    stuck_events: int = 0          # webhooks "em processamento" há mais de 5 minutos
     active_subscriptions: int
     past_due_subscriptions: int
     mrr_cents: int

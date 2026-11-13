@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # BILLING_*_URL_DEFAULT explícitas continuam valendo. Sem APP_URL, valem os padrões de desenvolvimento abaixo.
     app_url: str = ""
 
+    # Reconciliação periódica com o Stripe (minutos). 0 = desligada; o botão/endpoint manual funciona sempre.
+    reconcile_interval_minutes: int = 0
+
     # ID do preço mensal (em R$) do plano Pro, criado no painel do Stripe em modo de teste. STRIPE_PRICE_ID e
     # STRIPE_PRICE_PRO_MONTHLY são sinônimos (o específico ganha). Sem nenhum fica o ID de exemplo (price_pro_monthly),
     # que só funciona no modo mock.

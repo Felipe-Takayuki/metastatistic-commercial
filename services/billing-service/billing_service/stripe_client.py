@@ -101,6 +101,8 @@ class StripeClient:
                     "billing_cycle": billing_cycle,
                     "tier": plan["tier"],
                 },
+                # a própria assinatura carrega a organização: a reconciliação consegue achá-la mesmo sem o webhook
+                subscription_data={"metadata": {"tenant_id": tenant_id, "plan_id": plan_id}},
             )
             return {
                 "session_id": session.id,
@@ -129,6 +131,27 @@ class StripeClient:
         except Exception as e:
             logger.error("Stripe: falha ao criar a sessão do portal (customer %s): %s", customer_id, e)
             raise StripeUnavailable(f"Stripe recusou a criação do portal: {e}") from e
+
+    def list_subscription_states(self) -> Optional[Dict[str, Dict[str, Any]]]:
+        """Estado atual de TODAS as assinaturas no Stripe (para a reconciliação). None no modo simulado: não há o que comparar."""
+        if self.mock_mode:
+            return None
+        self._require_real()
+        try:
+            out: Dict[str, Dict[str, Any]] = {}
+            for sub in stripe.Subscription.list(status="all", limit=100).auto_paging_iter():
+                items = (sub.get("items") or {}).get("data") or []
+                out[sub["id"]] = {
+                    "status": sub["status"],
+                    "customer": sub.get("customer"),
+                    "price_id": (items[0].get("price") or {}).get("id") if items else None,
+                    "tenant_id": (sub.get("metadata") or {}).get("tenant_id"),
+                    "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+                }
+            return out
+        except Exception as e:
+            logger.error("Stripe: falha ao listar assinaturas: %s", e)
+            raise StripeUnavailable(f"Stripe recusou a listagem de assinaturas: {e}") from e
 
     def verify_webhook_event(self, payload_bytes: bytes, sig_header: Optional[str]) -> Dict[str, Any]:
         """

@@ -80,6 +80,13 @@ class BillingStore:
                     processed_at TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_evt_received ON webhook_events(received_at);
+
+                -- relógio por organização: `created` do último evento de assinatura aplicado (ordem dos eventos do Stripe)
+                CREATE TABLE IF NOT EXISTS subscription_clock (
+                    tenant_id TEXT PRIMARY KEY,
+                    last_event_created INTEGER NOT NULL,
+                    last_event_id TEXT
+                );
             """)
             conn.commit()
 
@@ -325,6 +332,40 @@ class BillingStore:
                 "SELECT * FROM webhook_events ORDER BY received_at DESC, rowid DESC LIMIT ?", (min(max(limit, 1), 200),)
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def is_stale(self, tenant_id: str, created: Optional[int]) -> bool:
+        """True se já foi aplicado um evento MAIS NOVO desta organização: o Stripe não garante a ordem de entrega."""
+        if created is None:
+            return False
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT last_event_created FROM subscription_clock WHERE tenant_id = ?", (tenant_id,)).fetchone()
+        return bool(row and created < row["last_event_created"])
+
+    def advance_clock(self, tenant_id: str, created: Optional[int], event_id: Optional[str] = None) -> None:
+        if created is None:
+            return
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO subscription_clock (tenant_id, last_event_created, last_event_id) VALUES (?, ?, ?)
+                ON CONFLICT(tenant_id) DO UPDATE SET last_event_created = excluded.last_event_created, last_event_id = excluded.last_event_id
+                WHERE excluded.last_event_created >= subscription_clock.last_event_created
+                """,
+                (tenant_id, created, event_id),
+            )
+            conn.commit()
+
+    def count_events(self, status: str, older_than_s: int = 0) -> int:
+        """Eventos numa situação (ex.: `failed`, ou `processing` há mais de N segundos = travado)."""
+        cutoff = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() - older_than_s, timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) AS n FROM webhook_events WHERE status = ? AND received_at <= ?", (status, cutoff)
+            ).fetchone()["n"]
+
+    def list_subscriptions(self) -> List[SubscriptionResponse]:
+        with self._get_connection() as conn:
+            return [self._row_to_sub(r) for r in conn.execute("SELECT * FROM subscriptions")]
 
     # ---------- painel admin ----------
 

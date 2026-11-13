@@ -384,11 +384,11 @@ async def test_failed_processing_can_be_retried(memory_billing_store, monkeypatc
     calls = {"n": 0}
     real = m._handle_subscription_deleted
 
-    async def flaky(store, data):
+    async def flaky(store, data, created=None, event_id=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("banco indisponível")
-        return await real(store, data)
+        return await real(store, data, created, event_id)
 
     monkeypatch.setitem(m._WEBHOOK_HANDLERS, "customer.subscription.deleted", flaky)
     payload = _event("evt_flaky", "customer.subscription.deleted", {"id": "sub_x", "customer": "cus_x"})
@@ -509,3 +509,99 @@ async def test_business_events_go_to_the_process_log(memory_billing_store):
     events = [json.loads(x) for x in lines]
     assert [e["event"] for e in events] == ["billing.checkout_created", "billing.checkout.session.completed", "billing.webhook_duplicate"]
     assert events[1]["tenant"] == "t_log" and events[1]["event_id"] == "evt_log_1"
+
+
+# ======================================================================
+# Issue #8: eventos fora de ordem, reconciliação e alerta de falhas
+# ======================================================================
+
+def _ev(event_id, typ, obj, created):
+    return json.dumps({"id": event_id, "type": typ, "created": created, "data": {"object": obj}})
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_older_event_arriving_late_does_not_undo_a_newer_one(memory_billing_store):
+    tier = respx.patch(url__regex=r".*/tenants/t_ord/tier").mock(return_value=Response(200, json={}))
+    memory_billing_store.upsert_subscription("t_ord", "cus_ord", "pro", "team", "active", "sub_ord")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await _post(client, _ev("e_del", "customer.subscription.deleted", {"id": "sub_ord", "customer": "cus_ord"}, 2000))
+        late = await _post(client, _ev("e_upd", "customer.subscription.updated", {"id": "sub_ord", "customer": "cus_ord", "status": "active"}, 1000))
+        sub = (await client.get("/billing/subscription", headers={"X-Tenant-ID": "t_ord"})).json()
+    assert late.status_code == 200 and late.json()["processed"] is False and "Stale" in late.json()["detail"]
+    assert sub["status"] == "canceled"                                   # o cancelamento (mais novo) vale
+    assert [json.loads(c.request.content)["tier"] for c in tier.calls] == ["community"]   # nenhuma promoção indevida
+    assert memory_billing_store.get_event("e_upd")["status"] == "ignored"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_newer_event_after_older_is_applied_and_equal_timestamps_are_fine(memory_billing_store):
+    respx.patch(url__regex=r".*/tenants/t_ok/tier").mock(return_value=Response(200, json={}))
+    memory_billing_store.upsert_subscription("t_ok", "cus_ok", "pro", "team", "active", "sub_ok")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        r1 = await _post(client, _ev("o1", "customer.subscription.updated", {"id": "sub_ok", "customer": "cus_ok", "status": "active"}, 1000))
+        r2 = await _post(client, _ev("o2", "customer.subscription.updated", {"id": "sub_ok", "customer": "cus_ok", "status": "active", "cancel_at_period_end": True}, 1000))
+        r3 = await _post(client, _ev("o3", "customer.subscription.deleted", {"id": "sub_ok", "customer": "cus_ok"}, 3000))
+    assert all(r.json()["processed"] for r in (r1, r2, r3))
+
+
+@pytest.mark.asyncio
+async def test_stale_payment_failed_keeps_the_invoice_but_not_the_status(memory_billing_store):
+    memory_billing_store.save_customer("t_inv", "cus_inv")
+    memory_billing_store.upsert_subscription("t_inv", "cus_inv", "pro", "team", "active", "sub_inv")
+    memory_billing_store.advance_clock("t_inv", 5000)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await _post(client, _ev("f1", "invoice.payment_failed", {"id": "in_x", "customer": "cus_inv", "subscription": "sub_inv", "amount_due": 24900, "amount_paid": 0}, 4000))
+        sub = (await client.get("/billing/subscription", headers={"X-Tenant-ID": "t_inv"})).json()
+        invs = (await client.get("/billing/invoices", headers={"X-Tenant-ID": "t_inv"})).json()
+    assert sub["status"] == "active" and len(invs) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_reconcile_fixes_missed_events(memory_billing_store, monkeypatch):
+    from billing_service import main as m
+
+    tier = respx.patch(url__regex=r".*/tenants/.*/tier").mock(return_value=Response(200, json={}))
+    memory_billing_store.save_customer("t_paid", "cus_paid")                       # pagou, mas o webhook nunca chegou
+    memory_billing_store.upsert_subscription("t_gone", "cus_gone", "pro", "team", "active", "sub_gone")     # cancelada no Stripe, sem evento
+    memory_billing_store.upsert_subscription("t_fake", "cus_fake", "pro", "team", "active", "sub_fake")     # promovida sem existir no Stripe
+    remote = {
+        "sub_paid": {"status": "active", "customer": "cus_paid", "price_id": None, "tenant_id": None, "cancel_at_period_end": False},
+        "sub_gone": {"status": "canceled", "customer": "cus_gone", "price_id": None, "tenant_id": None},
+    }
+    monkeypatch.setattr(m.stripe_client, "list_subscription_states", lambda: remote)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        out = (await client.post("/billing/admin/reconcile")).json()
+        paid = (await client.get("/billing/subscription", headers={"X-Tenant-ID": "t_paid"})).json()
+        gone = (await client.get("/billing/subscription", headers={"X-Tenant-ID": "t_gone"})).json()
+        fake = (await client.get("/billing/subscription", headers={"X-Tenant-ID": "t_fake"})).json()
+        again = (await client.post("/billing/admin/reconcile")).json()
+    assert out["mode"] == "stripe" and out["checked"] == 2 and len(out["fixes"]) == 3
+    assert paid["plan_id"] == "pro" and paid["status"] == "active"
+    assert gone["status"] == "canceled" and fake["status"] == "canceled"
+    assert sorted(json.loads(c.request.content)["tier"] for c in tier.calls) == ["community", "community", "team"]
+    assert again["fixes"] == []                                                      # idempotente
+
+
+@pytest.mark.asyncio
+async def test_reconcile_in_mock_mode_is_a_noop(memory_billing_store):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        out = (await client.post("/billing/admin/reconcile")).json()
+    assert out["mode"] == "mock" and out["fixes"] == []
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_summary_flags_failed_and_stuck_events(memory_billing_store):
+    respx.get(f"{settings.auth_service_url.rstrip('/')}/tenants/stats/plans").mock(return_value=Response(200, json={"tenants_by_tier": {}, "users_by_tier": {}, "users_total": 0}))
+    memory_billing_store.claim_event("e_fail", "invoice.payment_failed")
+    memory_billing_store.finish_event("e_fail", "failed", "boom")
+    memory_billing_store.claim_event("e_stuck", "checkout.session.completed")
+    with memory_billing_store._get_connection() as c:
+        c.execute("UPDATE webhook_events SET received_at = '2020-01-01T00:00:00+00:00' WHERE event_id = 'e_stuck'")
+        c.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        data = (await client.get("/billing/admin/summary")).json()
+    assert data["failed_events"] == 1 and data["stuck_events"] == 1
