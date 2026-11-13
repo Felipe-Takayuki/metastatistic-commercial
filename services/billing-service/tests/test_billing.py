@@ -480,3 +480,32 @@ async def test_admin_summary_survives_auth_service_down(memory_billing_store):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         data = (await client.get("/billing/admin/summary")).json()
     assert data["users_total"] is None and all(r["users"] is None for r in data["by_plan"])
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_business_events_go_to_the_process_log(memory_billing_store):
+    import logging
+    from billing_service import main as m
+
+    respx.patch(url__regex=r".*/tenants/.*/tier").mock(return_value=Response(200, json={}))
+    lines: list[str] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    h = Capture()
+    m.events_log.addHandler(h)
+    try:
+        payload = _event("evt_log_1", "checkout.session.completed", {
+            "client_reference_id": "t_log", "customer": "cus_log", "subscription": "sub_log", "metadata": {"plan_id": "pro"}})
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post("/billing/checkout", json={"plan_id": "pro"}, headers={"X-Tenant-ID": "t_log"})
+            await _post(client, payload)
+            await _post(client, payload)
+    finally:
+        m.events_log.removeHandler(h)
+    events = [json.loads(x) for x in lines]
+    assert [e["event"] for e in events] == ["billing.checkout_created", "billing.checkout.session.completed", "billing.webhook_duplicate"]
+    assert events[1]["tenant"] == "t_log" and events[1]["event_id"] == "evt_log_1"

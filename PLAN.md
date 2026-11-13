@@ -303,9 +303,9 @@ O modelo de negócio baseia-se em **SaaS B2B baseado em assinatura (com precific
 | **Suporte & SLAs** | Fórum GitHub | Horário Comercial (e-mail) | 99.9% SLA + Gerente Dedicado | 99.99% SLA + Suporte 24/7/365 |
 | **Certificações & Compliance**| Nenhuma | Termos padrão | SOC 2 Tipo II, HIPAA BAA | 21 CFR Part 11, GxP, ISO 27001 |
 
-> **⚠️ Preços divergentes no repositório (decisão pendente).** Existem três tabelas diferentes:
-> | Fonte | Team | Enterprise |
-> |---|---|---|
+> **✅ Preços unificados (2026-11-13).** A matriz acima é a proposta original (por usuário, em US$) e fica como histórico. O que a plataforma vende hoje, e o que README, `billing-service`, landing page e modal de planos mostram, é **por organização, em R$, só mensal**: **Free** R$ 0 e **Pro** R$ 249,00/mês. O Enterprise segue sob contrato, fora do Stripe.
+
+---|---|---|
 > | Esta matriz (§5) | US$ 49 / usuário / mês | US$ 149 / usuário / mês (mín. 10) |
 > | `README.md` (plano de negócio, atividade 9) | R$ 249 / mês (R$ 199 no anual) | R$ 1.490 / mês |
 > | **Implementado** (`services/billing-service/app/config.py`, `PricingModal.tsx`) | US$ 49 / mês (US$ 490 / ano) | US$ 299 / mês (US$ 2.990 / ano), **por organização**, não por usuário |
@@ -435,7 +435,7 @@ Ordenados por risco para um lançamento com clientes regulados.
 
 ### Consistência do produto
 - [ ] **Dois logs de auditoria coexistem.** `apps/api/app/audit.py` (SQLite simples, sem hash, lido por `apps/web/src/components/AuditLog.tsx` em `GET /audit?before_id=&action=`) e o `audit-service` (cadeia SHA-256, `/audit/events`). Pelo gateway, `/audit` agora cai no segundo, com outro formato; a tela de auditoria do frontend provavelmente não funciona via gateway. Decidir: o `apps/api` passa a emitir eventos ao `audit-service` e o front lê dele.
-- [ ] **Preços divergentes** entre README, PLAN §5 e `billing-service` (ver nota na §5).
+- [x] **Preços divergentes** — resolvido em 2026-11-13: o produto vende **Free (R$ 0)** e **Pro (R$ 249,00/mês)**, por organização, em R$ e só mensal (README §6, `billing-service`, landing page e modal de planos dizem o mesmo). A matriz da §5 abaixo é a proposta original por usuário e fica como histórico; Enterprise segue sob contrato, fora do Stripe.
 
 ### Infraestrutura e dados
 - [ ] **PostgreSQL** (multi-tenant com RLS) no lugar de SQLite por serviço; Alembic para migrações.

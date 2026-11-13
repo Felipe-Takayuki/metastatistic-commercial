@@ -56,6 +56,8 @@ const landing = await anon.newPage();
 await landing.goto(BASE);
 await landing.waitForSelector("text=Metastatistic");
 await shot(landing, "10-01-landing-publica.png", 10, "Landing page pública, sem login");
+await landing.evaluate(() => document.getElementById("planos")?.scrollIntoView());
+await shot(landing, "10-06-landing-planos.png", 10, "Landing page: planos Free (R$ 0) e Pro (R$ 249/mês)");
 
 const adminCtx = await newCtx();
 await call(adminCtx, "POST", "/api/auth/setup", { json: { username: "admin", password: PASS, display_name: "Administrador" }, expect: 201 });

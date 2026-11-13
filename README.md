@@ -4,6 +4,8 @@
 > **Professor**: Allan Siriani ([github.com/siriani](https://github.com/siriani))  
 > **Projeto**: Metastatistic Commercial (B2B SaaS de Business Intelligence & Rigor Estatístico)  
 > **Repositório**: [metastatistic-commercial](https://github.com/Felipe-Takayuki/metastatistic-commercial)
+>
+> **Entregas**: [Atividade 9 — plano de negócio](docs/plano-de-negocio.md) · [Atividade 10 — negócio no ar](docs/atividade-10-negocio-no-ar.md) · [Atividade 11 — SaaS com Stripe](docs/atividade-11-saas-stripe.md) · [P2 — relatório consolidado](docs/p2/) · [Evidências (prints com data e hora)](docs/evidencias/)
 
 ---
 
@@ -65,39 +67,31 @@
 
 ### 6. Modelo de Receita com Stripe
 
-O modelo de monetização é um SaaS B2B Freemium com cobrança recorrente via **Stripe Checkout & Customer Portal** (em R$ mensais ou anuais com desconto):
+O modelo de monetização é um SaaS B2B **Freemium** com assinatura recorrente **mensal em R$** via **Stripe Checkout & Customer Portal**. Dois planos são vendidos pelo próprio produto; o Enterprise é contrato sob medida (fora do Stripe):
 
 ```
-                        ┌────────────────────────────────────────────────────────┐
-                        │              METRICAS DE PRECIFICAÇÃO SAAS             │
-                        └────────────────────────────────────────────────────────┘
-                                     │
-         ┌───────────────────────────┼───────────────────────────┐
-         ▼                           ▼                           ▼
-  [ Community ]                   [ Team ]                 [ Enterprise ]
-     R$ 0/mês                    R$ 249/mês                 R$ 1.490/mês
-  • 1 usuário individual      • Até 10 membros           • Usuários ilimitados
-  • 5 datasets (50 MB máx)    • Datasets até 2 GB        • Datasets ilimitados
-  • Testes frequentistas      • Frequen. + Bayesiano     • Motor Dual-Engine VIP
-  • Relatórios c/ marca d'água• PDF/DOCX/LaTeX sem marca • SSO SAML/OIDC + SCIM 2.0
-  • Fila compartilhada        • Fila prioritária         • Audit Trail Hash Chain SHA-256
+              ┌──────────────────────────────┐         ┌──────────────────────────────────┐
+              │            FREE              │         │               PRO                │
+              │          R$ 0 / mês          │  ─────▶ │        R$ 249,00 / mês           │
+              │  • até 3 usuários            │ Stripe  │  • até 15 usuários               │
+              │  • até 5 datasets (10 MB)    │ Checkout│  • até 100 datasets (200 MB)     │
+              │  • análises essenciais       │         │  • catálogo completo (ANOVA,     │
+              │  • relatórios c/ marca d'água│         │    ANCOVA, não paramétricos, BF) │
+              └──────────────────────────────┘         │  • conectores SQL, exportação    │
+                                                       └──────────────────────────────────┘
 ```
 
-> **Nota — preços ainda não unificados.** Os valores em R$ abaixo são os do plano de negócio (atividade 9). A plataforma, porém, hoje cobra em **US$ por organização**: Team US$ 49/mês (US$ 490/ano) e Enterprise US$ 299/mês (US$ 2.990/ano), conforme `services/billing-service/app/config.py` e o modal de planos. O `PLAN.md` (§5) traz ainda uma terceira versão, por usuário. A escolha do modelo e da moeda está pendente — ver `PLAN.md` §5 e §7.
+| | **Free** | **Pro** |
+| :--- | :--- | :--- |
+| Preço | R$ 0 | **R$ 249,00 / mês** (assinatura recorrente, cancelável no portal) |
+| Usuários por organização | 3 | 15 |
+| Datasets | 5, de até 10 MB cada | 100, de até 200 MB cada |
+| Análises | essenciais | catálogo completo |
+| Quem usa | estudantes, pesquisadores individuais | laboratórios, clínicas, consultorias estatísticas |
 
-1. **Plano Community (Free — R$ 0 / mês)**:
-   * **Público**: Estudantes de graduação, pesquisadores autônomos e experimentadores.
-   * **Limites**: 1 usuário individual, até 5 datasets carregados (máx. 50 MB por arquivo), análises estatísticas básicas (Descritivas, Teste t, Pearson), 1 dashboard ativo, relatórios com marca d'água discreta e processamento em fila assíncrona pública.
-   * **Objetivo**: Aquisição de base (*bottom-up adoption*), testes de usabilidade e viralidade acadêmica.
+**Os limites valem na API**, não só na tela: passar do limite de datasets, do tamanho do arquivo ou de usuários responde com uma mensagem que diz o limite do plano e como liberar mais (ex.: *"Limite do plano Free: até 5 datasets por organização (você já tem 5). Faça upgrade para o plano Pro (menu Planos > Assinar o Pro) para liberar até 100 datasets e arquivos maiores."*). Detalhes e prints em [`docs/atividade-11-saas-stripe.md`](docs/atividade-11-saas-stripe.md).
 
-2. **Plano Team (Pro — R$ 249 / mês ou R$ 199 / mês no plano anual)**:
-   * **Público**: Laboratórios de pesquisa universitária, grupos de pesquisa clínica, clínicas médicas e consultorias estatísticas.
-   * **Recursos**: Até 10 membros com controle de acesso baseado em papéis (Admin, Editor, Viewer), datasets ilimitados de até 2 GB por arquivo com aceleração DuckDB/Parquet, catálogo estatístico completo (ANOVA, ANCOVA, testes não-paramétricos e inferência Bayesiana com Fator de Bayes $\text{BF}_{10}$), dashboards ilimitados colaborativos via WebSockets, exportação de relatórios sem marca d'água em múltiplos formatos (PDF Paged Media APA 7th, DOCX e LaTeX com *booktabs*), e fila com prioridade de processamento analítico.
-   * **Por que alguém paga**: Economiza de 20 a 40 horas de trabalho manual por mês de cada membro da equipe, viabiliza trabalho colaborativo e gera documentos prontos para submissão editorial sem retrabalho.
-
-3. **Plano Enterprise (R$ 1.490 / mês ou contratos corporativos sob medida)**:
-   * **Público**: Indústrias farmacêuticas, biotecnologia, CROs (*Contract Research Organizations*), grandes redes hospitalares e centros de pesquisa corporativa.
-   * **Recursos**: Usuários e inquilinos ilimitados, cotas de hardware dedicadas, fila VIP analítica com Quality of Service (QoS de alta prioridade), Single Sign-On corporativo (SAML 2.0 & OIDC com Okta, Azure AD, Google e Keycloak), provisionamento automatizado de usuários via SCIM 2.0 (RFC 7643/7644), Trilha de Auditoria Criptográfica Imutável com encadeamento de hash SHA-256 (preparada para auditorias SOC 2 Tipo II e FDA 21 CFR Part 11), anonimização e mascaramento de PII (dados de pacientes sensíveis sob LGPD/HIPAA), SLA de disponibilidade de 99.9% e suporte técnico dedicado.
+Nomes internos: `free` = tier `community`, `pro` = tier `team` (o `auth-tenant-service` e o gateway já usavam esses nomes). O tier `enterprise` continua existindo para contratos (SSO SAML/OIDC, SCIM 2.0, trilha de auditoria imutável), sem preço no Stripe.
 
 ---
 
@@ -107,7 +101,7 @@ O modelo de monetização é um SaaS B2B Freemium com cobrança recorrente via *
 | :--- | :--- | :--- | :--- |
 | **Cadastros Ativos** | Novos usuários registrados na plataforma. | 1.000 usuários cadastrados | 5.000 usuários |
 | **Taxa de Ativação** | Usuários que sobem um dataset e geram a 1ª análise estatística nos primeiros 10 min. | $\ge 60\%$ de ativação | $\ge 75\%$ de ativação |
-| **Assinantes Pagantes** | Clientes com assinatura ativa nos planos Team ou Enterprise. | 35 equipes pagantes | 150 equipes pagantes |
+| **Assinantes Pagantes** | Organizações com assinatura Pro ativa. | 35 equipes pagantes | 150 equipes pagantes |
 | **MRR (Receita Recorrente)** | Receita mensal recorrente gerada via Stripe Subscriptions. | R$ 15.000,00 / mês | R$ 65.000,00 / mês |
 | **Churn Rate Mensal** | Percentual de cancelamento de planos pagos por mês. | $< 3\%$ ao mês | $< 1.5\%$ ao mês |
 | **LTV / CAC** | Razão entre valor de tempo de vida do cliente e custo de aquisição. | $\ge 3:1$ | $\ge 5:1$ (viralidade acadêmica) |
@@ -123,9 +117,9 @@ O modelo de monetização é um SaaS B2B Freemium com cobrança recorrente via *
 | **3. Proposta Única de Valor** | *A agilidade visual do BI corporativo aliada ao rigor estatístico e relatórios automatizados no padrão editorial APA 7th em nuvem multi-tenant.* |
 | **4. Solução** | 1. **Data Prep Visual & SQL** acelerado por DuckDB e Apache Arrow IPC (zero cópia de memória).<br>2. **Catálogo Inferencial Completo**: Testes paramétricos, não-paramétricos e estatística Bayesiana ($\text{BF}_{10}$) automatizados.<br>3. **Exportador APA 7th**: Geração nativa com 1 clique de relatórios em PDF Paged Media, DOCX e LaTeX prontos para submissão. |
 | **5. Canais** | • Citações em artigos acadêmicos (*Powered by Metastatistic* no rodapé de tabelas geradas no plano gratuito).<br>• Apresentações e workshops em congressos científicos, simpósios de bioestatística e saúde pública.<br>• Parcerias com programas de pós-graduação e ligas de pesquisa universitária.<br>• Marketing de conteúdo técnico (tutoriais de estatística prática, guias de APA 7th e comparação de modelos). |
-| **6. Fontes de Receita** | • Assinaturas mensais e anuais via Stripe:<br>&nbsp;&nbsp;- Plano Team: R$ 249/mês (ou R$ 199/mês anual).<br>&nbsp;&nbsp;- Plano Enterprise: R$ 1.490/mês.<br>• Contratos customizados para implantação em redes hospitalares e biobancos. |
+| **6. Fontes de Receita** | • Assinatura mensal via Stripe: plano Pro a R$ 249/mês (o Free é a porta de entrada).<br>• Contratos Enterprise sob medida para redes hospitalares, CROs e biobancos (SSO, SCIM, auditoria regulatória). |
 | **7. Estrutura de Custos** | • Infraestrutura de nuvem (instâncias de computação para microsserviços, DuckDB e workers R/Python).<br>• Armazenamento de objetos (MinIO / AWS S3 para datasets e snapshots Parquet).<br>• Taxas de processamento de pagamentos do Stripe (gateway de faturamento).<br>• Custos de manutenção de domínio, certificados TLS e ferramentas de CI/CD. |
-| **8. Métricas-Chave** | • Taxa de ativação de novos cadastros (1ª análise estatística em < 10 min).<br>• Número de relatórios e tabelas APA 7th exportadas por semana.<br>• MRR (Receita Recorrente Mensal) e Net Revenue Retention (NRR).<br>• Taxa de conversão de usuários Community para Team/Enterprise. |
+| **8. Métricas-Chave** | • Taxa de ativação de novos cadastros (1ª análise estatística em < 10 min).<br>• Número de relatórios e tabelas APA 7th exportadas por semana.<br>• MRR (Receita Recorrente Mensal) e Net Revenue Retention (NRR).<br>• Taxa de conversão de organizações Free para Pro. |
 | **9. Vantagem Injusta** | • **Motor Dual-Engine híbrido**: Combina a robustez e validação do ecossistema R com a velocidade em memória do DuckDB e a portabilidade do SciPy puro, sem infringir licenças restritivas de código aberto.<br>• **Mecanismo de exportação com tipografia editorial estrita** que replica com precisão cirúrgica as normas do manual APA 7th, eliminando a concorrência de ferramentas genéricas de BI. |
 
 ---
@@ -140,34 +134,30 @@ Conforme os requisitos da disciplina, absolutamente nada da arquitetura original
 | **Microsserviço de Login + RBAC** | **Gestão de Inquilinos (Multi-Tenancy), SSO e Permissões** | Papéis corporativos de negócio: `admin` (gestor do laboratório), `editor` (pesquisador/analista) e `viewer` (auditor/leitor), com autenticação SSO SAML/OIDC e SCIM 2.0. |
 | **Logs e Auditoria (Redis)** | **Trilha de Auditoria Criptográfica Imutável (Audit Trail)** | Registros em cadeia de hash SHA-256 com verificação de integridade matemática: `"dataset_uploaded"`, `"analysis_executed"`, `"report_exported"`, em conformidade com **FDA 21 CFR Part 11**. Implementado em `services/audit-service` (SQLite próprio; sem Redis). |
 | **Upload e Perfil (MinIO / S3)** | **Armazenamento Seguro de Datasets e Snapshots** | Upload de grandes arquivos CSV/Parquet de dados de pacientes, fotos/avatares de perfil dos cientistas e snapshots versionados de relatórios. |
-| **Plano Premium (Stripe)** | **Microsserviço de Billing & Assinaturas Recorrentes** | Gestão automatizada dos planos Community, Team e Enterprise com Stripe Checkout, Webhooks e sincronização de cotas no banco. |
+| **Plano Premium (Stripe)** | **Microsserviço de Billing & Assinaturas Recorrentes** | Gestão automatizada dos planos Free e Pro com Stripe Checkout, Customer Portal, webhooks idempotentes e sincronização de cotas. |
 | **Swagger, CI/CD e Observabilidade** | **Documentação OpenAPI, Helm Charts Kubernetes & Testes** | Contratos canônicos OpenAPI (`@metastatistic/contracts`), esteira de testes automatizados (Vitest/Pytest), healthcheck centralizado no Gateway e deploy em containers. |
 
 ---
 
-### 10. Backlog no GitHub (Roteiro das Próximas Entregas)
+### 10. Backlog no GitHub
 
-Para orientar a evolução nas atividades 10 (Negócio no Ar) e 11 (Assinatura com Stripe), o backlog estruturado contempla as seguintes *issues* fundamentais:
+O backlog vive nas *issues* do repositório (rótulo `enhancement`). A entrega de cada atividade é uma issue própria; as demais são o que ainda falta, em ordem de risco:
 
-* **Issue #1 — Modelagem e Ingestão Analítica com DuckDB e Apache Arrow**
-  * *Descrição*: Implementar o catálogo de datasets do Metastatistic com detecção automática de tipos estatísticos (contínuo, ordinal, nominal) e motor DuckDB em memória com streaming Arrow IPC de alta performance.
-  * *Critérios de Aceitação*: Upload de CSV até 100 MB em menos de 2 segundos; visualização tabular paginada com edição de metadados.
-* **Issue #2 — Controle de Acesso Baseado em Papéis (RBAC) e Isolamento Multi-Tenant**
-  * *Descrição*: Estruturar o isolamento de dados por organização (`tenant_id`) com papéis de `admin`, `editor` e `viewer`, e roteamento de contexto no API Gateway.
-  * *Critérios de Aceitação*: Usuário de um laboratório não enxerga dados de outro laboratório; permissões de edição respeitadas na API e na interface.
-* **Issue #3 — Landing Page Comercial com Vitrine Interativa APA 7th**
-  * *Descrição*: Desenvolver a página inicial pública da plataforma apresentando proposta de valor, tabela comparativa com concorrentes, vitrine de resultados no padrão APA e modal de autenticação integrado.
-  * *Critérios de Aceitação*: Landing page responsiva com alternância de tema (Claro/Escuro), navegação fluida e botões de conversão ("Entrar" e "Criar Conta").
-* **Issue #4 — Integração de Pagamentos Recorrentes com Stripe (Checkout & Portal)**
-  * *Descrição*: Criar o microsserviço de faturamento (`billing-service`) integrado aos planos Community, Team e Enterprise, com criação de Checkout Sessions e tratamento de Webhooks.
-  * *Critérios de Aceitação*: Transação no Stripe atualiza instantaneamente o plano da organização via webhook criptograficamente assinado; modal de planos permite troca de ciclo (mensal/anual).
-* **Issue #5 — Motor Dual-Engine de Inferência Estatística Frequentista & Bayesiana**
-  * *Descrição*: Implementar os motores analíticos (Engine Python SciPy e Engine R Worker isolado) com suporte a testes t, ANOVA e Fatores de Bayes com formatação editorial estrita.
-  * *Critérios de Aceitação*: Execução de teste t independente gera tabela com $t$, graus de liberdade, $p$-valor, Cohen's d e nota de rodapé no padrão APA 7th.
-* **Issue #6 — Trilha de Auditoria Criptográfica Imutável (FDA 21 CFR Part 11 & SOC 2)**
-  * *Descrição*: Implementar registro de eventos encadeados por hash SHA-256 no microsserviço de auditoria com endpoint de verificação de adulteração.
-  * *Critérios de Aceitação*: `GET /audit/verify` retorna status de integridade matemática e alerta se qualquer registro histórico for alterado.
-  * *Status*: ✅ entregue em `services/audit-service` (extraído do `auth-tenant-service` em 2026-11-11); falta autenticação no serviço e entrega garantida dos eventos — ver `PLAN.md` §7.
+| Issue | Tipo | Assunto |
+| :--- | :--- | :--- |
+| [#1](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/1) | Entrega | Atividade 9 — Fork e Plano de Negócio |
+| #ENT10 | Entrega | Atividade 10 — Seu negócio no ar |
+| #ENT11 | Entrega | Atividade 11 — SaaS completo com Stripe |
+| #ENTP2 | Entrega | P2 — Relatório consolidado |
+| [#2](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/2) | Backlog | Isolar os dados do `apps/api` por organização (tenant) |
+| [#3](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/3) | Backlog | Stripe real em modo de teste (produto Pro, preço, webhook e prints) |
+| [#4](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/4) | Backlog | Cota de armazenamento e medição de uso por plano |
+| [#5](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/5) | Backlog | Unificar identidade (usuários do `apps/api` × `auth-tenant-service`) |
+| [#6](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/6) | Backlog | PostgreSQL com migrações no lugar dos SQLite por serviço |
+| [#7](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/7) | Backlog | Observabilidade (logs estruturados, correlation id e métricas) |
+| [#8](https://github.com/Felipe-Takayuki/metastatistic-commercial/issues/8) | Backlog | Reconciliação dos webhooks do Stripe (eventos fora de ordem e falhas) |
+
+Já entregues e que aparecem nas fichas das atividades: modelagem e ingestão com DuckDB, RBAC e isolamento por usuário, landing page pública, billing com Stripe, motor dual-engine e trilha de auditoria (`services/audit-service`, cadeia SHA-256 com `GET /audit/verify`).
 
 ---
 
@@ -186,7 +176,7 @@ Roadmap completo e dívida técnica em [`PLAN.md`](PLAN.md); relatórios por fas
 | 8 | Frontend único, onboarding B2B, landing, **`audit-service` extraído** | ✅ |
 | — | PostgreSQL, Redis/fila, object storage, medição de uso, TLS | ⬜ pendente |
 
-**Principais pontos em aberto:** o gateway e os serviços confiam no header `X-Tenant-ID` e no `tenant_id` de um JWT cuja assinatura não é verificada — **qualquer cliente consegue ler dados de outro tenant** (verificado em teste, ver `PLAN.md` §7); autenticação no `audit-service`; entrega *best-effort* dos eventos de auditoria; dois logs de auditoria coexistindo (`apps/api` e `audit-service`); preços divergentes entre documentos e código.
+**Principais pontos em aberto:** o gateway e os serviços confiam no header `X-Tenant-ID` e no `tenant_id` de um JWT cuja assinatura não é verificada — **qualquer cliente consegue ler dados de outro tenant** (verificado em teste, ver `PLAN.md` §7); autenticação no `audit-service`; entrega *best-effort* dos eventos de auditoria; dois logs de auditoria coexistindo (`apps/api` e `audit-service`).
 
 ---
 
@@ -198,12 +188,12 @@ O repositório está organizado como um monorepo moderno gerenciado via `pnpm-wo
 > **Processo `platform`:** no `docker-compose.yml`, `auth-tenant`, `billing`, `bi-report`, `export` e `audit` rodam **no mesmo processo** (`services/platform-service`, sob os prefixos `/_auth`, `/_billing`, `/_bi`, `/_export`, `/_audit`). Cada um continua sendo um app FastAPI independente (com Dockerfile e banco próprios; o Helm segue implantando um a um); juntos economizam ~230 MB de RAM. As portas citadas abaixo valem para a execução individual. No modo `platform` os bancos são `AUTH_`/`AUDIT_`/`BILLING_`/`BI_DATABASE_URL`.
 
 * **`services/gateway`** (porta interna `8080`, exposta em `${GATEWAY_PORT:-8085}`): API Gateway e Edge Router assíncrono com resolução de inquilinos em cascata (subdomínio, cabeçalho `X-Tenant-ID`, JWT Bearer), proxy streaming via `httpx` e healthcheck agregador.
-* **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por assinatura (`community`, `team`, `enterprise`), RBAC com proteção ao *owner*, convites criptografados, SSO SAML 2.0 / OIDC e SCIM 2.0 (os eventos de auditoria são enviados ao `audit-service`).
+* **`services/auth-tenant-service`** (porta `8002`): IAM, governança de inquilinos (*tenants*), cotas estritas por plano (`community` = Free, `team` = Pro, `enterprise` = contrato), RBAC com proteção ao *owner*, convites criptografados, SSO SAML 2.0 / OIDC e SCIM 2.0 (os eventos de auditoria são enviados ao `audit-service`).
 * **`services/stat-orchestrator`** (porta `8003`): Orquestrador de computação analítica com fila assíncrona priorizada por QoS (clientes VIP furam fila), cache determinístico LRU por hash SHA-256 e roteador inteligente Dual-Engine.
 * **`services/data-engine-service`** (porta `8004` / exposta `8014`): Motor de consulta analítica em DuckDB Sandbox confinada, streaming binário Apache Arrow IPC (`application/vnd.apache.arrow.stream`), anonimização e mascaramento de PII (LGPD/GDPR), conectores externos (SQLite, DuckDB, PostgreSQL, MySQL) e Data Prep.
 * **`services/bi-report-service`** (porta `8005` / exposta `8015`): Microsserviço de relatórios colaborativos e dashboards em tempo real com WebSockets, versionamento e snapshots.
 * **`services/export-service`** (porta `8006` / exposta `8016`): Gerador de relatórios multi-formato (HTML/PDF Paged Media APA 7th, LaTeX com booktabs, DOCX com estilos acadêmicos e Markdown GFM).
-* **`services/billing-service`** (porta `8007` / exposta `8017`): Microsserviço de monetização e pagamentos Stripe: planos Community, Team e Enterprise, Checkout Sessions, Customer Portal, faturamento multi-tenant e webhooks com atualização automática de tier.
+* **`services/billing-service`** (porta `8007` / exposta `8017`): Microsserviço de monetização e pagamentos Stripe: planos Free e Pro (R$ 249/mês), Checkout Sessions, Customer Portal, faturamento multi-tenant, webhooks idempotentes (`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`) com atualização automática do plano e resumo para o painel admin (`GET /billing/admin/summary`).
 * **`services/audit-service`** (porta `8008` / exposta `8018`): Trilha de Auditoria Imutável com encadeamento de hash SHA-256 por tenant, verificação de integridade (`/audit/verify`) e exportação com atestado de conformidade (SOC 2 / FDA 21 CFR Part 11). Banco e volume próprios.
 * **`apps/api`** (porta interna `8000`, exposta em `${API_PORT:-8020}`): Camada de dados, ingestão de CSV/Parquet via DuckDB, catálogo de datasets, relatórios, dashboards e abstração de storage (`StorageProvider` Local/S3).
 * **`engines/r-worker`**: **Engine A (Open Engine)** — Worker R isolado em container com supervisor leve e runtime JASP (tempo limite, recuperação automática, AGPL-compliant).
@@ -255,6 +245,8 @@ Em desenvolvimento tudo é opcional: o que ficar vazio usa valores de desenvolvi
 | `AUTH_ENABLED` / `COOKIE_SECURE` | `true` / `false` | sessão do app (`COOKIE_SECURE=true` atrás de HTTPS) |
 | `JWT_SECRET_KEY` | chave de dev | assinatura dos JWT (`openssl rand -hex 32`) |
 | `STRIPE_MOCK_MODE` | `true` | simula checkout e webhooks |
+| `STRIPE_PRICE_ID` / `STRIPE_PRICE_PRO_MONTHLY` | exemplo (só no mock) | ID do preço mensal (R$ 249,00) do plano Pro, criado no Stripe em modo de teste |
+| `DATASETS_PRIVATE_BY_DEFAULT` | `true` no compose | dataset novo só é lido pelo dono (e administradores) até ele compartilhar |
 | `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_WEBHOOK_SECRET` | credenciais de dev | Stripe real |
 
 **Produção.** Com `ENVIRONMENT=production`, `auth-tenant-service`, `gateway` e `billing-service` **recusam iniciar** (o container entra em restart com a causa no log) se: `JWT_SECRET_KEY` estiver ausente, for um valor padrão do repositório ou tiver menos de 32 caracteres; `STRIPE_MOCK_MODE=true` (no modo mock o webhook aceita qualquer `Stripe-Signature`, o que permitiria promover um tenant sem pagar); ou as credenciais do Stripe forem as de desenvolvimento. No Helm, defina `secrets.jwtSecretKey`, `secrets.stripeSecretKey` e `secrets.stripeWebhookSecret` (o `values.yaml` vem com placeholders de propósito).

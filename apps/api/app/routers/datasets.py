@@ -56,7 +56,7 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
         plan_limits.tag_dataset(created.id, plan.tenant_id)
         access.claim("dataset", created.id, user)
         permissions.apply_default_visibility(created.id)
-        audit.log(user, "create", "dataset", created.id, f"{created.name} (upload, {size // 1024} KB, plano {plan.name})")
+        audit.log(user, "create", "dataset", created.id, f"{created.name} (upload, {size / 1024:.1f} KB, plano {plan.name})")
         return _present([created], user)[0]
     except datasets.DatasetError as exc:
         raise _http(exc) from exc

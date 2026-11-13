@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import hashlib
+import json
 
 from billing_service.config import PLANS, settings
 from billing_service.db import BillingStore
@@ -27,6 +28,20 @@ from billing_service.models import (
 from billing_service.stripe_client import StripeUnavailable, stripe_client
 
 logger = logging.getLogger(__name__)
+
+# Eventos de negócio (checkout criado, assinatura ativada, pagamento falhou...) em uma linha JSON no log do processo,
+# no mesmo formato do apps/api (`metastatistic.events`). Handler próprio: não depende da configuração de logging do uvicorn.
+events_log = logging.getLogger("metastatistic.events")
+if not events_log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    events_log.addHandler(_handler)
+    events_log.setLevel(logging.INFO)
+    events_log.propagate = False
+
+
+def business_event(event: str, **fields) -> None:
+    events_log.info(json.dumps({"event": event, "ts": datetime.now(timezone.utc).isoformat(), **fields}, ensure_ascii=False, default=str))
 
 billing_store_instance: Optional[BillingStore] = None
 
@@ -198,6 +213,7 @@ def create_checkout(
         customer_email=payload.customer_email,
     )
 
+    business_event("billing.checkout_created", tenant=x_tenant_id, plan=payload.plan_id, session_id=session_data["session_id"])
     return CheckoutSessionResponse(
         session_id=session_data["session_id"],
         url=session_data["url"],
@@ -223,6 +239,7 @@ def create_customer_portal(
 
     return_url = payload.return_url or settings.billing_return_url_default
     portal_data = stripe_client.create_portal_session(customer_id, return_url)
+    business_event("billing.portal_opened", tenant=x_tenant_id)
     return CustomerPortalResponse(url=portal_data["url"])
 
 
@@ -418,7 +435,7 @@ async def stripe_webhook(
     event_id = str(event.get("id") or "body_" + hashlib.sha256(body).hexdigest()[:32])
 
     if not store.claim_event(event_id, event_type):
-        logger.info("webhook %s (%s) já recebido: ignorado (idempotência)", event_id, event_type)
+        business_event("billing.webhook_duplicate", event_id=event_id, type=event_type)
         previous = store.get_event(event_id) or {}
         return WebhookEventResponse(
             received=True, event_type=event_type, processed=previous.get("status") == "processed", duplicate=True,
@@ -436,11 +453,12 @@ async def stripe_webhook(
     except Exception as exc:
         # libera o evento: o Stripe vai reenviar (resposta 500) e a nova tentativa precisa poder processar
         logger.exception("webhook %s (%s) falhou", event_id, event_type)
+        business_event("billing.webhook_failed", event_id=event_id, type=event_type, error=type(exc).__name__)
         store.finish_event(event_id, "failed", f"{type(exc).__name__}: {exc}"[:300])
         raise HTTPException(status_code=500, detail="Webhook processing failed; the event can be retried") from exc
 
     store.finish_event(event_id, "processed", detail, tenant_id)
-    logger.info("business_event=billing.%s tenant=%s event_id=%s", event_type, tenant_id, event_id)
+    business_event(f"billing.{event_type}", tenant=tenant_id, event_id=event_id, detail=detail)
     return WebhookEventResponse(received=True, event_type=event_type, processed=True, event_id=event_id, detail=detail)
 
 
