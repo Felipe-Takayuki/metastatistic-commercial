@@ -4,10 +4,25 @@ Registra logins (certos e errados), mudanças de usuários e de acesso, criaçã
 acessos negados. NÃO registra cada salvamento automático de relatório/dashboard (ruído) nem leituras/consultas.
 O registro nunca derruba a operação principal: falha ao gravar é ignorada.
 """
+import json
+import logging
 from contextlib import closing
 from datetime import datetime, timezone
 
 from . import auth, db
+
+# Eventos de negócio também vão para o log do processo (uma linha JSON por evento, pronta para `docker logs | jq`),
+# além da tabela `audit`. O logger tem handler próprio: não depende da configuração de logging do uvicorn.
+events_log = logging.getLogger("metastatistic.events")
+if not events_log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    events_log.addHandler(_handler)
+    events_log.setLevel(logging.INFO)
+    events_log.propagate = False
+
+# Ações que contam como evento de negócio (o restante, como acessos negados e logins, segue só na tabela de auditoria)
+BUSINESS_ACTIONS = {"register", "setup", "create", "delete", "move", "share", "login", "denied"}
 
 
 def log(user: "auth.User | None", action: str, kind: str | None = None, target: str | None = None, detail: str | None = None,
@@ -22,6 +37,11 @@ def log(user: "auth.User | None", action: str, kind: str | None = None, target: 
             )
     except Exception:  # auditoria é best-effort
         pass
+    if action in BUSINESS_ACTIONS:
+        events_log.info(json.dumps({
+            "event": f"{kind or 'session'}.{action}", "ts": datetime.now(timezone.utc).isoformat(),
+            "user": None if anonymous else user.username, "target": target, "detail": (detail or None) and detail[:200],
+        }, ensure_ascii=False))
 
 
 def list_events(limit: int = 100, before_id: int | None = None, action: str | None = None) -> list[dict]:

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import access, audit, auth, datasets, derive, permissions, queries, transforms
+from .. import access, audit, auth, datasets, derive, permissions, plan_limits, queries, transforms
 from ..schemas import Dataset
 from ..security import current_user, require_editor, require_viewer
 
@@ -41,7 +41,8 @@ def preview(body: PreviewIn, user: auth.User = Depends(current_user)) -> dict:
 
 
 @router.post("/save", response_model=Dataset, status_code=201, dependencies=[Depends(require_editor)])
-def save(body: SaveIn, user: auth.User = Depends(current_user)) -> Dataset:
+def save(body: SaveIn, user: auth.User = Depends(current_user),
+         plan: plan_limits.Plan = Depends(plan_limits.check_can_create_dataset)) -> Dataset:
     """Materializa o resultado da receita como um dataset novo (herda as restrições de acesso da origem)."""
     compiled = _compile(body.recipe, user)
     try:
@@ -50,6 +51,7 @@ def save(body: SaveIn, user: auth.User = Depends(current_user)) -> Dataset:
         raise HTTPException(422, str(exc)) from exc
     except queries.QueryError as exc:
         raise HTTPException(422, str(exc)) from exc
+    plan_limits.tag_dataset(created.id, plan.tenant_id)
     access.claim("dataset", created.id, user)
     transforms.save_recipe(created.id, body.recipe, compiled.sql)
     transforms.carry_measurements(created.id, body.recipe.source_id)

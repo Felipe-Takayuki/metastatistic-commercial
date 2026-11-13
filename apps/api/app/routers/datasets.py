@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from .. import access, audit, auth, datasets, derive, permissions, queries, transforms
+from .. import access, audit, auth, datasets, derive, permissions, plan_limits, queries, transforms
 from ..config import settings
 from ..schemas import AccessConfig, Dataset, DatasetFromQuery, DatasetPatch, QueryResult
 
@@ -32,10 +32,12 @@ def _readable(dataset_id: str, user: auth.User) -> Dataset:
 
 
 @router.post("", response_model=Dataset, status_code=201, dependencies=[Depends(require_editor)])
-def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default=None), user: auth.User = Depends(current_user)) -> Dataset:
-    """Envia um CSV. O nome do arquivo nunca vira caminho em disco (só o nome lógico do dataset)."""
+def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default=None), user: auth.User = Depends(current_user),
+                   plan: plan_limits.Plan = Depends(plan_limits.check_can_create_dataset)) -> Dataset:
+    """Envia um CSV. O nome do arquivo nunca vira caminho em disco (só o nome lógico do dataset).
+    O plano da organização limita quantos datasets existem e o tamanho de cada arquivo (402 com a mensagem do limite)."""
     display = (name or file.filename or "dataset").strip()[:120] or "dataset"
-    limit = settings.max_upload_mb * 1024 * 1024
+    limit = plan_limits.max_upload_bytes(plan)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = settings.data_dir / "tmp"
     tmp_dir.mkdir(exist_ok=True)
@@ -47,12 +49,13 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
             if size > limit:
                 tmp.close()
                 tmp_path.unlink(missing_ok=True)
-                raise HTTPException(413, f"file exceeds {settings.max_upload_mb} MB")
+                raise plan_limits.upload_too_big(plan)
             tmp.write(chunk)
     try:
         created = datasets.ingest_csv(tmp_path, display)
+        plan_limits.tag_dataset(created.id, plan.tenant_id)
         access.claim("dataset", created.id, user)
-        audit.log(user, "create", "dataset", created.id, created.name)
+        audit.log(user, "create", "dataset", created.id, f"{created.name} (upload, {size // 1024} KB, plano {plan.name})")
         return _present([created], user)[0]
     except datasets.DatasetError as exc:
         raise _http(exc) from exc
@@ -61,10 +64,12 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
 
 
 @router.post("/from-query", response_model=Dataset, status_code=201, dependencies=[Depends(require_editor)])
-def create_from_query(body: DatasetFromQuery, user: auth.User = Depends(current_user)) -> Dataset:
+def create_from_query(body: DatasetFromQuery, user: auth.User = Depends(current_user),
+                      plan: plan_limits.Plan = Depends(plan_limits.check_can_create_dataset)) -> Dataset:
     """Salva o resultado de uma consulta SQL (somente leitura) como um novo dataset analisável."""
     try:
         created = derive.create_dataset_from_query(body.name, body.sql, user=user)
+        plan_limits.tag_dataset(created.id, plan.tenant_id)
         access.claim("dataset", created.id, user)
         audit.log(user, "create", "dataset", created.id, f"{created.name} (derivado)")
         return _present([created], user)[0]
