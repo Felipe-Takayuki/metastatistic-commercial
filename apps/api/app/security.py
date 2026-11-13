@@ -1,10 +1,24 @@
 """Dependências do FastAPI: quem está chamando e o que ele pode fazer."""
 from fastapi import Depends, HTTPException, Request
 
-from . import access, audit, auth
+import dataclasses
+
+from . import access, audit, auth, tenancy
 from .config import settings
 
 COOKIE = "ms_session"
+
+
+# Teto de papel na plataforma que cada papel de organização permite: a mesma pessoa pode ser editora numa organização e só
+# leitora em outra. O administrador da plataforma não é limitado; `admin` da plataforma não se herda de nenhuma organização.
+ORG_ROLE_CAP = {"owner": "editor", "admin": "editor", "statistician": "editor", "analyst": "editor", "viewer": "viewer"}
+
+
+def effective_role(platform_role: str, org_role: str | None) -> str:
+    cap = ORG_ROLE_CAP.get(org_role or "")
+    if platform_role == "admin" or cap is None:
+        return platform_role
+    return cap if auth.ROLES.index(cap) < auth.ROLES.index(platform_role) else platform_role
 
 
 def current_user(request: Request) -> auth.User:
@@ -13,7 +27,8 @@ def current_user(request: Request) -> auth.User:
     user = auth.user_for_token(request.cookies.get(COOKIE))
     if user is None:
         raise HTTPException(401, "authentication required")
-    return user
+    role = effective_role(user.role, tenancy.org_role())
+    return dataclasses.replace(user, role=role) if role != user.role else user
 
 
 def _require(role: str):

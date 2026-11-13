@@ -12,6 +12,12 @@ from .config import settings
 
 _current: ContextVar[str | None] = ContextVar("tenant", default=None)
 _correlation: ContextVar[str | None] = ContextVar("correlation_id", default=None)
+_org_role: ContextVar[str | None] = ContextVar("org_role", default=None)
+
+
+def org_role() -> str | None:
+    """Papel do usuário NA organização da requisição (owner, admin, statistician, analyst, viewer), verificado pelo gateway."""
+    return _org_role.get()
 
 
 def correlation_id() -> str | None:
@@ -45,15 +51,18 @@ class TenantMiddleware:
     async def __call__(self, scope_, receive, send):
         if scope_["type"] != "http":
             return await self.app(scope_, receive, send)
-        tenant = cid = None
+        tenant = cid = role = None
         for key, value in scope_.get("headers", []):
             if key == b"x-tenant-id":
                 tenant = value.decode("latin-1").strip()[:64] or None
+            elif key == b"x-tenant-role":
+                role = value.decode("latin-1").strip()[:32] or None
             elif key == b"x-correlation-id":
                 cid = value.decode("latin-1").strip()[:64] or None
-        token, ctoken = _current.set(tenant), _correlation.set(cid)
+        token, ctoken, rtoken = _current.set(tenant), _correlation.set(cid), _org_role.set(role)
         try:
             await self.app(scope_, receive, send)
         finally:
             _current.reset(token)
             _correlation.reset(ctoken)
+            _org_role.reset(rtoken)

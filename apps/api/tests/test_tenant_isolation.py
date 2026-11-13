@@ -102,3 +102,35 @@ async def test_correlation_id_is_in_the_business_event_log(admin):
         audit.events_log.removeHandler(h)
     ev = next(json.loads(r) for r in records if json.loads(r)["event"] == "dataset.create")
     assert ev["correlation_id"] == "corr-xyz-789" and ev["tenant"] == "org-a"
+
+
+# ---------- papel por organização (issue #5) ----------
+
+async def _editor_client(admin, name):
+    from test_auth import login, make_user
+
+    await make_user(admin, name, "editor")
+    return await login(name)
+
+
+async def test_org_role_caps_what_the_same_person_can_do_in_that_organization(admin):
+    ed = await _editor_client(admin, "paula")                                        # editora na plataforma
+    as_viewer = {**A, "X-Tenant-Role": "viewer"}
+    as_analyst = {**A, "X-Tenant-Role": "analyst"}
+
+    r = await ed.post("/datasets", files=csv("v.csv"), headers=as_viewer)
+    assert r.status_code == 403 and "requires role editor" in r.json()["detail"]                   # leitora nesta organização
+    assert (await ed.post("/datasets", files=csv("v.csv"), headers=as_analyst)).status_code == 201
+    assert (await ed.get("/auth/me", headers=as_viewer)).json()["role"] == "viewer"  # a interface esconde o que ela não pode
+    assert (await ed.get("/auth/me", headers=as_analyst)).json()["role"] == "editor"
+
+
+async def test_org_role_never_grants_platform_admin_and_never_limits_the_platform_admin(admin):
+    ed = await _editor_client(admin, "quico")
+    assert (await ed.get("/users", headers={**A, "X-Tenant-Role": "owner"})).status_code == 403   # owner da org não é admin global
+    assert (await admin.get("/users", headers={**A, "X-Tenant-Role": "viewer"})).status_code == 200  # admin da plataforma passa
+
+
+async def test_without_org_role_the_platform_role_applies(admin):
+    ed = await _editor_client(admin, "rita")
+    assert (await ed.post("/datasets", files=csv("r.csv"))).status_code == 201       # workspace default: papel da plataforma
