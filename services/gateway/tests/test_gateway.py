@@ -575,3 +575,7 @@ async def test_compressed_upstream_is_not_double_decoded_by_the_browser(monkeypa
             resp = await client.get("/")
     assert resp.status_code == 200 and resp.content == body
     assert "content-encoding" not in resp.headers
+
+
+def test_plan_usage_goes_to_the_data_api():
+    assert determine_target_url("/api/plan/usage") == f"{settings.data_api_url.rstrip('/')}/plan/usage"

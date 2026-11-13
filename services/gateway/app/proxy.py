@@ -45,7 +45,7 @@ API_DIRECT_PREFIXES = {
 
 
 # Recursos que o app web usa sem /v1 e que o apps/api implementa (ver determine_target_url)
-WEB_API_RESOURCES = ("reports", "dashboards", "queries", "transforms", "analyses", "audit")
+WEB_API_RESOURCES = ("reports", "dashboards", "queries", "transforms", "analyses", "audit", "plan")
 
 
 def determine_target_url(path: str) -> str:

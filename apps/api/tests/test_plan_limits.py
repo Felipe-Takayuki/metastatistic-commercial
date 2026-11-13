@@ -153,3 +153,36 @@ async def test_datasets_stay_open_by_default_for_backward_compatibility(admin):
     ed3 = await login("ed3")
     await admin.post("/datasets", files=csv("aberto.csv"))
     assert len((await ed3.get("/datasets")).json()) == 1
+
+
+# ---------- cota de armazenamento e medição de uso (issue #4) ----------
+
+STORAGE_FREE = {"X-Tenant-ID": "org-st", "X-Tenant-Tier": "community",
+                "X-Tenant-Quotas": json.dumps({"max_datasets": 50, "max_upload_mb": 5, "max_storage_mb": 1})}
+
+
+async def test_storage_quota_blocks_when_the_sum_passes_the_limit(admin):
+    big = "id,v\n" + "\n".join(f"{i},{i * 7}" for i in range(60_000))        # ~0,5 MB de CSV
+    assert (await admin.post("/datasets", files=csv("a.csv", big), headers=STORAGE_FREE)).status_code == 201
+    assert (await admin.post("/datasets", files=csv("b.csv", big), headers=STORAGE_FREE)).status_code == 201
+    r = await admin.post("/datasets", files=csv("c.csv", big), headers=STORAGE_FREE)
+    assert r.status_code == 402
+    msg = r.json()["detail"]
+    assert "plano Free" in msg and "1 MB de armazenamento" in msg and "Pro" in msg
+
+
+async def test_deleting_a_dataset_frees_the_space_immediately(admin):
+    big = "id,v\n" + "\n".join(f"{i},{i * 7}" for i in range(60_000))
+    ids = [(await admin.post("/datasets", files=csv(f"{n}.csv", big), headers=STORAGE_FREE)).json()["id"] for n in "ab"]
+    assert (await admin.post("/datasets", files=csv("c.csv", big), headers=STORAGE_FREE)).status_code == 402
+    assert (await admin.delete(f"/datasets/{ids[0]}", headers=STORAGE_FREE)).status_code == 204
+    assert (await admin.post("/datasets", files=csv("c.csv", big), headers=STORAGE_FREE)).status_code == 201
+
+
+async def test_usage_endpoint_reports_the_current_use(admin):
+    await admin.post("/datasets", files=csv("u.csv"), headers=FREE)
+    u = (await admin.get("/plan/usage", headers=FREE)).json()
+    assert u["plan"] == "Free" and u["datasets"] == {"used": 1, "limit": 2}
+    assert u["storage_mb"]["used"] >= 0 and u["max_upload_mb"] == 1
+    await admin.post("/datasets", files=csv("u2.csv"), headers=FREE)
+    assert (await admin.get("/plan/usage", headers=FREE)).json()["near_limit"] is True   # 2 de 2

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type BillingCycle, type PlanInfo, type SubscriptionInfo } from "../api";
+import { api, type BillingCycle, type PlanInfo, type PlanUsage, type SubscriptionInfo } from "../api";
 import { formatBRL, planName } from "../lib/billing";
 
 interface PricingModalProps {
@@ -42,6 +42,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
   const cycle: BillingCycle = "monthly"; // só há cobrança mensal
   const [plans, setPlans] = useState<PlanInfo[]>(DEFAULT_PLANS);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+  const [usage, setUsage] = useState<PlanUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +51,10 @@ export function PricingModal({ onClose }: PricingModalProps) {
     let mounted = true;
     async function loadData() {
       try {
-        const [fetchedPlans, fetchedSub] = await Promise.allSettled([
+        const [fetchedPlans, fetchedSub, fetchedUsage] = await Promise.allSettled([
           api.getBillingPlans(),
           api.getSubscription(),
+          api.getPlanUsage(),
         ]);
 
         if (mounted) {
@@ -62,6 +64,7 @@ export function PricingModal({ onClose }: PricingModalProps) {
           if (fetchedSub.status === "fulfilled" && fetchedSub.value) {
             setSubscription(fetchedSub.value);
           }
+          if (fetchedUsage.status === "fulfilled") setUsage(fetchedUsage.value);
         }
       } catch (err) {
         if (mounted) {
@@ -169,6 +172,14 @@ export function PricingModal({ onClose }: PricingModalProps) {
             <div className="alert" role="alert" style={{ display: "flex", justifyContent: "space-between" }}>
               <span>{error}</span>
               <button className="btn ghost sm" onClick={() => setError(null)}>✕</button>
+            </div>
+          )}
+
+          {usage && (
+            <div className={usage.near_limit ? "alert" : "muted small"} data-testid="plan-usage" style={{ margin: 0 }}>
+              Uso da organização: {usage.datasets.used}{usage.datasets.limit ? ` de ${usage.datasets.limit}` : ""} datasets ·{" "}
+              {usage.storage_mb.used.toLocaleString("pt-BR")}{usage.storage_mb.limit ? ` de ${usage.storage_mb.limit}` : ""} MB de armazenamento
+              {usage.near_limit ? " — perto do limite do plano." : "."}
             </div>
           )}
 

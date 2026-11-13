@@ -52,6 +52,7 @@ def upload_dataset(file: UploadFile = File(...), name: str | None = Form(default
                 raise plan_limits.upload_too_big(plan)
             tmp.write(chunk)
     try:
+        plan_limits.check_storage_after_upload(plan, size)
         created = datasets.ingest_csv(tmp_path, display)
         access.claim("dataset", created.id, user)
         permissions.apply_default_visibility(created.id)

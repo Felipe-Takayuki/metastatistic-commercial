@@ -234,6 +234,15 @@ export interface AdminSummary {
   last_events: AdminEventRow[];
 }
 
+export interface PlanUsage {
+  plan: string;
+  tier: PlanTier;
+  datasets: { used: number; limit: number | null };
+  storage_mb: { used: number; limit: number | null };
+  max_upload_mb: number | null;
+  near_limit: boolean;
+}
+
 export interface CheckoutSession {
   session_id: string;
   url: string;
@@ -366,6 +375,7 @@ export const api = {
     request<AnalysisResponse>("/analyses/run", json("POST", { analysis, dataset_id, options })),
   getBillingPlans: () => request<PlanInfo[]>("/billing/plans"),
   getSubscription: () => request<SubscriptionInfo>("/billing/subscription"),
+  getPlanUsage: () => request<PlanUsage>("/plan/usage"),
   getBillingAdminSummary: () => request<AdminSummary>("/billing/admin/summary"),
   createCheckoutSession: (planId: string, billingCycle: BillingCycle = "monthly") =>
     request<CheckoutSession>("/billing/checkout", json("POST", { plan_id: planId, billing_cycle: billingCycle })),

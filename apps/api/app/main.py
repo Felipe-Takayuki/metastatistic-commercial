@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .routers import analyses, collections, dashboards, datasets, queries, reports, transforms
+from .routers import analyses, collections, dashboards, datasets, plan, queries, reports, transforms
 from .routers import auth as auth_router
 from .tenancy import TenantMiddleware
 
@@ -11,6 +11,7 @@ app.include_router(auth_router.users_router)
 app.include_router(auth_router.audit_router)
 app.include_router(collections.router)
 app.include_router(datasets.router)
+app.include_router(plan.router)
 app.include_router(queries.router)
 app.include_router(analyses.router)
 app.include_router(transforms.router)
