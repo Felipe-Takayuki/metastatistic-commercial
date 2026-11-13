@@ -605,3 +605,29 @@ async def test_summary_flags_failed_and_stuck_events(memory_billing_store):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         data = (await client.get("/billing/admin/summary")).json()
     assert data["failed_events"] == 1 and data["stuck_events"] == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_correlation_id_reaches_business_events_and_metrics_are_exposed(memory_billing_store):
+    import logging
+    from billing_service import main as m
+
+    respx.patch(url__regex=r".*/tenants/.*/tier").mock(return_value=Response(200, json={}))
+    lines: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    h = Cap()
+    m.events_log.addHandler(h)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post("/billing/webhook", headers={"Stripe-Signature": "t=1,v1=x", "X-Correlation-ID": "corr-abc-123"},
+                              content=_event("evt_corr", "checkout.session.completed", {"client_reference_id": "t_c", "customer": "cus_c", "subscription": "sub_c", "metadata": {"plan_id": "pro"}}))
+            text = (await client.get("/metrics")).text
+    finally:
+        m.events_log.removeHandler(h)
+    assert json.loads(lines[-1])["correlation_id"] == "corr-abc-123"
+    assert 'billing_events_total{event="billing.checkout.session.completed"}' in text

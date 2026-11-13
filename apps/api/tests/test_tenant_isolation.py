@@ -82,3 +82,23 @@ async def test_workspace_default_is_its_own_isolated_space(admin):
 async def test_no_isolation_when_auth_is_disabled(client):
     await client.post("/datasets", files=csv(), headers=A)
     assert len((await client.get("/datasets", headers=B)).json()) == 1                    # demonstração local: tudo junto
+
+
+async def test_correlation_id_is_in_the_business_event_log(admin):
+    import logging
+    from app import audit
+
+    records: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    h = Cap()
+    audit.events_log.addHandler(h)
+    try:
+        await admin.post("/datasets", files=csv("c.csv"), headers={**A, "X-Correlation-ID": "corr-xyz-789"})
+    finally:
+        audit.events_log.removeHandler(h)
+    ev = next(json.loads(r) for r in records if json.loads(r)["event"] == "dataset.create")
+    assert ev["correlation_id"] == "corr-xyz-789" and ev["tenant"] == "org-a"

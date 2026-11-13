@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.authz import fetch_identity
 from app.config import settings
+from app.observability import ObservabilityMiddleware, metrics
 from app.proxy import proxy_request
 from app.tenant_resolver import tenant_middleware
 
@@ -38,6 +39,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.middleware("http")(tenant_middleware)
+app.add_middleware(ObservabilityMiddleware)  # por último = mais externo: vê o pedido inteiro
+
+
+@app.get("/metrics")
+def prometheus_metrics(request: Request) -> Response:
+    """Métricas no formato Prometheus. Exige `Authorization: Bearer $METRICS_TOKEN`; sem a variável, não existe."""
+    token = settings.metrics_token.strip()
+    if not token:
+        return Response(status_code=404)
+    if request.headers.get("authorization", "") != f"Bearer {token}":
+        return Response(status_code=401)
+    return Response(metrics.render(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/health/live")

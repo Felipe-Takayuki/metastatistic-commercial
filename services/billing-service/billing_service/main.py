@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import asyncio
+from collections import defaultdict
+from contextvars import ContextVar
 import hashlib
 from contextlib import asynccontextmanager
 import json
@@ -43,8 +45,30 @@ if not events_log.handlers:
     events_log.propagate = False
 
 
+_correlation: ContextVar[Optional[str]] = ContextVar("correlation_id", default=None)
+
+# Contadores para GET /metrics (formato Prometheus): resultado de cada webhook e quanto o Stripe demorou a ser atendido
+METRICS: Dict[str, int] = defaultdict(int)
+
+
 def business_event(event: str, **fields) -> None:
-    events_log.info(json.dumps({"event": event, "ts": datetime.now(timezone.utc).isoformat(), **fields}, ensure_ascii=False, default=str))
+    METRICS[event] += 1
+    events_log.info(json.dumps({"event": event, "ts": datetime.now(timezone.utc).isoformat(), "correlation_id": _correlation.get(), **fields}, ensure_ascii=False, default=str))
+
+
+class CorrelationMiddleware:
+    """Guarda o X-Correlation-ID que o gateway repassou, para constar nos eventos de negócio."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        cid = next((v.decode("latin-1")[:64] for k, v in scope.get("headers", []) if k == b"x-correlation-id"), None) if scope["type"] == "http" else None
+        token = _correlation.set(cid)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _correlation.reset(token)
 
 billing_store_instance: Optional[BillingStore] = None
 
@@ -84,6 +108,7 @@ app = FastAPI(
     description="Stripe Subscriptions & Invoicing Microservice for MetaStatistic Commercial",
 )
 
+app.add_middleware(CorrelationMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -120,6 +145,16 @@ async def notify_tenant_tier_change(tenant_id: str, new_tier: str) -> bool:
 # ==========================================
 # Health Endpoints
 # ==========================================
+
+
+@app.get("/metrics")
+def metrics():
+    """Métricas Prometheus do billing (interno: o gateway não roteia /metrics). Webhooks por resultado e reconciliações."""
+    from fastapi.responses import PlainTextResponse
+
+    lines = ["# HELP billing_events_total Eventos de negócio do billing por tipo.", "# TYPE billing_events_total counter"]
+    lines += [f'billing_events_total{{event="{name}"}} {n}' for name, n in sorted(METRICS.items())]
+    return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
 
 @app.get("/health/live")

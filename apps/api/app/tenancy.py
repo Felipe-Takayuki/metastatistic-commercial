@@ -11,6 +11,12 @@ from contextvars import ContextVar
 from .config import settings
 
 _current: ContextVar[str | None] = ContextVar("tenant", default=None)
+_correlation: ContextVar[str | None] = ContextVar("correlation_id", default=None)
+
+
+def correlation_id() -> str | None:
+    """X-Correlation-ID gerado no gateway: o mesmo id aparece nos logs do gateway, da api e do billing."""
+    return _correlation.get()
 
 
 def scope() -> str | None:
@@ -39,13 +45,15 @@ class TenantMiddleware:
     async def __call__(self, scope_, receive, send):
         if scope_["type"] != "http":
             return await self.app(scope_, receive, send)
-        tenant = None
+        tenant = cid = None
         for key, value in scope_.get("headers", []):
             if key == b"x-tenant-id":
                 tenant = value.decode("latin-1").strip()[:64] or None
-                break
-        token = _current.set(tenant)
+            elif key == b"x-correlation-id":
+                cid = value.decode("latin-1").strip()[:64] or None
+        token, ctoken = _current.set(tenant), _correlation.set(cid)
         try:
             await self.app(scope_, receive, send)
         finally:
             _current.reset(token)
+            _correlation.reset(ctoken)

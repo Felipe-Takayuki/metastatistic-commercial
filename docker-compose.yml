@@ -31,6 +31,8 @@ services:
       DATA_API_URL: "http://api:8000"
       WEB_URL: "http://web:80"
       DEFAULT_TENANT_ID: "default"
+      # /metrics (Prometheus) só existe com este token (Authorization: Bearer ...); vazio = desligado
+      METRICS_TOKEN: "${METRICS_TOKEN:-}"
       ENVIRONMENT: "${ENVIRONMENT:-development}"
       JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
       # autenticação/autorização de tenant no gateway; segue o mesmo AUTH_ENABLED do app (false = modo sem login)
@@ -74,6 +76,8 @@ services:
       APP_URL: "${APP_URL:-}"
       STRIPE_PRICE_ID: "${STRIPE_PRICE_ID:-}"
       STRIPE_PRICE_PRO_MONTHLY: "${STRIPE_PRICE_PRO_MONTHLY:-}"
+      # reconciliação periódica com o Stripe, em minutos (0 = só pelo botão do painel admin)
+      RECONCILE_INTERVAL_MINUTES: "${RECONCILE_INTERVAL_MINUTES:-0}"
     volumes:
       - auth_data:/srv/data/auth
       - audit_data:/srv/data/audit

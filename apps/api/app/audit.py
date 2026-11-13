@@ -9,7 +9,7 @@ import logging
 from contextlib import closing
 from datetime import datetime, timezone
 
-from . import auth, db
+from . import auth, db, tenancy
 
 # Eventos de negócio também vão para o log do processo (uma linha JSON por evento, pronta para `docker logs | jq`),
 # além da tabela `audit`. O logger tem handler próprio: não depende da configuração de logging do uvicorn.
@@ -41,6 +41,7 @@ def log(user: "auth.User | None", action: str, kind: str | None = None, target: 
         events_log.info(json.dumps({
             "event": f"{kind or 'session'}.{action}", "ts": datetime.now(timezone.utc).isoformat(),
             "user": None if anonymous else user.username, "target": target, "detail": (detail or None) and detail[:200],
+            "correlation_id": tenancy.correlation_id(), "tenant": tenancy.scope(),
         }, ensure_ascii=False))
 
 

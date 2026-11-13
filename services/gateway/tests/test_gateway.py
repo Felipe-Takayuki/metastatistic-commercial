@@ -579,3 +579,58 @@ async def test_compressed_upstream_is_not_double_decoded_by_the_browser(monkeypa
 
 def test_plan_usage_goes_to_the_data_api():
     assert determine_target_url("/api/plan/usage") == f"{settings.data_api_url.rstrip('/')}/plan/usage"
+
+
+# ---------- observabilidade (issue #7) ----------
+
+@pytest.mark.asyncio
+async def test_correlation_id_is_generated_forwarded_and_returned(monkeypatch):
+    monkeypatch.setattr(settings, "authz_enabled", False)
+    with respx.mock(assert_all_called=False) as mock:
+        up = mock.get(f"{settings.web_url}/").mock(return_value=httpx.Response(200, text="ok"))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+            gen = await client.get("/")
+            kept = await client.get("/", headers={"X-Correlation-ID": "meu-id-de-teste-123"})
+            bad = await client.get("/", headers={"X-Correlation-ID": "invalido com espaco!"})
+    assert len(gen.headers["x-correlation-id"]) == 32 and up.calls[0].request.headers["x-correlation-id"] == gen.headers["x-correlation-id"]
+    assert kept.headers["x-correlation-id"] == "meu-id-de-teste-123"
+    assert bad.headers["x-correlation-id"] != "invalido com espaco!"          # id do cliente fora do padrão é descartado
+
+
+@pytest.mark.asyncio
+async def test_access_log_and_metrics(monkeypatch):
+    import json as _json
+    import logging
+    from app.observability import access_log, metrics
+
+    monkeypatch.setattr(settings, "authz_enabled", False)
+    monkeypatch.setattr(settings, "metrics_token", "segredo-de-teste")
+    metrics.reset()
+    lines = []
+
+    class Cap(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    h = Cap()
+    access_log.addHandler(h)
+    try:
+        with respx.mock(assert_all_called=False) as mock:
+            mock.get(f"{settings.web_url}/").mock(return_value=httpx.Response(200, text="ok"))
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+                await client.get("/")
+                no_token = await client.get("/metrics")
+                text = (await client.get("/metrics", headers={"Authorization": "Bearer segredo-de-teste"})).text
+    finally:
+        access_log.removeHandler(h)
+    ev = _json.loads(lines[0])
+    assert ev["event"] == "http.request" and ev["status"] == 200 and ev["path"] == "/" and ev["correlation_id"]
+    assert no_token.status_code == 401
+    assert 'gateway_requests_total{status="2xx",method="GET"} 1' in text and "gateway_request_duration_seconds_count 1" in text
+
+
+@pytest.mark.asyncio
+async def test_metrics_endpoint_is_off_without_a_token(monkeypatch):
+    monkeypatch.setattr(settings, "metrics_token", "")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway.test") as client:
+        assert (await client.get("/metrics")).status_code == 404

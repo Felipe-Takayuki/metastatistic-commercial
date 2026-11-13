@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     data_api_url: str = "http://localhost:8000"
     web_url: str = "http://localhost:3000"
     default_tenant_id: str = "default"
+    # Token Bearer para GET /metrics (Prometheus). Vazio = endpoint desligado (404).
+    metrics_token: str = ""
     environment: str = "development"
     # Autenticação/autorização no gateway (sessão do apps/api + associação ao tenant). Desligar só com AUTH_ENABLED=false.
     authz_enabled: bool = True
