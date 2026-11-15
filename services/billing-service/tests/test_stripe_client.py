@@ -89,3 +89,49 @@ async def test_endpoint_checkout_devolve_503_e_nao_grava_sessao_falsa(monkeypatc
         assert store.get_customer("t9") is None
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_checkout_descarta_customer_simulado_quando_o_modo_real_esta_ligado(monkeypatch, tmp_path):
+    """cus_mock_* gravado no modo mock não existe no Stripe: com o modo real vira um customer de verdade, sem 502."""
+    from billing_service import main as m
+
+    store = BillingStore(str(tmp_path / "b.db"))
+    store.save_customer("default", "cus_mock_default")
+    app.dependency_overrides[get_billing_store] = lambda: store
+    monkeypatch.setattr(m.stripe_client, "mock_mode", False)
+    monkeypatch.setattr(m.stripe_client, "secret_key", "sk_test_realkey")
+    monkeypatch.setattr(m.stripe_client, "get_or_create_customer", lambda tenant, email=None: "cus_real_1")
+    usados = []
+
+    def fake_checkout(**kw):
+        usados.append(kw["customer_id"])
+        return {"session_id": "cs_test_1", "url": "https://checkout.stripe.com/c/pay/cs_test_1", "customer_id": kw["customer_id"]}
+
+    monkeypatch.setattr(m.stripe_client, "create_checkout_session", fake_checkout)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.post("/billing/checkout", json={"plan_id": "pro", "billing_cycle": "monthly"}, headers={"X-Tenant-ID": "default"})
+        assert r.status_code == 200
+        assert usados == ["cus_real_1"]
+        assert store.get_customer("default")["customer_id"] == "cus_real_1"
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_checkout_mantem_customer_real_e_o_simulado_no_modo_mock(monkeypatch, tmp_path):
+    from billing_service import main as m
+
+    store = BillingStore(str(tmp_path / "b.db"))
+    store.save_customer("a", "cus_real_a")
+    store.save_customer("b", "cus_mock_b")
+    app.dependency_overrides[get_billing_store] = lambda: store
+    monkeypatch.setattr(m.stripe_client, "mock_mode", False)
+    monkeypatch.setattr(m.stripe_client, "get_or_create_customer", lambda tenant, email=None: pytest.fail("não deveria criar"))
+    try:
+        assert m._customer_id_for("a", store) == "cus_real_a"       # customer real é mantido
+        monkeypatch.setattr(m.stripe_client, "mock_mode", True)
+        assert m._customer_id_for("b", store) == "cus_mock_b"       # no modo mock o simulado continua valendo
+    finally:
+        app.dependency_overrides.clear()

@@ -30,7 +30,7 @@ from billing_service.models import (
     WebhookEventResponse,
 )
 from billing_service.reconcile import reconcile
-from billing_service.stripe_client import StripeUnavailable, stripe_client
+from billing_service.stripe_client import MOCK_CUSTOMER_PREFIX, StripeUnavailable, stripe_client
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +226,20 @@ def get_subscription(
 # ==========================================
 
 
+def _customer_id_for(tenant_id: str, store: BillingStore, email: Optional[str] = None) -> str:
+    """Customer do tenant: o gravado no banco, ou um novo (criado no Stripe) quando não há ou não serve mais.
+
+    Um `cus_mock_*` gravado enquanto o STRIPE_MOCK_MODE estava ligado não existe no Stripe: com o modo real ligado ele
+    é descartado e substituído por um customer de verdade, em vez de o checkout/portal falharem com "No such customer".
+    """
+    info = store.get_customer(tenant_id)
+    if info and not (info["customer_id"].startswith(MOCK_CUSTOMER_PREFIX) and not stripe_client.mock_mode):
+        return info["customer_id"]
+    customer_id = stripe_client.get_or_create_customer(tenant_id, email)
+    store.save_customer(tenant_id, customer_id, email)
+    return customer_id
+
+
 @app.post("/billing/checkout", response_model=CheckoutSessionResponse)
 def create_checkout(
     payload: CheckoutSessionRequest,
@@ -252,13 +266,7 @@ def create_checkout(
 
     plan = PLANS[payload.plan_id]
 
-    # Recupera ou provisiona customer no Stripe e DB
-    customer_info = store.get_customer(x_tenant_id)
-    if customer_info:
-        customer_id = customer_info["customer_id"]
-    else:
-        customer_id = stripe_client.get_or_create_customer(x_tenant_id, payload.customer_email)
-        store.save_customer(x_tenant_id, customer_id, payload.customer_email)
+    customer_id = _customer_id_for(x_tenant_id, store, payload.customer_email)
 
     success_url = payload.success_url or settings.billing_success_url_default
     cancel_url = payload.cancel_url or settings.billing_cancel_url_default
@@ -290,12 +298,7 @@ def create_customer_portal(
     store: BillingStore = Depends(get_billing_store),
 ):
     """Cria uma sessão do Stripe Customer Portal para gerenciar método de pagamento e faturas."""
-    customer_info = store.get_customer(x_tenant_id)
-    if not customer_info:
-        customer_id = stripe_client.get_or_create_customer(x_tenant_id)
-        store.save_customer(x_tenant_id, customer_id)
-    else:
-        customer_id = customer_info["customer_id"]
+    customer_id = _customer_id_for(x_tenant_id, store)
 
     return_url = payload.return_url or settings.billing_return_url_default
     portal_data = stripe_client.create_portal_session(customer_id, return_url)

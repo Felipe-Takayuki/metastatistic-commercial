@@ -13,6 +13,9 @@ stripe.api_key = settings.stripe_secret_key
 _SignatureError = getattr(stripe, "SignatureVerificationError", None) or stripe.error.SignatureVerificationError
 
 
+MOCK_CUSTOMER_PREFIX = "cus_mock_"   # customers simulados (STRIPE_MOCK_MODE=true): não existem no Stripe
+
+
 class StripeUnavailable(Exception):
     """Stripe real ligado (STRIPE_MOCK_MODE=false), mas a chamada não pôde ser feita ou falhou.
 
@@ -42,7 +45,7 @@ class StripeClient:
     def get_or_create_customer(self, tenant_id: str, email: Optional[str] = None) -> str:
         """Cria ou recupera um Stripe Customer ID para o tenant."""
         if self.mock_mode:
-            return f"cus_mock_{tenant_id}"
+            return f"{MOCK_CUSTOMER_PREFIX}{tenant_id}"
         self._require_real()
 
         try:
